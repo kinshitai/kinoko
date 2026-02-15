@@ -15,6 +15,7 @@ import (
 
 	"github.com/mycelium-dev/mycelium/internal/embedding"
 	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/llm"
 	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 )
@@ -45,7 +46,7 @@ type Injector interface {
 type injector struct {
 	embedder    embedding.Embedder
 	store       storage.SkillStore
-	llm         extraction.LLMClient
+	llm         llm.LLMClient
 	eventWriter InjectionEventWriter
 	log         *slog.Logger
 }
@@ -55,7 +56,7 @@ type injector struct {
 func New(
 	embedder embedding.Embedder,
 	store storage.SkillStore,
-	llm extraction.LLMClient,
+	llm llm.LLMClient,
 	eventWriter InjectionEventWriter,
 	log *slog.Logger,
 ) Injector {

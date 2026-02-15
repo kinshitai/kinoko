@@ -14,6 +14,7 @@ import (
 	"github.com/mycelium-dev/mycelium/internal/decay"
 	"github.com/mycelium-dev/mycelium/internal/embedding"
 	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/llm"
 	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/gitserver"
 	"github.com/mycelium-dev/mycelium/internal/injection"
@@ -70,9 +71,9 @@ func buildSessionHooks(cfg *config.Config, store *storage.SQLiteStore, logger *s
 
 	// Wire injection hook (pre-session).
 	if embCfg.APIKey != "" {
-		var llmClient extraction.LLMClient
+		var llmClient llm.LLMClient
 		if llmAPIKey != "" {
-			llmClient = &openAILLMClient{apiKey: llmAPIKey, model: "gpt-4o-mini"}
+			llmClient = llm.NewOpenAIClient(llmAPIKey, "gpt-4o-mini")
 		}
 
 		// When A/B testing is enabled, ABInjector writes events (with group info).
@@ -134,10 +135,10 @@ func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, logger *slog.
 	}
 	embedder := embedding.New(embCfg, logger)
 
-	llm := &openAILLMClient{apiKey: llmAPIKey, model: "gpt-4o-mini"}
+	llmClient := llm.NewOpenAIClient(llmAPIKey, "gpt-4o-mini")
 	stage1 := extraction.NewStage1Filter(cfg.Extraction, logger)
-	stage2 := extraction.NewStage2Scorer(embedder, &storeQuerier{store: store}, llm, cfg.Extraction, logger)
-	stage3 := extraction.NewStage3Critic(llm, cfg.Extraction, logger)
+	stage2 := extraction.NewStage2Scorer(embedder, &storeQuerier{store: store}, llmClient, cfg.Extraction, logger)
+	stage3 := extraction.NewStage3Critic(llmClient, cfg.Extraction, logger)
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
 		Stage1:    stage1,
 		Stage2:    stage2,

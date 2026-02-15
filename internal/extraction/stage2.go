@@ -9,8 +9,9 @@ import (
 	"strings"
 
 	"github.com/mycelium-dev/mycelium/internal/config"
-	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/embedding"
+	"github.com/mycelium-dev/mycelium/internal/llm"
+	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
 // Taxonomy is the canonical list of problem patterns from Appendix B.
@@ -48,10 +49,8 @@ func init() {
 	}
 }
 
-// LLMClient is a lightweight LLM interface for rubric scoring.
-type LLMClient interface {
-	Complete(ctx context.Context, prompt string) (string, error)
-}
+// LLMClient is an alias for llm.LLMClient kept for internal use within extraction.
+type LLMClient = llm.LLMClient
 
 // SkillQueryResult holds the nearest-neighbor result from a skill store query.
 type SkillQueryResult struct {

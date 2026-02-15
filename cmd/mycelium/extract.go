@@ -17,6 +17,7 @@ import (
 	"github.com/mycelium-dev/mycelium/internal/config"
 	"github.com/mycelium-dev/mycelium/internal/embedding"
 	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/llm"
 	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 )
@@ -86,12 +87,12 @@ func runExtract(cmd *cobra.Command, args []string) error {
 	if llmAPIKey == "" {
 		return fmt.Errorf("OPENAI_API_KEY or MYCELIUM_LLM_API_KEY required for extraction")
 	}
-	llm := &openAILLMClient{apiKey: llmAPIKey, model: "gpt-4o-mini"}
+	llmClient := llm.NewOpenAIClient(llmAPIKey, "gpt-4o-mini")
 
 	// Build pipeline stages
 	stage1 := extraction.NewStage1Filter(cfg.Extraction, logger)
-	stage2 := extraction.NewStage2Scorer(embedder, &storeQuerier{store: store}, llm, cfg.Extraction, logger)
-	stage3 := extraction.NewStage3Critic(llm, cfg.Extraction, logger)
+	stage2 := extraction.NewStage2Scorer(embedder, &storeQuerier{store: store}, llmClient, cfg.Extraction, logger)
+	stage3 := extraction.NewStage3Critic(llmClient, cfg.Extraction, logger)
 
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
 		Stage1:    stage1,
@@ -253,63 +254,5 @@ func (sq *storeQuerier) QueryNearest(ctx context.Context, emb []float32, library
 	return &extraction.SkillQueryResult{CosineSim: results[0].CosineSim}, nil
 }
 
-// openAILLMClient is a minimal LLM client for CLI use.
-type openAILLMClient struct {
-	apiKey string
-	model  string
-}
-
-func (c *openAILLMClient) Complete(ctx context.Context, prompt string) (string, error) {
-	// Use the same HTTP approach as the embedding client
-	return openAIComplete(ctx, c.apiKey, c.model, prompt)
-}
-
-func openAIComplete(ctx context.Context, apiKey, model, prompt string) (string, error) {
-	payload := map[string]any{
-		"model": model,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
-		},
-		"max_tokens": 2048,
-	}
-
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-
-	req, err := newHTTPRequest(ctx, "POST", "https://api.openai.com/v1/chat/completions", data)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := defaultHTTPClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("openai request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		body := make([]byte, 512)
-		n, _ := resp.Body.Read(body)
-		return "", fmt.Errorf("openai API %d: %s", resp.StatusCode, string(body[:n]))
-	}
-
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("decode response: %w", err)
-	}
-	if len(result.Choices) == 0 {
-		return "", fmt.Errorf("no choices in response")
-	}
-	return result.Choices[0].Message.Content, nil
-}
+// openAILLMClient and openAIComplete moved to internal/llm package.
 

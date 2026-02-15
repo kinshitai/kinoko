@@ -14,32 +14,18 @@ import (
 	"unicode/utf8"
 
 	"github.com/mycelium-dev/mycelium/internal/config"
+	"github.com/mycelium-dev/mycelium/internal/llm"
 	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
-// LLMError is a structured error carrying an HTTP status code from an LLM call.
-type LLMError struct {
-	StatusCode int
-	Message    string
-}
+// LLMError is an alias for llm.LLMError.
+type LLMError = llm.LLMError
 
-func (e *LLMError) Error() string {
-	return fmt.Sprintf("llm error (status %d): %s", e.StatusCode, e.Message)
-}
+// LLMCompleteResult is an alias for llm.LLMCompleteResult.
+type LLMCompleteResult = llm.LLMCompleteResult
 
-// LLMCompleteResult is the return value from LLMClientV2.CompleteV2.
-type LLMCompleteResult struct {
-	Content   string
-	TokensIn  int
-	TokensOut int
-}
-
-// LLMClientV2 extends LLMClient with token usage and timeout control.
-// Implementations should respect the context deadline/timeout.
-type LLMClientV2 interface {
-	LLMClient
-	CompleteWithTimeout(ctx context.Context, prompt string, timeout time.Duration) (*LLMCompleteResult, error)
-}
+// LLMClientV2 is an alias for llm.LLMClientV2.
+type LLMClientV2 = llm.LLMClientV2
 
 // maxContentBytes is the truncation limit for session content sent to the LLM.
 const maxContentBytes = 100 * 1024
@@ -296,50 +282,14 @@ func parseCriticResponse(resp string, out *criticResponse) error {
 	return errors.New("could not extract valid JSON from LLM response")
 }
 
-// isRetryable returns true for errors that should be retried.
-func isRetryable(err error) bool {
-	if err == nil {
-		return false
-	}
-	// Check for structured LLMError with status code.
-	var llmErr *LLMError
-	if errors.As(err, &llmErr) {
-		return llmErr.StatusCode == 429 ||
-			(llmErr.StatusCode >= 500 && llmErr.StatusCode <= 599)
-	}
-	// Check for timeout errors.
-	if isTimeout(err) {
-		return true
-	}
-	// Fallback: check for known retryable strings (e.g., from non-HTTP transports).
-	msg := err.Error()
-	return strings.Contains(msg, "unavailable")
-}
+// isRetryable delegates to llm.IsRetryable.
+func isRetryable(err error) bool { return llm.IsRetryable(err) }
 
-// isTimeout checks if an error represents a timeout.
-func isTimeout(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "timeout") ||
-		strings.Contains(msg, "Timeout")
-}
+// isTimeout delegates to llm.IsTimeout.
+func isTimeout(err error) bool { return llm.IsTimeout(err) }
 
-func isRateLimit(err error) bool {
-	if err == nil {
-		return false
-	}
-	var llmErr *LLMError
-	if errors.As(err, &llmErr) {
-		return llmErr.StatusCode == 429
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "rate limit")
-}
+// isRateLimit delegates to llm.IsRateLimit.
+func isRateLimit(err error) bool { return llm.IsRateLimit(err) }
 
 // retryCallResult holds the result of callWithRetry.
 type retryCallResult struct {
