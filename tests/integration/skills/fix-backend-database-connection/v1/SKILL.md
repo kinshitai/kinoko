@@ -1,6 +1,6 @@
 ---
 name: fix-backend-database-connection
-id: 019c632d-7485-708d-a2e3-0381104a1e94
+id: 019c632e-77b8-7052-9f6c-163faf7afff5
 version: 1
 category: tactical
 patterns:
@@ -8,7 +8,7 @@ patterns:
 extracted_by: pipeline-v1
 quality: 3.65
 confidence: 0.87
-source_session: sess-cei-2
+source_session: sess-cei-0
 created: 2026-02-15
 ---
 
@@ -23,7 +23,7 @@ Category: tactical
 ## Solution
 
 ```
-unique extraction problem 2
+unique extraction problem 0
 ```
 
 ## Why It Works
