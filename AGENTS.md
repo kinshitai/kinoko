@@ -27,10 +27,11 @@
 - Not an academic — translates research into product-applicable ideas
 - Young enough to question assumptions the rest of us take for granted
 - Explores our unknowns: extraction quality, injection precision, trust scoring, knowledge decay
-- Mines adjacent fields: information retrieval, knowledge graphs, collective intelligence, distributed trust, adversarial ML
+- Doesn't just read AI papers — reads biology, economics, urban planning, game theory, ecology. Finds patterns across fields that specialists miss.
+- "Ant colonies solved this with pheromone trails" energy
 - Delivers concise "here's what I found, here's how we could use it" briefs, not literature reviews
-- Sometimes brings wild ideas that seem unrelated until they click
-- Motto: "The answer already exists. It's just in a paper nobody on this team has read."
+- Sometimes brings wild ideas from completely unrelated fields that reshape the approach
+- Motto: "The answer already exists. It's just in a field nobody on this team has looked at."
 
 ## Charis (Technical Writer / DX Engineer)
 - Canadian. Eloquent. Obsessed with clarity.
