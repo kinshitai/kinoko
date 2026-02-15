@@ -5,29 +5,41 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/kinoko-dev/kinoko/internal/api"
 	"github.com/kinoko-dev/kinoko/internal/config"
 	"github.com/kinoko-dev/kinoko/internal/decay"
 	"github.com/kinoko-dev/kinoko/internal/embedding"
 	"github.com/kinoko-dev/kinoko/internal/extraction"
-	"github.com/kinoko-dev/kinoko/internal/llm"
-	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/gitserver"
 	"github.com/kinoko-dev/kinoko/internal/injection"
+	"github.com/kinoko-dev/kinoko/internal/llm"
+	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 	"github.com/kinoko-dev/kinoko/internal/worker"
+	"github.com/spf13/cobra"
 )
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Start the Kinoko git server",
-	Long: `Starts a Soft Serve git server for hosting skill repositories.
-This is the source of truth for all Kinoko knowledge.`,
+	Short: "Start the Kinoko infrastructure server",
+	Long: `Starts the shared Kinoko infrastructure server.
+
+This command starts:
+  • Soft Serve git server (SSH) — skill repos live here
+  • Discovery API (HTTP) — /api/v1/discover, /api/v1/health, /api/v1/ingest
+  • Hooks — credential scanning + auto-indexing on push
+  • SQLite indexer — derived cache from git repos
+
+Self-bootstrapping: creates data dir and admin keypair on first run.
+
+Use 'kinoko run' in a separate terminal to start the local agent daemon
+(worker pool, scheduler, injection).`,
 	RunE: runServe,
 }
 
@@ -36,27 +48,48 @@ var (
 )
 
 func init() {
-	// Set up flags
 	serveCmd.Flags().StringVar(&configPath, "config", "", "Config file path (default: ~/.kinoko/config.yaml)")
+}
+
+// bootstrapServer ensures server data dir and admin keypair exist.
+func bootstrapServer(dataDir string, logger *slog.Logger) error {
+	if err := os.MkdirAll(dataDir, 0700); err != nil {
+		return fmt.Errorf("create data directory %s: %w", dataDir, err)
+	}
+
+	keyPath := filepath.Join(dataDir, "kinoko_admin_ed25519")
+	if _, err := os.Stat(keyPath); err == nil {
+		return nil // already exists
+	}
+
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		logger.Warn("ssh-keygen not found, skipping admin keypair generation")
+		return nil
+	}
+
+	logger.Info("Generating admin keypair for Soft Serve...", "path", keyPath)
+	cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-f", keyPath, "-N", "", "-C", "kinoko-admin")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("ssh-keygen failed: %w", err)
+	}
+	os.Chmod(keyPath, 0600)
+	os.Chmod(keyPath+".pub", 0644)
+	logger.Info("Admin keypair generated", "path", keyPath)
+	return nil
 }
 
 // SessionHooks holds callbacks for session lifecycle events.
 type SessionHooks struct {
-	// OnSessionStart is called when a new agent session begins.
-	// It runs the injection pipeline to select relevant skills.
 	OnSessionStart func(ctx context.Context, req model.InjectionRequest) (*model.InjectionResponse, error)
-
-	// OnSessionEnd is called when an agent session completes.
-	// It runs the extraction pipeline on the session log.
-	OnSessionEnd func(ctx context.Context, session model.SessionRecord, logContent []byte) (*model.ExtractionResult, error)
+	OnSessionEnd   func(ctx context.Context, session model.SessionRecord, logContent []byte) (*model.ExtractionResult, error)
 }
 
-// buildSessionHooks wires the extraction and injection pipelines into session
-// lifecycle hooks. Returns hooks ready for registration with the server.
+// buildSessionHooks wires the injection pipeline into session lifecycle hooks.
 func buildSessionHooks(cfg *config.Config, store *storage.SQLiteStore, logger *slog.Logger) (*SessionHooks, error) {
 	hooks := &SessionHooks{}
 
-	// Embedding client (shared by both pipelines).
 	embCfg := embedding.DefaultConfig()
 	embCfg.APIKey = os.Getenv("KINOKO_EMBEDDING_API_KEY")
 	if embCfg.APIKey == "" {
@@ -64,21 +97,17 @@ func buildSessionHooks(cfg *config.Config, store *storage.SQLiteStore, logger *s
 	}
 	embedder := embedding.New(embCfg, logger)
 
-	// LLM client for extraction stages.
 	llmAPIKey := os.Getenv("KINOKO_LLM_API_KEY")
 	if llmAPIKey == "" {
 		llmAPIKey = os.Getenv("OPENAI_API_KEY")
 	}
 
-	// Wire injection hook (pre-session).
 	if embCfg.APIKey != "" {
 		var llmClient llm.LLMClient
 		if llmAPIKey != "" {
 			llmClient = llm.NewOpenAIClient(llmAPIKey, "gpt-4o-mini")
 		}
 
-		// When A/B testing is enabled, ABInjector writes events (with group info).
-		// Base injector gets nil eventWriter to prevent double-writing.
 		abCfg := injection.ABConfig{
 			Enabled:       cfg.Extraction.ABTest.Enabled,
 			ControlRatio:  cfg.Extraction.ABTest.ControlRatio,
@@ -109,18 +138,15 @@ func buildSessionHooks(cfg *config.Config, store *storage.SQLiteStore, logger *s
 		logger.Warn("injection hook disabled: no embedding API key")
 	}
 
-	// Wire extraction hook (post-session) — enqueue instead of synchronous extraction.
-	// The queue parameter is injected by the caller (nil-safe: if nil, hook is a no-op).
+	// Extraction hook is a no-op on the server — extraction happens in 'kinoko run'.
 	hooks.OnSessionEnd = func(_ context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		return &model.ExtractionResult{Status: model.StatusRejected}, nil
 	}
-	logger.Info("extraction hook: enqueue mode (set via setEnqueueHook)")
 
 	return hooks, nil
 }
 
 // buildPipeline creates an extraction pipeline from config. Returns nil if no LLM key.
-// If gitSrv is non-nil, a GitCommitter is wired in for post-extraction git push.
 func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, gitSrv *gitserver.Server, logger *slog.Logger) (model.Extractor, error) {
 	llmAPIKey := os.Getenv("KINOKO_LLM_API_KEY")
 	if llmAPIKey == "" {
@@ -141,7 +167,7 @@ func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, gitSrv *gitse
 	stage1 := extraction.NewStage1Filter(cfg.Extraction, logger)
 	stage2 := extraction.NewStage2Scorer(embedder, storage.NewSkillQuerier(store), llmClient, cfg.Extraction, logger)
 	stage3 := extraction.NewStage3Critic(llmClient, cfg.Extraction, logger)
-	// Build git committer if server is available.
+
 	var committer model.SkillCommitter
 	if gitSrv != nil {
 		committer = gitserver.NewGitCommitter(gitserver.GitCommitterConfig{
@@ -179,7 +205,6 @@ func libraryIDs(cfg *config.Config) []string {
 }
 
 // startWorkerSystem creates queue, pool, scheduler and starts them.
-// Returns cleanup function for graceful shutdown.
 func startWorkerSystem(
 	ctx context.Context,
 	cfg *config.Config,
@@ -227,27 +252,25 @@ func startWorkerSystem(
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
-	// Load configuration
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Create data directory if it doesn't exist
-	if err := os.MkdirAll(cfg.Server.DataDir, 0755); err != nil {
-		return fmt.Errorf("failed to create data directory %s: %w", cfg.Server.DataDir, err)
+	logger := slog.Default()
+
+	// Self-bootstrap: create data dir + admin keypair if needed.
+	if err := bootstrapServer(cfg.Server.DataDir, logger); err != nil {
+		return fmt.Errorf("bootstrap server: %w", err)
 	}
 
-	logger := slog.Default()
-	logger.Info("Kinoko serve command started")
-	logger.Info("Configuration loaded successfully",
+	logger.Info("Kinoko server starting",
 		"host", cfg.Server.Host,
 		"port", cfg.Server.Port,
 		"dataDir", cfg.Server.DataDir,
 		"storageDriver", cfg.Storage.Driver,
 		"libraries", len(cfg.Libraries))
 
-	// Determine embedding model name for store.
 	embeddingModel := cfg.Embedding.Model
 	if embeddingModel == "" {
 		embeddingModel = os.Getenv("KINOKO_EMBEDDING_MODEL")
@@ -256,20 +279,19 @@ func runServe(cmd *cobra.Command, args []string) error {
 		embeddingModel = "text-embedding-3-small"
 	}
 
-	// Open store for hooks.
 	store, err := storage.NewSQLiteStore(cfg.Storage.DSN, embeddingModel)
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
 	defer store.Close()
 
-	// Build and register session hooks.
+	// Build session hooks (injection only — extraction is handled by 'kinoko run').
 	hooks, err := buildSessionHooks(cfg, store, logger)
 	if err != nil {
 		return fmt.Errorf("build session hooks: %w", err)
 	}
 
-	// Create and start the git server
+	// Create and start the git server.
 	server, err := gitserver.NewServer(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create git server: %w", err)
@@ -286,32 +308,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logger.Info("git hooks installed", "data_dir", cfg.Server.DataDir)
 	}
 
-	// Start worker system (queue + pool + scheduler).
-	queue, pool, sched, err := startWorkerSystem(cmd.Context(), cfg, store, server, logger)
-	if err != nil {
-		return fmt.Errorf("start worker system: %w", err)
-	}
-
-	// Replace synchronous extraction hook with async enqueue.
-	if queue != nil {
-		hooks.OnSessionEnd = func(ctx context.Context, session model.SessionRecord, logContent []byte) (*model.ExtractionResult, error) {
-			if err := queue.Enqueue(ctx, session, logContent); err != nil {
-				logger.Error("enqueue failed", "session_id", session.ID, "error", err)
-				return nil, err
-			}
-			logger.Info("session enqueued", "session_id", session.ID)
-			return &model.ExtractionResult{Status: model.StatusQueued}, nil
-		}
-	}
-
-	// Register hooks with the git server for session lifecycle events.
+	// Register hooks with the git server.
 	server.SetSessionHooks(hooks.OnSessionStart, hooks.OnSessionEnd)
 
 	if err := server.Start(); err != nil {
 		return fmt.Errorf("failed to start git server: %w", err)
 	}
 
-	// Get connection info for logging
 	connInfo := server.GetConnectionInfo()
 	logger.Info("Kinoko git server is ready",
 		"ssh_url", connInfo.SSHUrl,
@@ -336,9 +339,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 			SSHURL:   connInfo.SSHUrl,
 			Logger:   logger,
 			Enqueue: func(ctx context.Context, session model.SessionRecord, logContent []byte) error {
-				if queue != nil {
-					return queue.Enqueue(ctx, session, logContent)
-				}
+				// Ingestion via API enqueues to the store; 'kinoko run' picks it up.
 				return nil
 			},
 		})
@@ -351,20 +352,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logger.Warn("API server disabled: no embedding API key")
 	}
 
-	err = waitForShutdown(cmd.Context(), server, sched, pool, store, logger)
-	if apiSrv != nil {
-		apiSrv.Stop(context.Background())
-	}
-	return err
-}
-
-// waitForShutdown waits for shutdown signal and gracefully stops all components.
-// Shutdown order: scheduler → pool → git server → store.
-func waitForShutdown(ctx context.Context, server *gitserver.Server, sched worker.Scheduler, pool worker.Pool, store *storage.SQLiteStore, logger *slog.Logger) error {
-	if logger == nil {
-		logger = slog.Default()
-	}
-	ctx, cancel := context.WithCancel(ctx)
+	// Wait for shutdown signal.
+	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
 	sigCh := make(chan os.Signal, 1)
@@ -382,8 +371,8 @@ func waitForShutdown(ctx context.Context, server *gitserver.Server, sched worker
 		cancel()
 	}()
 
-	logger.Info("Kinoko is ready. Use Ctrl+C to shutdown gracefully.")
-	logger.Info("Agents can now git clone, push, and pull over SSH")
+	logger.Info("Kinoko server is ready. Use Ctrl+C to shutdown gracefully.")
+	logger.Info("Run 'kinoko run' in another terminal to start workers and scheduler.")
 
 	select {
 	case <-done:
@@ -392,31 +381,18 @@ func waitForShutdown(ctx context.Context, server *gitserver.Server, sched worker
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
+	_ = shutdownCtx
 
-	// 1. Stop scheduler first (no new sweeps/decay).
-	if sched != nil {
-		logger.Info("Stopping scheduler...")
-		if err := sched.Stop(shutdownCtx); err != nil {
-			logger.Error("Error stopping scheduler", "error", err)
-		}
+	if apiSrv != nil {
+		apiSrv.Stop(context.Background())
 	}
 
-	// 2. Stop pool (drain in-flight workers).
-	if pool != nil {
-		logger.Info("Stopping worker pool...")
-		if err := pool.Stop(shutdownCtx); err != nil {
-			logger.Error("Error stopping worker pool", "error", err)
-		}
-	}
-
-	// 3. Stop git server.
 	logger.Info("Stopping git server...")
 	if err := server.Stop(); err != nil {
 		logger.Error("Error stopping git server", "error", err)
 		return err
 	}
 
-	// 4. Store is closed by deferred store.Close() in runServe.
-	logger.Info("Kinoko serve stopped successfully")
+	logger.Info("Kinoko server stopped successfully")
 	return nil
 }

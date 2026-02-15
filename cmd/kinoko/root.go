@@ -19,6 +19,7 @@ No one writes documentation. No one publishes anything. They just get better res
 func init() {
 	// Add subcommands
 	rootCmd.AddCommand(serveCmd)
+	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(extractCmd)
 	rootCmd.AddCommand(decayCmd)
