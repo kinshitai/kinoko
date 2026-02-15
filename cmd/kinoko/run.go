@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
+	"strconv"
 	"os/signal"
 	"syscall"
 	"time"
@@ -45,9 +47,18 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	// P2-11: Apply --server override if provided.
+	// Apply --server override if provided (host:port format).
 	if runServerURL != "" {
-		cfg.Server.Host = runServerURL
+		host, port, err := net.SplitHostPort(runServerURL)
+		if err != nil {
+			// Assume host-only, keep existing port.
+			cfg.Server.Host = runServerURL
+		} else {
+			cfg.Server.Host = host
+			if p, err := strconv.Atoi(port); err == nil {
+				cfg.Server.Port = p
+			}
+		}
 	}
 
 	logger := slog.Default()

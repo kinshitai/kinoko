@@ -160,9 +160,9 @@ func TestInit_CreatesWorkspace(t *testing.T) {
 	if err := yaml.Unmarshal(cfgBytes, &raw); err != nil {
 		t.Fatalf("config.yaml is not valid YAML: %v", err)
 	}
-	// check defaults: server section exists
-	if _, ok := raw["server"]; !ok {
-		t.Error("config.yaml missing 'server' section")
+	// server section should NOT exist in init config (it's a serve-side concern)
+	if _, ok := raw["server"]; ok {
+		t.Error("config.yaml should NOT have 'server' section (server-side concern)")
 	}
 
 	// cache/ dir

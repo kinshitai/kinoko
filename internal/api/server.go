@@ -235,13 +235,16 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.enqueue != nil {
-		session := model.SessionRecord{ID: req.SessionID}
-		if err := s.enqueue(r.Context(), session, []byte(req.Log)); err != nil {
-			s.logger.Error("ingest enqueue failed", "error", err)
-			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": err.Error()})
-			return
-		}
+	if s.enqueue == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "ingestion not available — use 'kinoko run' to process sessions"})
+		return
+	}
+
+	session := model.SessionRecord{ID: req.SessionID}
+	if err := s.enqueue(r.Context(), session, []byte(req.Log)); err != nil {
+		s.logger.Error("ingest enqueue failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]bool{"queued": true})

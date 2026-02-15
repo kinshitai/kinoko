@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
@@ -122,9 +123,25 @@ func TestDiscoverRateLimitStructure(t *testing.T) {
 	}
 }
 
-func TestIngest_Success(t *testing.T) {
-	// nil enqueue = no-op, still returns queued
+func TestIngest_NilEnqueue_Returns501(t *testing.T) {
 	srv := New(Config{Port: 0})
+	body, _ := json.Marshal(IngestRequest{SessionID: "s1", Log: "hello"})
+	req := httptest.NewRequest("POST", "/api/v1/ingest", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.httpServer.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotImplemented {
+		t.Fatalf("expected 501, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestIngest_WithEnqueue_Returns200(t *testing.T) {
+	srv := New(Config{
+		Port: 0,
+		Enqueue: func(_ context.Context, _ model.SessionRecord, _ []byte) error {
+			return nil
+		},
+	})
 	body, _ := json.Marshal(IngestRequest{SessionID: "s1", Log: "hello"})
 	req := httptest.NewRequest("POST", "/api/v1/ingest", bytes.NewReader(body))
 	w := httptest.NewRecorder()
