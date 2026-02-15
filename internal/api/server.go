@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/kinoko-dev/kinoko/internal/embedding"
@@ -17,12 +18,13 @@ import (
 
 // Server is the HTTP API server for discovery and ingestion.
 type Server struct {
-	httpServer *http.Server
-	store      *storage.SQLiteStore
-	embedder   embedding.Embedder
-	sshURL     string // SSH clone base URL
-	logger     *slog.Logger
-	enqueue    func(ctx context.Context, session model.SessionRecord, log []byte) error
+	httpServer    *http.Server
+	store         *storage.SQLiteStore
+	embedder      embedding.Embedder
+	sshURL        string // SSH clone base URL
+	logger        *slog.Logger
+	enqueue       func(ctx context.Context, session model.SessionRecord, log []byte) error
+	discoverSem   chan struct{} // P1-7: semaphore to limit concurrent discover requests
 }
 
 // Config configures the API server.
@@ -65,6 +67,7 @@ type IngestRequest struct {
 // HealthResponse is the JSON response for GET /api/v1/health.
 type HealthResponse struct {
 	Status string `json:"status"`
+	Skills int    `json:"skills,omitempty"` // P1-8: skill count
 }
 
 // New creates a new API server.
@@ -76,11 +79,12 @@ func New(cfg Config) *Server {
 		cfg.Port = 23232
 	}
 	s := &Server{
-		store:    cfg.Store,
-		embedder: cfg.Embedder,
-		sshURL:   cfg.SSHURL,
-		logger:   cfg.Logger,
-		enqueue:  cfg.Enqueue,
+		store:       cfg.Store,
+		embedder:    cfg.Embedder,
+		sshURL:      cfg.SSHURL,
+		logger:      cfg.Logger,
+		enqueue:     cfg.Enqueue,
+		discoverSem: make(chan struct{}, 10), // P1-7: max 10 concurrent discover requests
 	}
 
 	mux := http.NewServeMux()
@@ -124,7 +128,14 @@ func (s *Server) Addr() string {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, HealthResponse{Status: "ok"})
+	resp := HealthResponse{Status: "ok"}
+	// P1-8: Include skill count if store is available.
+	if s.store != nil {
+		if n, err := s.store.CountSkills(r.Context()); err == nil {
+			resp.Skills = n
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleDiscoverGET(w http.ResponseWriter, r *http.Request) {
@@ -137,6 +148,12 @@ func (s *Server) handleDiscoverGET(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit := 5
+	// P2-7: Accept ?limit=N query parameter.
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
 	s.discover(w, r, prompt, limit)
 }
 
@@ -158,6 +175,14 @@ func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) discover(w http.ResponseWriter, r *http.Request, prompt string, limit int) {
+	// P1-7: Rate limit concurrent discover requests.
+	select {
+	case s.discoverSem <- struct{}{}:
+		defer func() { <-s.discoverSem }()
+	default:
+		http.Error(w, `{"error":"too many requests"}`, http.StatusTooManyRequests)
+		return
+	}
 	ctx := r.Context()
 
 	// Embed the prompt
@@ -188,7 +213,7 @@ func (s *Server) discover(w http.ResponseWriter, r *http.Request, prompt string,
 		skills = append(skills, SkillMatch{
 			Repo:        r.Skill.LibraryID + "/" + r.Skill.Name,
 			Name:        r.Skill.Name,
-			Description: r.Skill.FilePath, // best available description field
+			Description: "", // P2-6: Don't leak FilePath; use empty until proper description field exists
 			Score:       r.CompositeScore,
 			CloneURL:    cloneURL,
 		})
@@ -198,6 +223,8 @@ func (s *Server) discover(w http.ResponseWriter, r *http.Request, prompt string,
 }
 
 func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
+	// P1-6: Limit request body to 10 MB to prevent memory exhaustion.
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 	var req IngestRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)

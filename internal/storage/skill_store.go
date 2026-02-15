@@ -420,3 +420,10 @@ func (s *SQLiteStore) loadEmbedding(ctx context.Context, skillID string) ([]floa
 	}
 	return bytesToFloat32s(blob), nil
 }
+
+// CountSkills returns the total number of skills in the store.
+func (s *SQLiteStore) CountSkills(ctx context.Context) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM skills").Scan(&count)
+	return count, err
+}

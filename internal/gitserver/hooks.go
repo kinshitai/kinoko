@@ -59,13 +59,11 @@ while read oldrev newrev refname; do
     for f in $files; do
         case "$f" in
             *.md|*.yaml|*.yml|*.json|*.txt|*.toml|*.cfg|*.conf|*.env)
-                content=$(git show "$newrev:$f" 2>/dev/null)
-                if [ -n "$content" ]; then
-                    echo "$content" | %s scan --stdin --reject
-                    if [ $? -ne 0 ]; then
-                        echo "ERROR: Credentials detected in $f. Push rejected." >&2
-                        exit 1
-                    fi
+                # P0-3: Pipe git show directly to avoid shell injection via echo.
+                git show "$newrev:$f" 2>/dev/null | %s scan --stdin --reject
+                if [ $? -ne 0 ]; then
+                    echo "ERROR: Credentials detected in $f. Push rejected." >&2
+                    exit 1
                 fi
                 ;;
         esac

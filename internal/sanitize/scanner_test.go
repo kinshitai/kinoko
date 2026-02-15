@@ -228,17 +228,16 @@ func TestGenericAPIKeyWithContext(t *testing.T) {
 
 // --- False positive tests ---
 
-func TestNoFalsePositiveExampleKeys(t *testing.T) {
+// P2-3: Renamed from TestNoFalsePositiveExampleKeys — the test validates that
+// placeholder/masked values don't trigger high-confidence findings.
+func TestNoFalsePositiveOnPlaceholders(t *testing.T) {
 	s := New(WithMinConfidence(0.7))
-	// Common example/placeholder values from docs
 	safes := []string{
-		"AKIAIOSFODNN7EXAMPLE is an example key",           // This IS an AWS key format — it should match
 		"Use your-api-key-here as the token",               // placeholder
 		"password = ********",                               // masked
 		"the SHA256 hash of 'hello' is 2cf24dba5fb0a30e...", // truncated hex
 	}
-	// Only check that generic false positives don't trigger
-	for _, safe := range safes[1:] {
+	for _, safe := range safes {
 		findings := s.Scan(safe)
 		for _, f := range findings {
 			if f.Confidence >= 0.7 {
@@ -352,6 +351,76 @@ func TestCustomPatterns(t *testing.T) {
 	}
 	if !hasCustom {
 		t.Fatal("expected custom_token finding")
+	}
+}
+
+// P1-5: Multiline credential tests.
+func TestPrivateKeyBlock(t *testing.T) {
+	s := New()
+	content := `Some text before
+-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF0PbnGcY5unA67hFdBBCRnHiQ+kd
+k3MpF4yGEKBFaGPBe2DXFQ6L2YJRrP7Kq9ZYAT9L9vd4XLK9L1W5NMQ3RL8FZJH
+-----END RSA PRIVATE KEY-----
+Some text after`
+	findings := s.Scan(content)
+	hasPK := false
+	for _, f := range findings {
+		if f.Type == "private_key" {
+			hasPK = true
+			if f.Line != 2 {
+				t.Errorf("expected line 2, got %d", f.Line)
+			}
+		}
+	}
+	if !hasPK {
+		t.Fatal("expected private_key finding in multiline block")
+	}
+}
+
+func TestBase64EncodedSecret(t *testing.T) {
+	s := New()
+	// A base64-encoded secret in a config-like context
+	content := `api_key=c2VjcmV0X2tleV90aGF0X2lzX3ZlcnlfbG9uZ19hbmRfaGFyZF90b19ndWVzcw==`
+	findings := s.Scan(content)
+	hasKey := false
+	for _, f := range findings {
+		if f.Type == "generic_api_key" {
+			hasKey = true
+		}
+	}
+	if !hasKey {
+		t.Fatal("expected generic_api_key finding for base64 secret with context")
+	}
+}
+
+func TestCredentialInCodeBlock(t *testing.T) {
+	s := New()
+	content := "```\npassword = SuperSecret123!\n```"
+	findings := s.Scan(content)
+	hasPW := false
+	for _, f := range findings {
+		if f.Type == "generic_password" {
+			hasPW = true
+		}
+	}
+	if !hasPW {
+		t.Fatal("expected generic_password finding in code block")
+	}
+}
+
+func TestECPrivateKey(t *testing.T) {
+	s := New()
+	content := "-----BEGIN EC PRIVATE KEY-----\nMHQCAQEE..."
+	findings := s.Scan(content)
+	hasPK := false
+	for _, f := range findings {
+		if f.Type == "private_key" {
+			hasPK = true
+		}
+	}
+	if !hasPK {
+		t.Fatal("expected private_key finding for EC key")
 	}
 }
 

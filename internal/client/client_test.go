@@ -112,6 +112,55 @@ func TestSyncSkills_NonexistentCache(t *testing.T) {
 	}
 }
 
+// P1-9: Path traversal rejection.
+func TestCloneSkill_RejectsTraversal(t *testing.T) {
+	c := New(ClientConfig{CacheDir: t.TempDir()})
+	tests := []string{"../etc/passwd", "/absolute/path", "foo/../../etc"}
+	for _, repo := range tests {
+		if err := c.CloneSkill(repo, ""); err == nil {
+			t.Errorf("expected error for repo %q", repo)
+		}
+	}
+}
+
+// P1-10: Integration test: discover → clone → read (using mock server).
+func TestDiscoverCloneRead(t *testing.T) {
+	cacheDir := t.TempDir()
+	// Create a fake cloned repo with SKILL.md
+	repoDir := filepath.Join(cacheDir, "local", "test-skill")
+	os.MkdirAll(filepath.Join(repoDir, ".git"), 0755)
+	os.WriteFile(filepath.Join(repoDir, "SKILL.md"), []byte("# Test\nSolution here."), 0644)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"skills": []map[string]any{
+				{"repo": "local/test-skill", "name": "test-skill", "score": 0.9, "clone_url": ""},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := New(ClientConfig{APIURL: srv.URL, CacheDir: cacheDir})
+
+	// Discover
+	skills, err := c.Discover(context.Background(), "test query")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skills) == 0 {
+		t.Fatal("expected skills from discover")
+	}
+
+	// Read (already "cloned" via fixture)
+	md, err := c.ReadSkill(skills[0].Repo)
+	if err != nil {
+		t.Fatalf("ReadSkill: %v", err)
+	}
+	if md.Content != "# Test\nSolution here." {
+		t.Errorf("unexpected content: %s", md.Content)
+	}
+}
+
 func TestParseServerURL(t *testing.T) {
 	tests := []struct {
 		input string

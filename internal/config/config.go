@@ -51,7 +51,16 @@ type DecayConfig struct {
 type ServerConfig struct {
 	Host    string `yaml:"host"`
 	Port    int    `yaml:"port"`
+	APIPort int    `yaml:"apiPort,omitempty"` // P2-5: HTTP API port, defaults to Port+1
 	DataDir string `yaml:"dataDir"`
+}
+
+// GetAPIPort returns the configured API port, defaulting to Port+1.
+func (s ServerConfig) GetAPIPort() int {
+	if s.APIPort > 0 {
+		return s.APIPort
+	}
+	return s.Port + 1
 }
 
 // StorageConfig contains storage backend configuration

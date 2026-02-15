@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -39,6 +40,7 @@ type Client struct {
 	sshURL   string
 	cacheDir string
 	http     *http.Client
+	mu       sync.Mutex // P1-12: protects CloneSkill and SyncSkills
 }
 
 // ClientConfig configures a Client.
@@ -108,9 +110,24 @@ func (c *Client) Discover(ctx context.Context, prompt string) ([]SkillMatch, err
 	return result.Skills, nil
 }
 
+// validateRepoPath rejects repo names containing path traversal or absolute paths.
+func validateRepoPath(repo string) error {
+	if strings.Contains(repo, "..") || strings.HasPrefix(repo, "/") {
+		return fmt.Errorf("invalid repo path: %q", repo)
+	}
+	return nil
+}
+
 // CloneSkill clones a skill repo into the local cache.
 // repo is like "local/fix-nplus1". cloneURL overrides SSH if non-empty.
 func (c *Client) CloneSkill(repo string, cloneURL string) error {
+	// P1-9: Reject path traversal.
+	if err := validateRepoPath(repo); err != nil {
+		return err
+	}
+	// P1-12: Serialize clone/sync operations.
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	dest := filepath.Join(c.cacheDir, repo)
 	if _, err := os.Stat(filepath.Join(dest, ".git")); err == nil {
 		// Already cloned, pull instead
@@ -140,6 +157,9 @@ func (c *Client) CloneSkill(repo string, cloneURL string) error {
 
 // SyncSkills pulls latest for all cloned skills in the cache.
 func (c *Client) SyncSkills() error {
+	// P1-12: Serialize clone/sync operations.
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	entries, err := os.ReadDir(c.cacheDir)
 	if err != nil {
 		if os.IsNotExist(err) {

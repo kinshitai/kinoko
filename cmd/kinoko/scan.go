@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,9 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/sanitize"
 	"github.com/spf13/cobra"
 )
+
+// ErrCredentialsFound is returned when the scanner detects credentials.
+var ErrCredentialsFound = errors.New("credentials detected")
 
 var (
 	scanDir    string
@@ -43,7 +47,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 	var totalFindings int
 
 	if scanStdin {
-		data, err := io.ReadAll(os.Stdin)
+		// P1-1: Limit stdin to 10 MB to prevent memory exhaustion.
+		data, err := io.ReadAll(io.LimitReader(os.Stdin, 10<<20))
 		if err != nil {
 			return fmt.Errorf("read stdin: %w", err)
 		}
@@ -66,10 +71,12 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	if totalFindings > 0 {
 		fmt.Fprintf(os.Stderr, "\n⚠ %d credential(s) detected\n", totalFindings)
+		// P0-1: Return error instead of os.Exit(1) so --reject works and
+		// cleanup/deferred functions run properly.
 		if scanReject {
 			return fmt.Errorf("credentials detected, rejecting")
 		}
-		os.Exit(1)
+		return ErrCredentialsFound
 	}
 	return nil
 }

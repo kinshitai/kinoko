@@ -86,6 +86,10 @@ func DefaultPatterns() []Pattern {
 			Confidence: 0.95,
 		},
 		{
+			// P0-2: Spec says sk-[A-Za-z0-9]{48} but we use {20,} intentionally
+			// to also catch sk-proj-* and sk-svcacct-* prefixed keys issued by
+			// OpenAI for project-scoped and service-account tokens, which have
+			// varying lengths after the "sk-" prefix.
 			Name:       "openai_key",
 			Regex:      regexp.MustCompile(`\bsk-[A-Za-z0-9]{20,}\b`),
 			Confidence: 0.90,
@@ -205,6 +209,10 @@ func (s *Scanner) IsSafe(text string) bool {
 }
 
 // Redact replaces detected credentials (above redact threshold) with [REDACTED:<type>].
+// P1-2: For context-required patterns, only replace matches that actually passed
+// context validation (i.e., were returned by Scan), not all regex matches on the line.
+// P2-1: Preserve keyword context for patterns like generic_password/generic_secret
+// by replacing only the captured secret value, not the entire match (e.g., "password = [REDACTED]").
 func (s *Scanner) Redact(text string) string {
 	findings := s.Scan(text)
 	if len(findings) == 0 {
@@ -216,20 +224,53 @@ func (s *Scanner) Redact(text string) string {
 		if pat.Confidence < s.redactThreshold {
 			continue
 		}
-		for i, line := range lines {
-			// Check if any finding on this line for this pattern
-			hasFinding := false
-			for _, f := range findings {
-				if f.Line == i+1 && f.Type == pat.Name && f.Confidence >= s.redactThreshold {
-					hasFinding = true
-					break
-				}
+
+		// Collect which lines have confirmed findings for this pattern.
+		findingLines := make(map[int]bool)
+		for _, f := range findings {
+			if f.Type == pat.Name && f.Confidence >= s.redactThreshold {
+				findingLines[f.Line] = true
 			}
-			if !hasFinding {
+		}
+		if len(findingLines) == 0 {
+			continue
+		}
+
+		for i, line := range lines {
+			if !findingLines[i+1] {
 				continue
 			}
-			replacement := fmt.Sprintf("[REDACTED:%s]", pat.Name)
-			lines[i] = pat.Regex.ReplaceAllString(line, replacement)
+
+			if len(pat.ContextRequired) > 0 {
+				// P1-2: For context-required patterns, only replace matches
+				// that pass context check individually, not all regex matches.
+				replaced := pat.Regex.ReplaceAllStringFunc(line, func(m string) string {
+					mIdx := strings.Index(line, m)
+					absPos := lineOffset(lines, i) + mIdx
+					window := pat.ContextWindow
+					if window == 0 {
+						window = 80
+					}
+					if hasContext(text, absPos, window, pat.ContextRequired) {
+						return fmt.Sprintf("[REDACTED:%s]", pat.Name)
+					}
+					return m
+				})
+				lines[i] = replaced
+			} else if pat.Regex.NumSubexp() > 0 {
+				// P2-1: If pattern has a capture group (e.g., generic_password),
+				// only redact the captured value to preserve keyword context.
+				lines[i] = pat.Regex.ReplaceAllStringFunc(line, func(m string) string {
+					sub := pat.Regex.FindStringSubmatch(m)
+					if len(sub) > 1 && sub[1] != "" {
+						return strings.Replace(m, sub[1], fmt.Sprintf("[REDACTED:%s]", pat.Name), 1)
+					}
+					return fmt.Sprintf("[REDACTED:%s]", pat.Name)
+				})
+			} else {
+				replacement := fmt.Sprintf("[REDACTED:%s]", pat.Name)
+				lines[i] = pat.Regex.ReplaceAllString(line, replacement)
+			}
 		}
 	}
 	return strings.Join(lines, "\n")

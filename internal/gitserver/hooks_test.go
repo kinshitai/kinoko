@@ -128,6 +128,61 @@ func TestRepoNameFromGitDir_RejectsTraversal(t *testing.T) {
 	}
 }
 
+// P1-4: Tests for hook script generation content.
+func TestInstallHooks_ScriptContent(t *testing.T) {
+	dataDir := t.TempDir()
+	kinokoBin := "/usr/local/bin/kinoko"
+
+	if err := InstallHooks(dataDir, kinokoBin); err != nil {
+		t.Fatal(err)
+	}
+
+	preReceive, err := os.ReadFile(filepath.Join(dataDir, "hooks", "pre-receive"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(preReceive)
+
+	// Verify expected paths are present
+	if !contains(script, dataDir) {
+		t.Error("pre-receive should contain dataDir path")
+	}
+	if !contains(script, kinokoBin) {
+		t.Error("pre-receive should contain kinoko binary path")
+	}
+
+	// P0-3: Verify script pipes git show directly (no echo $content)
+	if contains(script, "echo \"$content\"") {
+		t.Error("pre-receive should NOT use echo $content (shell injection risk)")
+	}
+	if !contains(script, "git show \"$newrev:$f\"") {
+		t.Error("pre-receive should pipe git show directly")
+	}
+	if !contains(script, "scan --stdin --reject") {
+		t.Error("pre-receive should call scan --stdin --reject")
+	}
+}
+
+func TestInstallHooks_PathValidationRejectsMalicious(t *testing.T) {
+	tests := []struct {
+		name    string
+		dataDir string
+		binary  string
+	}{
+		{"pipe in path", "/tmp/ok", "/bin/kinoko|evil"},
+		{"ampersand", "/tmp/ok", "/bin/kinoko&evil"},
+		{"newline-like", "/tmp/ok", "/bin/kinoko\nevil"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := InstallHooks(tt.dataDir, tt.binary)
+			if err == nil {
+				t.Error("expected error for unsafe input")
+			}
+		})
+	}
+}
+
 func contains(s, sub string) bool {
 	return len(sub) > 0 && len(s) >= len(sub) && searchString(s, sub)
 }
