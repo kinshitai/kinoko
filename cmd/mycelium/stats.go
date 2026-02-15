@@ -45,12 +45,18 @@ func runStats(cmd *cobra.Command, args []string) error {
 	// Sessions
 	fmt.Println("=== Sessions ===")
 	var totalSessions, extracted, rejected, errored int
-	row := db.QueryRow(`SELECT COUNT(*) FROM sessions`)
-	row.Scan(&totalSessions)
-
-	db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE extraction_status = 'extracted'`).Scan(&extracted)
-	db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE extraction_status = 'rejected'`).Scan(&rejected)
-	db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE extraction_status = 'error'`).Scan(&errored)
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sessions`).Scan(&totalSessions); err != nil {
+		return fmt.Errorf("query sessions: %w", err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE extraction_status = 'extracted'`).Scan(&extracted); err != nil {
+		return fmt.Errorf("query extracted: %w", err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE extraction_status = 'rejected'`).Scan(&rejected); err != nil {
+		return fmt.Errorf("query rejected: %w", err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE extraction_status = 'error'`).Scan(&errored); err != nil {
+		return fmt.Errorf("query errored: %w", err)
+	}
 
 	fmt.Printf("  Total:     %d\n", totalSessions)
 	fmt.Printf("  Extracted: %d\n", extracted)
@@ -66,21 +72,29 @@ func runStats(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("query skills: %w", err)
 	}
+	defer rows.Close()
+
 	totalSkills := 0
 	for rows.Next() {
 		var cat string
 		var count int
-		rows.Scan(&cat, &count)
+		if err := rows.Scan(&cat, &count); err != nil {
+			return fmt.Errorf("scan skill category: %w", err)
+		}
 		fmt.Printf("  %-15s %d\n", cat, count)
 		totalSkills += count
 	}
-	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate skill categories: %w", err)
+	}
 	fmt.Printf("  %-15s %d\n", "TOTAL", totalSkills)
 
 	// Quality scores
 	fmt.Println("\n=== Quality Scores (avg) ===")
 	var avgComposite, avgConfidence sql.NullFloat64
-	db.QueryRow(`SELECT AVG(q_composite_score), AVG(q_critic_confidence) FROM skills`).Scan(&avgComposite, &avgConfidence)
+	if err := db.QueryRow(`SELECT AVG(q_composite_score), AVG(q_critic_confidence) FROM skills`).Scan(&avgComposite, &avgConfidence); err != nil {
+		return fmt.Errorf("query quality scores: %w", err)
+	}
 	if avgComposite.Valid {
 		fmt.Printf("  Composite:  %.2f\n", avgComposite.Float64)
 		fmt.Printf("  Confidence: %.2f\n", avgConfidence.Float64)
@@ -104,14 +118,18 @@ func runStats(cmd *cobra.Command, args []string) error {
 	}
 	for _, b := range buckets {
 		var count int
-		db.QueryRow(`SELECT COUNT(*) FROM skills WHERE decay_score >= ? AND decay_score < ?`, b.min, b.max).Scan(&count)
+		if err := db.QueryRow(`SELECT COUNT(*) FROM skills WHERE decay_score >= ? AND decay_score < ?`, b.min, b.max).Scan(&count); err != nil {
+			return fmt.Errorf("query decay bucket %s: %w", b.label, err)
+		}
 		fmt.Printf("  %-20s %d\n", b.label, count)
 	}
 
 	// Injection events
 	fmt.Println("\n=== Injection Events ===")
 	var injCount int
-	db.QueryRow(`SELECT COUNT(*) FROM injection_events`).Scan(&injCount)
+	if err := db.QueryRow(`SELECT COUNT(*) FROM injection_events`).Scan(&injCount); err != nil {
+		return fmt.Errorf("query injection events: %w", err)
+	}
 	fmt.Printf("  Total: %d\n", injCount)
 
 	return nil

@@ -425,9 +425,13 @@ func (s *SQLiteStore) UpdateDecay(ctx context.Context, id string, decayScore flo
 }
 
 func (s *SQLiteStore) ListByDecay(ctx context.Context, libraryID string, limit int) ([]extraction.SkillRecord, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT `+skillColumns+` FROM skills WHERE library_id = ? ORDER BY decay_score ASC LIMIT ?`,
-		libraryID, limit)
+	query := `SELECT ` + skillColumns + ` FROM skills WHERE library_id = ? ORDER BY decay_score ASC`
+	args := []any{libraryID}
+	if limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list by decay: %w", err)
 	}

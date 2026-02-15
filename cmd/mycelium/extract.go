@@ -104,8 +104,7 @@ func runExtract(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("create pipeline: %w", err)
 	}
 
-	ctx := context.Background()
-	result, err := pipeline.Extract(ctx, session, content)
+	result, err := pipeline.Extract(cmd.Context(), session, content)
 	if err != nil {
 		return fmt.Errorf("extraction failed: %w", err)
 	}
@@ -118,14 +117,23 @@ func runExtract(cmd *cobra.Command, args []string) error {
 	fmt.Println(string(out))
 
 	if result.Status == extraction.StatusRejected {
-		os.Exit(2)
+		return &exitError{code: 2, msg: "extraction rejected"}
 	}
 	if result.Status == extraction.StatusError {
-		os.Exit(3)
+		return &exitError{code: 3, msg: "extraction error"}
 	}
 
 	return nil
 }
+
+// exitError signals a non-zero exit code without calling os.Exit directly.
+type exitError struct {
+	code int
+	msg  string
+}
+
+func (e *exitError) Error() string { return e.msg }
+func (e *exitError) ExitCode() int { return e.code }
 
 // parseSessionFromLog extracts metadata from a session log file.
 // Looks for common patterns: timestamps, tool calls, errors, model info.
@@ -147,9 +155,9 @@ func parseSessionFromLog(content []byte, libraryID string) extraction.SessionRec
 	tsPatterns := []*regexp.Regexp{
 		regexp.MustCompile(`(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})`),
 	}
-	toolPattern := regexp.MustCompile(`(?i)(tool_call|function_call|<tool_use>|<invoke)`)
-	errorPattern := regexp.MustCompile(`(?i)(error|failed|exception|traceback)`)
-	execPattern := regexp.MustCompile(`(?i)(exec|execute|command|shell|run)`)
+	toolPattern := regexp.MustCompile(`(tool_call|function_call|<tool_use>|<invoke|"type"\s*:\s*"function")`)
+	errorPattern := regexp.MustCompile(`((?:^|\s)error[:\s=]|(?:^|\s)ERROR[:\s=]|traceback \(most recent|panic:|fatal:|FAILED|exit status [1-9])`)
+	execPattern := regexp.MustCompile(`(tool_call.*exec|<exec|command_output|shell_exec|"name"\s*:\s*"exec")`)
 	modelPattern := regexp.MustCompile(`(?i)model[=: ]+([a-zA-Z0-9._-]+)`)
 
 	scanner := bufio.NewScanner(strings.NewReader(string(content)))

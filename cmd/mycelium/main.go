@@ -15,6 +15,10 @@ func main() {
 	// Execute the root command
 	if err := rootCmd.Execute(); err != nil {
 		slog.Error("command failed", "error", err)
-		os.Exit(1)
+		code := 1
+		if ee, ok := err.(*exitError); ok {
+			code = ee.ExitCode()
+		}
+		os.Exit(code)
 	}
 }

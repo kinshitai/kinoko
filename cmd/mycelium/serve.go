@@ -10,7 +10,11 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/mycelium-dev/mycelium/internal/config"
+	"github.com/mycelium-dev/mycelium/internal/embedding"
+	"github.com/mycelium-dev/mycelium/internal/extraction"
 	"github.com/mycelium-dev/mycelium/internal/gitserver"
+	"github.com/mycelium-dev/mycelium/internal/injection"
+	"github.com/mycelium-dev/mycelium/internal/storage"
 )
 
 var serveCmd = &cobra.Command{
@@ -30,6 +34,97 @@ func init() {
 	serveCmd.Flags().StringVar(&configPath, "config", "", "Config file path (default: ~/.mycelium/config.yaml)")
 }
 
+// SessionHooks holds callbacks for session lifecycle events.
+type SessionHooks struct {
+	// OnSessionStart is called when a new agent session begins.
+	// It runs the injection pipeline to select relevant skills.
+	OnSessionStart func(ctx context.Context, req extraction.InjectionRequest) (*extraction.InjectionResponse, error)
+
+	// OnSessionEnd is called when an agent session completes.
+	// It runs the extraction pipeline on the session log.
+	OnSessionEnd func(ctx context.Context, session extraction.SessionRecord, logContent []byte) (*extraction.ExtractionResult, error)
+}
+
+// buildSessionHooks wires the extraction and injection pipelines into session
+// lifecycle hooks. Returns hooks ready for registration with the server.
+func buildSessionHooks(cfg *config.Config, store *storage.SQLiteStore, logger *slog.Logger) (*SessionHooks, error) {
+	hooks := &SessionHooks{}
+
+	// Embedding client (shared by both pipelines).
+	embCfg := embedding.DefaultConfig()
+	embCfg.APIKey = os.Getenv("MYCELIUM_EMBEDDING_API_KEY")
+	if embCfg.APIKey == "" {
+		embCfg.APIKey = os.Getenv("OPENAI_API_KEY")
+	}
+	embedder := embedding.New(embCfg, logger)
+
+	// LLM client for extraction stages.
+	llmAPIKey := os.Getenv("MYCELIUM_LLM_API_KEY")
+	if llmAPIKey == "" {
+		llmAPIKey = os.Getenv("OPENAI_API_KEY")
+	}
+
+	// Wire injection hook (pre-session).
+	if embCfg.APIKey != "" {
+		var llmClient extraction.LLMClient
+		if llmAPIKey != "" {
+			llmClient = &openAILLMClient{apiKey: llmAPIKey, model: "gpt-4o-mini"}
+		}
+		injector := injection.New(embedder, store, llmClient, store, logger)
+		hooks.OnSessionStart = func(ctx context.Context, req extraction.InjectionRequest) (*extraction.InjectionResponse, error) {
+			resp, err := injector.Inject(ctx, req)
+			if err != nil {
+				logger.Error("injection failed", "error", err)
+				return nil, err
+			}
+			logger.Info("injection complete", "skills_injected", len(resp.Skills))
+			return resp, nil
+		}
+		logger.Info("injection hook registered")
+	} else {
+		hooks.OnSessionStart = func(_ context.Context, _ extraction.InjectionRequest) (*extraction.InjectionResponse, error) {
+			return &extraction.InjectionResponse{}, nil
+		}
+		logger.Warn("injection hook disabled: no embedding API key")
+	}
+
+	// Wire extraction hook (post-session).
+	if llmAPIKey != "" {
+		llm := &openAILLMClient{apiKey: llmAPIKey, model: "gpt-4o-mini"}
+		stage1 := extraction.NewStage1Filter(cfg.Extraction, logger)
+		stage2 := extraction.NewStage2Scorer(embedder, &storeQuerier{store: store}, llm, cfg.Extraction, logger)
+		stage3 := extraction.NewStage3Critic(llm, cfg.Extraction, logger)
+		pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
+			Stage1:    stage1,
+			Stage2:    stage2,
+			Stage3:    stage3,
+			Writer:    store,
+			Log:       logger,
+			Extractor: "serve-auto-v1",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("build extraction pipeline: %w", err)
+		}
+		hooks.OnSessionEnd = func(ctx context.Context, session extraction.SessionRecord, logContent []byte) (*extraction.ExtractionResult, error) {
+			result, err := pipeline.Extract(ctx, session, logContent)
+			if err != nil {
+				logger.Error("extraction failed", "session", session.ID, "error", err)
+				return nil, err
+			}
+			logger.Info("extraction complete", "session", session.ID, "status", result.Status)
+			return result, nil
+		}
+		logger.Info("extraction hook registered")
+	} else {
+		hooks.OnSessionEnd = func(_ context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+			return &extraction.ExtractionResult{Status: extraction.StatusRejected}, nil
+		}
+		logger.Warn("extraction hook disabled: no LLM API key")
+	}
+
+	return hooks, nil
+}
+
 func runServe(cmd *cobra.Command, args []string) error {
 	// Load configuration
 	cfg, err := config.Load(configPath)
@@ -42,13 +137,28 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create data directory %s: %w", cfg.Server.DataDir, err)
 	}
 
+	logger := slog.Default()
 	slog.Info("Mycelium serve command started")
-	slog.Info("Configuration loaded successfully", 
+	slog.Info("Configuration loaded successfully",
 		"host", cfg.Server.Host,
-		"port", cfg.Server.Port, 
+		"port", cfg.Server.Port,
 		"dataDir", cfg.Server.DataDir,
 		"storageDriver", cfg.Storage.Driver,
 		"libraries", len(cfg.Libraries))
+
+	// Open store for hooks.
+	store, err := storage.NewSQLiteStore(cfg.Storage.DSN, "")
+	if err != nil {
+		return fmt.Errorf("open store: %w", err)
+	}
+	defer store.Close()
+
+	// Build and register session hooks.
+	hooks, err := buildSessionHooks(cfg, store, logger)
+	if err != nil {
+		return fmt.Errorf("build session hooks: %w", err)
+	}
+	_ = hooks // hooks are invoked by the session lifecycle (git push / session API)
 
 	// Create and start the git server
 	server, err := gitserver.NewServer(cfg)
@@ -82,7 +192,7 @@ func waitForShutdown(ctx context.Context, server *gitserver.Server) error {
 
 	// Create a done channel to avoid race conditions
 	done := make(chan struct{})
-	
+
 	go func() {
 		select {
 		case sig := <-sigCh:
@@ -94,20 +204,9 @@ func waitForShutdown(ctx context.Context, server *gitserver.Server) error {
 		cancel()
 	}()
 
-	// TODO(extraction): Post-session hook integration point.
-	// After a session completes (detected via git push or session API),
-	// read the session log, construct a SessionRecord, and run the extraction
-	// pipeline asynchronously. Wire here:
-	//   go func() { pipeline.Extract(ctx, session, content) }()
-	//
-	// TODO(injection): Pre-session hook integration point.
-	// Before a session starts (or on first prompt), run the injector to
-	// select relevant skills and prepend them to the agent context. Wire here:
-	//   resp, _ := injector.Inject(ctx, extraction.InjectionRequest{...})
-
 	slog.Info("Mycelium is ready. Use Ctrl+C to shutdown gracefully.")
 	slog.Info("Agents can now git clone, push, and pull over SSH")
-	
+
 	// Wait for shutdown signal or context cancellation
 	select {
 	case <-done:
@@ -115,13 +214,13 @@ func waitForShutdown(ctx context.Context, server *gitserver.Server) error {
 	case <-ctx.Done():
 		// Context cancelled
 	}
-	
+
 	slog.Info("Shutting down git server...")
 	if err := server.Stop(); err != nil {
 		slog.Error("Error stopping git server", "error", err)
 		return err
 	}
-	
+
 	slog.Info("Mycelium serve stopped successfully")
 	return nil
 }

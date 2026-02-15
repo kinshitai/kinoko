@@ -382,6 +382,28 @@ func TestListByDecayLimit(t *testing.T) {
 	}
 }
 
+func TestListByDecayZeroLimitReturnsAll(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		sk := testSkill(fmt.Sprintf("id-nolim-%d", i), fmt.Sprintf("skill-nolim-%d", i), "default")
+		sk.DecayScore = float64(i) * 0.2
+		if err := s.Put(ctx, sk, nil); err != nil {
+			t.Fatalf("put %d: %v", i, err)
+		}
+	}
+
+	// limit=0 should return all rows, not zero rows.
+	results, err := s.ListByDecay(ctx, "default", 0)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(results) != 5 {
+		t.Errorf("limit=0 returned %d rows, want 5 (all)", len(results))
+	}
+}
+
 func TestListByDecayLibraryFilter(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

@@ -64,7 +64,7 @@ func runDecay(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("create decay runner: %w", err)
 	}
-	result, err := runner.RunCycle(context.Background(), libraryID)
+	result, err := runner.RunCycle(cmd.Context(), libraryID)
 	if err != nil {
 		return fmt.Errorf("decay cycle failed: %w", err)
 	}
@@ -79,13 +79,13 @@ func runDecay(cmd *cobra.Command, args []string) error {
 }
 
 // runDecayDryRun simulates a decay cycle without writing changes.
-func runDecayDryRun(_ context.Context, store *storage.SQLiteStore, cfg decay.Config, libraryID string, logger *slog.Logger) error {
+func runDecayDryRun(ctx context.Context, store *storage.SQLiteStore, cfg decay.Config, libraryID string, logger *slog.Logger) error {
 	// Use a no-op writer for dry run
 	runner, err := decay.NewRunner(store, &noopDecayWriter{}, cfg, logger)
 	if err != nil {
 		return fmt.Errorf("create decay runner: %w", err)
 	}
-	result, err := runner.RunCycle(context.Background(), libraryID)
+	result, err := runner.RunCycle(ctx, libraryID)
 	if err != nil {
 		return fmt.Errorf("decay dry run failed: %w", err)
 	}
@@ -98,6 +98,9 @@ func runDecayDryRun(_ context.Context, store *storage.SQLiteStore, cfg decay.Con
 
 	return nil
 }
+
+// Compile-time interface check.
+var _ decay.SkillWriter = (*noopDecayWriter)(nil)
 
 type noopDecayWriter struct{}
 
