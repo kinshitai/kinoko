@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -76,20 +78,15 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	}
 	repoPath := filepath.Join(dataDir, "repos", repo+".git")
 
-	// Find latest SKILL.md by walking version directories.
-	skillPath, err := findLatestSkillMD(repoPath)
+	// P0-3: Read SKILL.md from bare repo using git commands.
+	skillPath, body, err := readSkillMDFromBareRepo(repoPath)
 	if err != nil {
 		return fmt.Errorf("find SKILL.md in %s: %w", repo, err)
 	}
 
-	parsed, err := skillpkg.ParseFile(skillPath)
+	parsed, err := skillpkg.Parse(bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("parse SKILL.md: %w", err)
-	}
-
-	body, err := os.ReadFile(skillPath)
-	if err != nil {
-		return fmt.Errorf("read SKILL.md: %w", err)
 	}
 
 	// Derive library and skill name from repo path.
@@ -101,15 +98,19 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		skillName = parts[1]
 	}
 
+	category := model.CategoryTactical
+	// P2-4: Log a warning when defaulting to CategoryTactical.
+	logger.Warn("defaulting skill category to tactical", "repo", repo, "skill", skillName)
+
 	skill := &model.SkillRecord{
 		ID:              fmt.Sprintf("%s/%s/v%d", libraryID, skillName, parsed.Version),
 		Name:            skillName,
 		Version:         parsed.Version,
 		LibraryID:       libraryID,
-		Category:        model.CategoryTactical, // Default; could be parsed from SKILL.md metadata.
+		Category:        category,
 		Patterns:        parsed.Tags,
 		ExtractedBy:     "kinoko-index",
-		FilePath:        fmt.Sprintf("skills/%s/v%d/SKILL.md", skillName, parsed.Version),
+		FilePath:        skillPath,
 		DecayScore:      1.0,
 	}
 
@@ -138,32 +139,69 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// findLatestSkillMD walks a bare git repo's worktree or a regular directory
-// for version directories and returns the path to the latest SKILL.md.
-// For bare repos, we look in the git tree directly; for checked-out repos,
-// we walk the filesystem.
-func findLatestSkillMD(repoPath string) (string, error) {
-	// For non-bare repos (workdirs), walk filesystem.
-	var found []string
-	err := filepath.WalkDir(repoPath, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil // skip errors
-		}
-		if d.Name() == "SKILL.md" && !d.IsDir() {
-			found = append(found, path)
-		}
-		return nil
-	})
-	if err != nil {
-		return "", err
-	}
-	if len(found) == 0 {
-		return "", fmt.Errorf("no SKILL.md found in %s", repoPath)
+// versionDirPattern matches version directories like "v1", "v2", etc.
+var versionDirPattern = regexp.MustCompile(`^v(\d+)$`)
+
+// readSkillMDFromBareRepo reads SKILL.md from a bare git repo using git commands.
+// It looks for versioned paths (vN/SKILL.md) first, then falls back to root SKILL.md.
+// Returns the in-repo path and file contents.
+func readSkillMDFromBareRepo(repoPath string) (string, []byte, error) {
+	// List all files in HEAD.
+	cmd := exec.Command("git", "ls-tree", "HEAD", "-r", "--name-only")
+	cmd.Dir = repoPath
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &bytes.Buffer{}
+	if err := cmd.Run(); err != nil {
+		return "", nil, fmt.Errorf("git ls-tree: %w", err)
 	}
 
-	// Sort descending to get the latest version directory first.
-	sort.Sort(sort.Reverse(sort.StringSlice(found)))
-	return found[0], nil
+	// Find all SKILL.md files.
+	var skillPaths []string
+	for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n") {
+		if strings.HasSuffix(line, "SKILL.md") {
+			skillPaths = append(skillPaths, line)
+		}
+	}
+
+	if len(skillPaths) == 0 {
+		return "", nil, fmt.Errorf("no SKILL.md found in %s", repoPath)
+	}
+
+	// Sort: prefer versioned paths (highest version first), then root.
+	sort.Slice(skillPaths, func(i, j int) bool {
+		vi := extractVersion(skillPaths[i])
+		vj := extractVersion(skillPaths[j])
+		return vi > vj // higher version first
+	})
+
+	bestPath := skillPaths[0]
+
+	// Read the file content using git show.
+	showCmd := exec.Command("git", "show", "HEAD:"+bestPath)
+	showCmd.Dir = repoPath
+	body, err := showCmd.Output()
+	if err != nil {
+		return "", nil, fmt.Errorf("git show HEAD:%s: %w", bestPath, err)
+	}
+
+	return bestPath, body, nil
+}
+
+// extractVersion extracts the version number from a path like "v3/SKILL.md".
+// Returns 0 for root SKILL.md or unrecognized patterns.
+func extractVersion(path string) int {
+	parts := strings.SplitN(path, "/", 2)
+	if len(parts) < 2 {
+		return 0
+	}
+	m := versionDirPattern.FindStringSubmatch(parts[0])
+	if m == nil {
+		return 0
+	}
+	var v int
+	fmt.Sscanf(m[1], "%d", &v)
+	return v
 }
 
 func firstNonEmpty(vals ...string) string {

@@ -22,8 +22,9 @@ func TestInstallHooks_CreatesScripts(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		if info.Mode().Perm()&0o111 == 0 {
-			t.Errorf("%s: not executable (mode %v)", name, info.Mode())
+		// P1-2: Should be 0o700, not 0o755.
+		if perm := info.Mode().Perm(); perm != 0o700 {
+			t.Errorf("%s: expected perm 0700, got %04o", name, perm)
 		}
 
 		content, err := os.ReadFile(path)
@@ -65,11 +66,34 @@ func TestInstallHooks_Idempotent(t *testing.T) {
 	}
 }
 
+func TestInstallHooks_RejectsShellInjection(t *testing.T) {
+	tests := []struct {
+		name     string
+		dataDir  string
+		binary   string
+	}{
+		{"dollar in dataDir", "/tmp/foo$bar", "/bin/kinoko"},
+		{"backtick in binary", "/tmp/ok", "/bin/`whoami`"},
+		{"double quote in dataDir", `/tmp/foo"bar`, "/bin/kinoko"},
+		{"backslash in binary", "/tmp/ok", `/bin/kin\oko`},
+		{"space in dataDir", "/tmp/foo bar", "/bin/kinoko"},
+		{"semicolon in binary", "/tmp/ok", "/bin/kinoko;rm -rf /"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := InstallHooks(tt.dataDir, tt.binary)
+			if err == nil {
+				t.Error("expected error for unsafe input, got nil")
+			}
+		})
+	}
+}
+
 func TestRepoNameFromGitDir(t *testing.T) {
 	tests := []struct {
-		gitDir string
+		gitDir  string
 		dataDir string
-		want   string
+		want    string
 	}{
 		{"/data/repos/local/my-skill.git", "/data", "local/my-skill"},
 		{"/data/repos/company/circuit-breaker.git", "/data", "company/circuit-breaker"},
@@ -81,6 +105,26 @@ func TestRepoNameFromGitDir(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("RepoNameFromGitDir(%q, %q) = %q, want %q", tt.gitDir, tt.dataDir, got, tt.want)
 		}
+	}
+}
+
+func TestRepoNameFromGitDir_RejectsTraversal(t *testing.T) {
+	tests := []struct {
+		name    string
+		gitDir  string
+		dataDir string
+	}{
+		{"dotdot traversal", "/data/repos/../../etc/passwd.git", "/data"},
+		{"absolute result", "/etc/passwd.git", "/data"},
+		{"embedded dotdot", "/data/repos/foo/../bar.git", "/data"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RepoNameFromGitDir(tt.gitDir, tt.dataDir)
+			if got != "" {
+				t.Errorf("expected empty string for unsafe path, got %q", got)
+			}
+		})
 	}
 }
 

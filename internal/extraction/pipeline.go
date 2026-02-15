@@ -93,6 +93,11 @@ func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 	if ext == "" {
 		ext = "pipeline-v1"
 	}
+	// P1-1: Warn if committer is nil — skills will be marked extracted without git persistence.
+	if cfg.Committer == nil {
+		cfg.Log.Warn("pipeline created without committer: extracted skills will not be persisted to git")
+	}
+
 	return &Pipeline{
 		stage1:     cfg.Stage1,
 		stage2:     cfg.Stage2,

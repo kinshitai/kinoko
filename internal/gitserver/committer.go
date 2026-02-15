@@ -45,8 +45,8 @@ func NewGitCommitter(cfg GitCommitterConfig) *GitCommitter {
 	}
 }
 
-// CommitSkill creates a repo (if needed), writes the skill body, pushes to
-// Soft Serve, and indexes into SQLite after a successful push.
+// CommitSkill creates a repo (if needed), writes the skill body, and pushes to
+// Soft Serve. Indexing into SQLite is handled by the post-receive hook.
 // skillMutex returns a per-skill mutex to prevent concurrent workdir stomping.
 func (g *GitCommitter) skillMutex(key string) *sync.Mutex {
 	v, _ := g.locks.LoadOrStore(key, &sync.Mutex{})
@@ -116,13 +116,16 @@ func (g *GitCommitter) ensureWorkdir(ctx context.Context, repoName, workdir stri
 	}
 	cmd := exec.CommandContext(ctx, "git", "clone", cloneURL, workdir)
 	cmd.Env = append(os.Environ(), "GIT_SSH_COMMAND="+sshCmd)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		// Empty repo — init locally and add remote.
-		if strings.Contains(string(out), "empty") || strings.Contains(string(out), "warning") {
-			return g.initEmptyWorkdir(ctx, cloneURL, workdir, sshCmd)
+	if _, err := cmd.CombinedOutput(); err != nil {
+		// P1-3: Check if repo is empty by trying git rev-parse HEAD on the remote.
+		// git clone of an empty repo exits non-zero; detect by checking exit code
+		// and whether the workdir was partially created (git creates it even for empty repos).
+		if _, statErr := os.Stat(filepath.Join(workdir, ".git")); statErr == nil {
+			// git clone created .git but repo is empty — treat as empty.
+			return nil
 		}
-		return fmt.Errorf("git clone: %s: %w", out, err)
+		// Workdir not created — try init as empty.
+		return g.initEmptyWorkdir(ctx, cloneURL, workdir, sshCmd)
 	}
 	return nil
 }
@@ -159,12 +162,35 @@ func (g *GitCommitter) commitAndPush(ctx context.Context, workdir, message strin
 		"GIT_COMMITTER_EMAIL=kinoko@local",
 	)
 
-	cmds := [][]string{
-		{"add", "."},
+	// Stage all changes.
+	addCmd := exec.CommandContext(ctx, "git", "add", ".")
+	addCmd.Dir = workdir
+	addCmd.Env = env
+	if out, err := addCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git add: %s: %w", out, err)
+	}
+
+	// P1-4: Check if there's anything to commit.
+	diffCmd := exec.CommandContext(ctx, "git", "diff", "--cached", "--quiet")
+	diffCmd.Dir = workdir
+	diffCmd.Env = env
+	if err := diffCmd.Run(); err == nil {
+		// Nothing changed — return existing HEAD hash.
+		headCmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
+		headCmd.Dir = workdir
+		var buf bytes.Buffer
+		headCmd.Stdout = &buf
+		if headErr := headCmd.Run(); headErr != nil {
+			return "", fmt.Errorf("git rev-parse HEAD (no changes): %w", headErr)
+		}
+		return strings.TrimSpace(buf.String()), nil
+	}
+
+	// Commit and push.
+	for _, args := range [][]string{
 		{"commit", "-m", message},
 		{"push", "-u", "origin", "HEAD"},
-	}
-	for _, args := range cmds {
+	} {
 		cmd := exec.CommandContext(ctx, "git", args...)
 		cmd.Dir = workdir
 		cmd.Env = env
