@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/model"
-	"github.com/mycelium-dev/mycelium/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
 // ErrBackpressure is returned when the queue depth exceeds the critical threshold.

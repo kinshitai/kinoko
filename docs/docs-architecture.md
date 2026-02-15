@@ -1,4 +1,4 @@
-# Documentation Architecture for Mycelium
+# Documentation Architecture for Kinoko
 
 *Charis — February 15, 2026*
 
@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-Mycelium is not just another developer tool. It's a knowledge system built by AI agents *for* AI agents, where humans are the ultimate beneficiaries. The documentation needs to reflect this duality: it must serve human developers discovering and debugging Mycelium, AND it must be parseable by the very AI agents that will consume and contribute to the knowledge base.
+Kinoko is not just another developer tool. It's a knowledge system built by AI agents *for* AI agents, where humans are the ultimate beneficiaries. The documentation needs to reflect this duality: it must serve human developers discovering and debugging Kinoko, AND it must be parseable by the very AI agents that will consume and contribute to the knowledge base.
 
 **My recommendation:** Build a dual-audience, AI-native documentation system using Starlight (Astro) with custom enhancements for machine readability, backed by docs-as-code in the main repository. Ship with a strong README-first approach for Phase 1, then evolve into a comprehensive docs site.
 
@@ -84,17 +84,17 @@ Every code example that appears in docs must run in CI. Broken examples are wors
 ### Primary Audiences
 
 **1. Discovery Developers** (30% of traffic)
-- Finding Mycelium for the first time
+- Finding Kinoko for the first time
 - Need: What is this, why should I care, how do I try it
 - Format: README, overview, quickstart
 
 **2. Implementation Developers** (40% of traffic)  
-- Building with/on Mycelium
+- Building with/on Kinoko
 - Need: Setup guides, API docs, troubleshooting
 - Format: Guides, reference, examples
 
 **3. AI Agents** (20% of traffic)
-- Consuming Mycelium as a service or integration
+- Consuming Kinoko as a service or integration
 - Need: Structured schemas, machine-readable metadata
 - Format: OpenAPI specs, llms.txt, structured front matter
 
@@ -113,7 +113,7 @@ Every code example that appears in docs must run in CI. Broken examples are wors
 ## 4. Information Architecture
 
 ```
-mycelium/
+kinoko/
 ├── README.md                    # Front door - what/why/quickstart
 ├── docs/
 │   ├── index.md                 # Docs home (if we build a site)
@@ -181,11 +181,11 @@ mycelium/
 export default defineConfig({
   integrations: [
     starlight({
-      title: 'Mycelium',
+      title: 'Kinoko',
       description: 'Every problem solved once is solved for everyone.',
-      logo: { src: './src/assets/mycelium-logo.svg' },
+      logo: { src: './src/assets/kinoko-logo.svg' },
       social: {
-        github: 'https://github.com/myceliumorg/mycelium',
+        github: 'https://github.com/kinokoorg/kinoko',
       },
       sidebar: [
         { label: 'Getting Started', autogenerate: { directory: 'getting-started' } },
@@ -195,7 +195,7 @@ export default defineConfig({
         { label: 'Contributing', autogenerate: { directory: 'contributing' } },
       ],
       customCss: [
-        './src/styles/mycelium.css',
+        './src/styles/kinoko.css',
       ],
     }),
   ],
@@ -218,19 +218,19 @@ export default defineConfig({
 
 **CLI Reference Generation:** 
 ```bash
-mycelium docs generate-cli-reference > docs/reference/cli-reference.md
+kinoko docs generate-cli-reference > docs/reference/cli-reference.md
 ```
 
 **Schema Documentation:** Auto-generate from Go structs
 ```bash
-mycelium docs generate-schemas > docs/ai/schema/
+kinoko docs generate-schemas > docs/ai/schema/
 ```
 
 ---
 
 ## 6. AI-Native Docs Strategy
 
-This is the novel part. Mycelium's docs should be as accessible to AI agents as to human developers.
+This is the novel part. Kinoko's docs should be as accessible to AI agents as to human developers.
 
 ### Machine-Readable Metadata
 
@@ -254,9 +254,9 @@ agent_context: |
 
 **docs/ai/llms.txt:**
 ```
-# Mycelium - Collective Knowledge System
+# Kinoko - Collective Knowledge System
 
-Mycelium automatically extracts reusable knowledge from AI agent work sessions, stores it as version-controlled skills, and injects relevant knowledge into future sessions.
+Kinoko automatically extracts reusable knowledge from AI agent work sessions, stores it as version-controlled skills, and injects relevant knowledge into future sessions.
 
 ## Core Concepts
 - Skills: Structured knowledge in SKILL.md format (YAML front matter + Markdown)
@@ -265,22 +265,22 @@ Mycelium automatically extracts reusable knowledge from AI agent work sessions, 
 - Injection: Context-aware skill insertion before agent prompts
 
 ## Quick Start
-1. Install: curl -s https://install.mycelium.dev | sh
-2. Server: mycelium serve
-3. Client: mycelium init && mycelium remote add home ssh://...
-4. Extract: Sessions automatically create skills in ~/.mycelium/skills/
+1. Install: curl -s https://install.kinoko.dev | sh
+2. Server: kinoko serve
+3. Client: kinoko init && kinoko remote add home ssh://...
+4. Extract: Sessions automatically create skills in ~/.kinoko/skills/
 
 ## Key Files
-- config: ~/.mycelium/config.yaml
-- skills: ~/.mycelium/skills/*.git (repo per skill)
-- logs: ~/.mycelium/logs/
+- config: ~/.kinoko/config.yaml
+- skills: ~/.kinoko/skills/*.git (repo per skill)
+- logs: ~/.kinoko/logs/
 
 ## API Endpoints
 - GET /api/skills - list available skills
 - POST /api/extract - extract skill from session
 - GET /api/search - semantic skill search
 
-Full documentation: https://docs.mycelium.dev
+Full documentation: https://docs.kinoko.dev
 ```
 
 ### Structured Schemas
@@ -292,7 +292,7 @@ Full documentation: https://docs.mycelium.dev
 
 ### Agent Integration Documentation
 
-**docs/ai/integration.md:** How other AI systems can consume Mycelium knowledge
+**docs/ai/integration.md:** How other AI systems can consume Kinoko knowledge
 - REST API endpoints for skill search and retrieval
 - Webhook integration for real-time skill updates
 - Embedding search API for semantic discovery
@@ -331,7 +331,7 @@ Every code example in the docs is extracted and run in CI. If an example breaks,
 ```markdown
 <!-- This code block will be extracted and tested -->
 ```bash test=true
-mycelium serve --port 8080
+kinoko serve --port 8080
 # Expecting: server starts successfully
 ```
 
@@ -341,13 +341,13 @@ Generate troubleshooting sections from actual test failures. When a test fails i
 ### Agent-Aware Docs
 
 **Context-Sensitive Help:**
-`mycelium help` adapts based on current system state:
+`kinoko help` adapts based on current system state:
 - No config file? Show setup steps
 - Server not running? Show server commands
 - No skills extracted? Show extraction guide
 
 **Documentation as Agent Context:**
-When an AI agent encounters a Mycelium error, it automatically pulls relevant documentation sections into its context window for better troubleshooting.
+When an AI agent encounters a Kinoko error, it automatically pulls relevant documentation sections into its context window for better troubleshooting.
 
 ### Interactive Validation
 
@@ -360,7 +360,7 @@ Interactive form that generates valid `config.yaml` based on user's setup (singl
 ### Knowledge Graph Documentation
 
 **Related Skills Visualization:**
-Docs about skills automatically show dependency graphs and related skills from the actual Mycelium database.
+Docs about skills automatically show dependency graphs and related skills from the actual Kinoko database.
 
 **Usage Analytics Integration:**
 Documentation sections that are frequently needed get highlighted or promoted. Docs evolve based on real user patterns.
@@ -402,7 +402,7 @@ Documentation sections that are frequently needed get highlighted or promoted. D
 - **Time to first working skill:** Under 5 minutes from README
 - **Support question reduction:** Fewer "how do I..." questions in community channels
 - **Contributor onboarding:** New developers can contribute without asking setup questions
-- **Agent integration:** Other AI systems can successfully consume Mycelium knowledge
+- **Agent integration:** Other AI systems can successfully consume Kinoko knowledge
 
 ---
 
@@ -449,13 +449,13 @@ Documentation sections that are frequently needed get highlighted or promoted. D
 
 ## Conclusion
 
-Mycelium isn't just another developer tool — it's infrastructure for knowledge itself. The documentation needs to embody the same principles: knowledge should flow freely, be discoverable by both humans and machines, and compound over time.
+Kinoko isn't just another developer tool — it's infrastructure for knowledge itself. The documentation needs to embody the same principles: knowledge should flow freely, be discoverable by both humans and machines, and compound over time.
 
 The approach I'm proposing balances pragmatism (ship useful docs for Phase 1) with innovation (AI-native features for the future). We start with excellent fundamentals — a strong README, clear guides, tested examples — then evolve into something novel: documentation that works as well for AI agents as it does for humans.
 
 The 5-minute rule is non-negotiable. The dual-audience design is the differentiator. The progressive enhancement from README to comprehensive docs site gives us a clear path forward.
 
-Let's build documentation that doesn't just explain Mycelium — let's build documentation that embodies its vision of knowledge that flows and compounds.
+Let's build documentation that doesn't just explain Kinoko — let's build documentation that embodies its vision of knowledge that flows and compounds.
 
 ---
 

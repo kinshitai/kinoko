@@ -1,7 +1,7 @@
 package extraction
 
 import (
-	"github.com/mycelium-dev/mycelium/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/model"
 	"context"
 	"errors"
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/mycelium-dev/mycelium/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/config"
 )
 
 // --- Mocks ---

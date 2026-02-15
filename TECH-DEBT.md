@@ -1,4 +1,4 @@
-# Mycelium Tech Debt Audit
+# Kinoko Tech Debt Audit
 
 **Reviewer:** Jazz (30 years in, seen it all, impressed by nothing)
 **Date:** 2026-02-15
@@ -68,11 +68,11 @@ Honestly, for a config file this isn't that bad. The `expandPath` function is ov
 
 Embedding client + circuit breaker + retry logic. Similar to stage3 — the circuit breaker is duplicated (see Section C). Could extract the circuit breaker into a shared package but at 399 lines it's borderline. **Leave it** but see the duplication note below.
 
-### 6. `cmd/mycelium/serve.go` — 349 lines (P3)
+### 6. `cmd/kinoko/serve.go` — 349 lines (P3)
 
 Contains `buildSessionHooks`, `buildPipeline`, `startWorkerSystem`, `runServe`, and `waitForShutdown`. It's a composition root — these are supposed to be big. The `waitForShutdown` function is cleanly separated. **Acceptable.**
 
-### 7. `cmd/mycelium/extract.go` — 314 lines (P3)
+### 7. `cmd/kinoko/extract.go` — 314 lines (P3)
 
 Half of this is `parseSessionFromLog` which is a heuristic log parser with regex. Could be its own package if other commands need it. `openAILLMClient` and `openAIComplete` are here AND used by `serve.go` — they're in `helpers.go` effectively but defined here. See duplication note.
 
@@ -122,7 +122,7 @@ The Pipeline struct has 11 fields including two sampling counters (`extractedSam
 
 ### 3. **`openAILLMClient` Defined in cmd/** (P2)
 
-The `openAILLMClient` struct and `openAIComplete` function live in `cmd/mycelium/extract.go` but are used by `serve.go` too. This is application-level code that should be in `internal/llm/` or `internal/openai/`.
+The `openAILLMClient` struct and `openAIComplete` function live in `cmd/kinoko/extract.go` but are used by `serve.go` too. This is application-level code that should be in `internal/llm/` or `internal/openai/`.
 
 The `storeQuerier` adapter also lives in `cmd/` — same problem.
 
@@ -160,7 +160,7 @@ SQLite error handling by string matching is a ticking time bomb when you upgrade
 
 The dependency graph:
 ```
-cmd/mycelium → config, storage, extraction, embedding, injection, worker, decay, gitserver, metrics
+cmd/kinoko → config, storage, extraction, embedding, injection, worker, decay, gitserver, metrics
 injection → extraction, storage, embedding
 worker → extraction, storage, decay
 storage → extraction
@@ -244,7 +244,7 @@ If the session insert fails, extraction continues, but `updateSessionStatus` lat
 
 ### 6. **`Queue.Enqueue` Inserts Duplicate Sessions** (P2)
 
-`queue.go:69-93` — `Enqueue` does an INSERT INTO sessions but doesn't check if a session with that ID already exists. If the same session log is imported twice (via `mycelium import`), the second insert will fail with a UNIQUE constraint violation — but the log file was already written to disk and won't be cleaned up in the error path (it is cleaned up for some errors but not this one, because the error happens at `tx.ExecContext` and the `os.Remove` is only called in certain branches).
+`queue.go:69-93` — `Enqueue` does an INSERT INTO sessions but doesn't check if a session with that ID already exists. If the same session log is imported twice (via `kinoko import`), the second insert will fail with a UNIQUE constraint violation — but the log file was already written to disk and won't be cleaned up in the error path (it is cleaned up for some errors but not this one, because the error happens at `tx.ExecContext` and the `os.Remove` is only called in certain branches).
 
 Actually wait — looking again, `os.Remove(logPath)` IS called on exec error. But the error message will be confusing ("insert session: UNIQUE constraint failed") with no indication it's a duplicate.
 
@@ -266,7 +266,7 @@ Actually wait — looking again, `os.Remove(logPath)` IS called on exec error. B
 
 ### 1. **`reflect` Usage for Nil Check** (P2)
 
-`cmd/mycelium/worker.go:78-87`:
+`cmd/kinoko/worker.go:78-87`:
 ```go
 func ignoreNil[T any](v T, fn func(T) error) error {
     rv := reflect.ValueOf(&v).Elem()
@@ -293,7 +293,7 @@ The comment says "Entropy exhaustion is catastrophic." True, but panicking in li
 
 ### 3. **Package-Level `var` for HTTP Client** (P3)
 
-`cmd/mycelium/helpers.go:10`:
+`cmd/kinoko/helpers.go:10`:
 ```go
 var defaultHTTPClient = &http.Client{Timeout: 60 * time.Second}
 ```

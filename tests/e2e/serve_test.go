@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func TestMyceliumServeLifecycle(t *testing.T) {
+func TestKinokoServeLifecycle(t *testing.T) {
 	RequireSoftBinary(t)
 	RequireGitBinary(t)
 	RequireSSHBinary(t)
@@ -57,16 +57,16 @@ func TestMyceliumServeLifecycle(t *testing.T) {
 	})
 }
 
-func TestMyceliumServeConfigErrors(t *testing.T) {
+func TestKinokoServeConfigErrors(t *testing.T) {
 	RequireSoftBinary(t)
 
-	tempDir, err := os.MkdirTemp("", "mycelium-serve-config-test-*")
+	tempDir, err := os.MkdirTemp("", "kinoko-serve-config-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	binaryPath := buildMyceliumBinary(t, tempDir)
+	binaryPath := buildKinokoBinary(t, tempDir)
 
 	t.Run("missing_config_file", func(t *testing.T) {
 		nonexistentConfig := filepath.Join(tempDir, "missing-config.yaml")
@@ -170,7 +170,7 @@ libraries: []`
 	})
 }
 
-func TestMyceliumServePortConflicts(t *testing.T) {
+func TestKinokoServePortConflicts(t *testing.T) {
 	RequireSoftBinary(t)
 	RequireGitBinary(t)
 
@@ -217,20 +217,20 @@ func TestMyceliumServePortConflicts(t *testing.T) {
 	})
 }
 
-func TestMyceliumServePermissionErrors(t *testing.T) {
+func TestKinokoServePermissionErrors(t *testing.T) {
 	RequireSoftBinary(t)
 
 	if os.Getuid() == 0 {
 		t.Skip("Skipping permission test when running as root")
 	}
 
-	tempDir, err := os.MkdirTemp("", "mycelium-serve-perm-test-*")
+	tempDir, err := os.MkdirTemp("", "kinoko-serve-perm-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	binaryPath := buildMyceliumBinary(t, tempDir)
+	binaryPath := buildKinokoBinary(t, tempDir)
 
 	t.Run("readonly_data_directory", func(t *testing.T) {
 		readonlyDataDir := filepath.Join(tempDir, "readonly-data")

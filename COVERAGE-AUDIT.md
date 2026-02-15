@@ -20,8 +20,8 @@
 - **Gap found:** None. All 19 methods covered. Private helpers (loadPatterns, loadEmbeddingsMulti, etc.) exercised transitively through Query.
 
 ### Area 4: parseSessionFromLog (R9)
-- **cmd/mycelium/extract_test.go**: ✅ 15+ test cases covering empty input, multi-turn sessions, metadata extraction, title/problem detection, unique IDs, large files
-- **cmd/mycelium/commands_test.go**: Additional usage
+- **cmd/kinoko/extract_test.go**: ✅ 15+ test cases covering empty input, multi-turn sessions, metadata extraction, title/problem detection, unique IDs, large files
+- **cmd/kinoko/commands_test.go**: Additional usage
 - **Gap found:** None.
 
 ## Conclusion

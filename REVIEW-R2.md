@@ -10,7 +10,7 @@ Builds. Tests pass. The move happened. But there are real issues.
 
 ## Summary
 
-The `internal/llm` package was created with four files: `client.go`, `errors.go`, `openai.go`, `llm_test.go`. LLM interfaces and error types moved out of `extraction/stage3.go`. The OpenAI HTTP client moved out of `cmd/mycelium/extract.go`. `helpers.go` was removed (confirmed gone). Both `extract.go` and `serve.go` now import `internal/llm`. Build passes, all unit tests pass. The one integration test failure (`TestWorkerPoolE2E`) is a pre-existing SQLite BUSY race — unrelated.
+The `internal/llm` package was created with four files: `client.go`, `errors.go`, `openai.go`, `llm_test.go`. LLM interfaces and error types moved out of `extraction/stage3.go`. The OpenAI HTTP client moved out of `cmd/kinoko/extract.go`. `helpers.go` was removed (confirmed gone). Both `extract.go` and `serve.go` now import `internal/llm`. Build passes, all unit tests pass. The one integration test failure (`TestWorkerPoolE2E`) is a pre-existing SQLite BUSY race — unrelated.
 
 So far so good. Now the problems.
 
@@ -99,7 +99,7 @@ This isn't a regression (the old `openAIComplete` didn't implement V2 either), b
 
 ### 🟢 P4: Dead comment in `extract.go`
 
-**File:** `cmd/mycelium/extract.go:257`
+**File:** `cmd/kinoko/extract.go:257`
 
 ```go
 // openAILLMClient and openAIComplete moved to internal/llm package.

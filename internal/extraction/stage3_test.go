@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/circuitbreaker"
-	"github.com/mycelium-dev/mycelium/internal/llm"
-	"github.com/mycelium-dev/mycelium/internal/config"
-	"github.com/mycelium-dev/mycelium/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/circuitbreaker"
+	"github.com/kinoko-dev/kinoko/internal/llm"
+	"github.com/kinoko-dev/kinoko/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 // --- Mock LLM ---

@@ -1,5 +1,5 @@
 // Package config handles YAML configuration loading, validation, and defaults
-// for the Mycelium server, storage, extraction, decay, and hook settings.
+// for the Kinoko server, storage, extraction, decay, and hook settings.
 package config
 
 import (
@@ -122,9 +122,9 @@ func DefaultConfig() *Config {
 		home = "."
 	}
 
-	dataDir := filepath.Join(home, ".mycelium", "data")
-	dbPath := filepath.Join(home, ".mycelium", "mycelium.db")
-	skillsPath := filepath.Join(home, ".mycelium", "skills")
+	dataDir := filepath.Join(home, ".kinoko", "data")
+	dbPath := filepath.Join(home, ".kinoko", "kinoko.db")
+	skillsPath := filepath.Join(home, ".kinoko", "skills")
 
 	return &Config{
 		Server: ServerConfig{
@@ -250,7 +250,7 @@ func Load(configPath string) (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to get user home directory: %w", err)
 		}
-		configPath = filepath.Join(home, ".mycelium", "config.yaml")
+		configPath = filepath.Join(home, ".kinoko", "config.yaml")
 	}
 
 	// If config file doesn't exist, return defaults
@@ -289,7 +289,7 @@ func (c *Config) Save(configPath string) error {
 		if err != nil {
 			return fmt.Errorf("failed to get user home directory: %w", err)
 		}
-		configPath = filepath.Join(home, ".mycelium", "config.yaml")
+		configPath = filepath.Join(home, ".kinoko", "config.yaml")
 	}
 
 	// Create directory if it doesn't exist

@@ -51,8 +51,8 @@ Collected by Hal. Great dev docs to study for patterns and ideas.
 - Semantic sections that agents can target
 
 ### Interactive CLI docs
-- `mycelium help` as the primary docs surface
-- `mycelium doctor` for debugging setup issues
+- `kinoko help` as the primary docs surface
+- `kinoko doctor` for debugging setup issues
 - Rich terminal output with examples
 
 ## Questions for Charis

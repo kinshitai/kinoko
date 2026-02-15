@@ -6,8 +6,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/mycelium-dev/mycelium/internal/config"
-	"github.com/mycelium-dev/mycelium/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 type stage1Filter struct {

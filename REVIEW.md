@@ -6,7 +6,7 @@ This codebase is fundamentally broken. Two developers clearly worked in isolatio
 ## Critical Issues (Must Fix)
 
 ### 1. Config Structure Mismatch - SHOWSTOPPER
-The config structures in `internal/config/config.go` and `cmd/mycelium/init.go` are completely incompatible:
+The config structures in `internal/config/config.go` and `cmd/kinoko/init.go` are completely incompatible:
 
 **config.go defines:**
 ```go
@@ -22,7 +22,7 @@ type Config struct {
 server:
   host: "127.0.0.1"        # NOT in struct!
   port: 23231
-  dataDir: ~/.mycelium/data
+  dataDir: ~/.kinoko/data
 storage: # ... same
 libraries: # ... same
 extraction:                # ENTIRE SECTION NOT IN STRUCT!
@@ -38,7 +38,7 @@ defaults:                  # ENTIRE SECTION NOT IN STRUCT!
   confidence: 0.7
 ```
 
-**Result:** Anyone who runs `mycelium init` then `mycelium serve` will get YAML parsing errors because the structs don't match the generated config. This is a runtime crash waiting to happen.
+**Result:** Anyone who runs `kinoko init` then `kinoko serve` will get YAML parsing errors because the structs don't match the generated config. This is a runtime crash waiting to happen.
 
 ### 2. Serve Command is Completely Fake
 The `serve` command loads config, creates directories, then... **does absolutely nothing**. It has a TODO comment about implementing Soft Serve and just waits for Ctrl+C. This is not a "placeholder" - this is shipping broken functionality.
@@ -60,7 +60,7 @@ This suggests `go mod tidy` was never run or the imports are wrong.
 - Version backward compatibility - **hardcoded to only accept version 1**
 
 ### 5. Root Command References Non-existent Commands
-The success message in `init.go` mentions `mycelium remote add <name> <url>` but there's no such command in `root.go`. Users will get "unknown command" errors.
+The success message in `init.go` mentions `kinoko remote add <name> <url>` but there's no such command in `root.go`. Users will get "unknown command" errors.
 
 ### 6. Race Condition in Signal Handling
 `serve.go` has a classic goroutine race:
@@ -84,33 +84,33 @@ Some functions return `fmt.Errorf("msg: %w", err)` while others return `fmt.Erro
 The skill parser demands exact section names "## When to Use" and "## Solution". What if someone writes "## When To Use" (capital T)? Fails validation. This will frustrate users.
 
 ### 10. No Tilde Expansion
-Config paths use `~/.mycelium/` in YAML but there's no tilde expansion. Will try to create literal `~` directory instead of home directory.
+Config paths use `~/.kinoko/` in YAML but there's no tilde expansion. Will try to create literal `~` directory instead of home directory.
 
 ### 11. Git Commands Without Validation
 `init.go` runs `git` commands without checking if they succeeded. Could fail silently and leave users confused about why their repo isn't set up.
 
 ## File-by-File Notes
 
-### cmd/mycelium/main.go
+### cmd/kinoko/main.go
 **Grade: B+**
 - Clean and minimal
 - Proper error handling and logging setup
 - Only issue: references undefined `rootCmd` without import (works due to package scope but confusing)
 
-### cmd/mycelium/root.go  
+### cmd/kinoko/root.go  
 **Grade: C+**
 - Basic Cobra setup is fine
 - Hardcoded version string is amateur hour
 - Missing commands that are referenced elsewhere
 
-### cmd/mycelium/serve.go
+### cmd/kinoko/serve.go
 **Grade: F (FAIL)**
 - **COMPLETELY BROKEN**: Loads config, pretends to start server, does nothing
 - Has detailed comments about research but zero implementation
 - Will confuse and frustrate every user who tries it
 - Signal handling has race condition
 
-### cmd/mycelium/init.go
+### cmd/kinoko/init.go
 **Grade: B-**
 - Actually functional (unlike serve.go)
 - Good error handling and user feedback
@@ -185,8 +185,8 @@ Config paths use `~/.mycelium/` in YAML but there's no tilde expansion. Will try
 **REJECT - DO NOT MERGE**
 
 This PR would break the application for any user who follows the basic workflow:
-1. Run `mycelium init` ✓ (works)  
-2. Run `mycelium serve` ✗ (crashes on config parsing)
+1. Run `kinoko init` ✓ (works)  
+2. Run `kinoko serve` ✗ (crashes on config parsing)
 
 Beyond that showstopper, the main feature (git server) isn't implemented at all. This is pre-alpha quality code masquerading as a release.
 

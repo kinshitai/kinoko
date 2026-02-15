@@ -91,7 +91,7 @@ The brief also correctly identified that post-extraction monitoring matters as m
 
 ## 5. What Luka's Next Brief Should Cover
 
-**Title: "Mycelium Data Model, API Boundaries, and Evaluation Framework"**
+**Title: "Kinoko Data Model, API Boundaries, and Evaluation Framework"**
 
 No analogies. No cross-disciplinary exploration. Just:
 

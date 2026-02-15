@@ -62,7 +62,7 @@ This distributes compute. At scale, extraction cost is borne by contributors, no
 ```yaml
 libraries:
   - name: local
-    path: ~/.mycelium/skills
+    path: ~/.kinoko/skills
     priority: 100
 
   - name: home
@@ -71,7 +71,7 @@ libraries:
 
   # Adding cloud = adding one line
   # - name: cloud
-  #   url: https://cloud.mycelium.dev
+  #   url: https://cloud.kinoko.dev
   #   priority: 10
 ```
 
@@ -84,7 +84,7 @@ Storage interface from day one. SQLite ships first. Postgres swappable via confi
 ```yaml
 storage:
   driver: sqlite
-  dsn: ~/.mycelium/mycelium.db
+  dsn: ~/.kinoko/kinoko.db
 ```
 
 Embeddings: SQLite vec extension for vector search. Swappable to pgvector. One database, one file, vector search included.
@@ -97,16 +97,16 @@ The team knows Go. The ecosystem (Soft Serve, Charm libraries) is Go. Single bin
 
 ### Phase 1: Server + Extraction (Weeks 1-4)
 
-**Goal:** A running Mycelium server that we use daily. Skills extracted from our sessions, stored as repos.
+**Goal:** A running Kinoko server that we use daily. Skills extracted from our sessions, stored as repos.
 
 **Build:**
 - Project scaffolding (Go module, CLI skeleton)
-- Soft Serve integration — single `mycelium serve` starts the git server
+- Soft Serve integration — single `kinoko serve` starts the git server
 - SKILL.md format spec + parser
 - Basic extraction — Stop hook extracts skills from agent sessions
 - Skills pushed as repos to Soft Serve
 - Pre-commit hooks — credential scan + format validation
-- `mycelium init` sets up local config + hooks
+- `kinoko init` sets up local config + hooks
 
 **Users:** Hal (OpenClaw on server) + Egor (Claude Code on 2 MacBooks). Three agents, one server.
 
@@ -114,9 +114,9 @@ The team knows Go. The ecosystem (Soft Serve, Charm libraries) is Go. Single bin
 
 **Self-hosting experience:**
 ```bash
-mycelium serve                  # starts everything
-mycelium init                   # on each client machine
-mycelium remote add home ssh://...
+kinoko serve                  # starts everything
+kinoko init                   # on each client machine
+kinoko remote add home ssh://...
 ```
 
 ### Phase 2: Injection + Metadata (Weeks 5-8)
@@ -167,13 +167,13 @@ Carried from the manifesto into engineering:
 
 1. **Build what you know you need.** No throwaway scaffolding. If we know we need git, pre-commit hooks, and storage abstraction — build them right from the start.
 
-2. **Self-hostable first, cloud-layered.** `mycelium serve` works on a Raspberry Pi. Cloud is one config line away but never required.
+2. **Self-hostable first, cloud-layered.** `kinoko serve` works on a Raspberry Pi. Cloud is one config line away but never required.
 
 3. **Git is the truth.** Everything else — embeddings, trust scores, feedback — is a derived cache. Blow it away and rebuild from git.
 
 4. **Background workers are infrastructure.** Extraction, maintenance, and feedback processing are async from day one.
 
-5. **One config file.** `~/.mycelium/config.yaml` controls everything. Libraries, storage driver, server settings. No scattered config, no env vars for core settings.
+5. **One config file.** `~/.kinoko/config.yaml` controls everything. Libraries, storage driver, server settings. No scattered config, no env vars for core settings.
 
 ---
 

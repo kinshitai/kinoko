@@ -1,6 +1,6 @@
 # Quickstart
 
-Get from zero to a working Mycelium setup in 5 minutes.
+Get from zero to a working Kinoko setup in 5 minutes.
 
 ## Prerequisites
 
@@ -11,32 +11,32 @@ Get from zero to a working Mycelium setup in 5 minutes.
 ## 1. Install
 
 ```bash
-git clone https://github.com/mycelium-dev/mycelium.git
-cd mycelium
-go install ./cmd/mycelium
-mycelium --version
+git clone https://github.com/kinoko-dev/kinoko.git
+cd kinoko
+go install ./cmd/kinoko
+kinoko --version
 ```
 
 ## 2. Initialize Your Workspace
 
 ```bash
-mycelium init
+kinoko init
 ```
 
 This creates:
-- `~/.mycelium/config.yaml` — configuration
-- `~/.mycelium/skills/` — local skills (git repo)
+- `~/.kinoko/config.yaml` — configuration
+- `~/.kinoko/skills/` — local skills (git repo)
 
 You'll see:
 ```
-🍄 Mycelium initialized successfully!
+🍄 Kinoko initialized successfully!
 
-Your Mycelium workspace is ready at ~/.mycelium/
+Your Kinoko workspace is ready at ~/.kinoko/
 ```
 
 ## 3. Set Your Author
 
-Edit `~/.mycelium/config.yaml`:
+Edit `~/.kinoko/config.yaml`:
 
 ```yaml
 defaults:
@@ -46,15 +46,15 @@ defaults:
 ## 4. Start the Server
 
 ```bash
-mycelium serve
+kinoko serve
 ```
 
 Output:
 ```
-INFO Mycelium serve command started
+INFO Kinoko serve command started
 INFO Configuration loaded successfully host=127.0.0.1 port=23231 ...
-INFO Mycelium git server is ready ssh_url=ssh://localhost:23231
-INFO Mycelium is ready. Use Ctrl+C to shutdown gracefully.
+INFO Kinoko git server is ready ssh_url=ssh://localhost:23231
+INFO Kinoko is ready. Use Ctrl+C to shutdown gracefully.
 ```
 
 Keep this terminal open.
@@ -72,8 +72,8 @@ You should see a Soft Serve TUI or connection info. Press `q` to quit.
 ## 6. Create a Test Skill
 
 ```bash
-mkdir -p ~/.mycelium/skills/test-skill
-cat > ~/.mycelium/skills/test-skill/SKILL.md << 'EOF'
+mkdir -p ~/.kinoko/skills/test-skill
+cat > ~/.kinoko/skills/test-skill/SKILL.md << 'EOF'
 ---
 name: test-skill
 version: 1
@@ -86,21 +86,21 @@ created: 2026-02-15
 # Test Skill
 
 ## When to Use
-Verifying your Mycelium setup works.
+Verifying your Kinoko setup works.
 
 ## Solution
 If you can read this, your installation is working.
 EOF
 
-cd ~/.mycelium/skills
+cd ~/.kinoko/skills
 git add test-skill/
 git commit -m "Add test skill"
 ```
 
 ## What You Have Now
 
-- ✅ Mycelium server on `ssh://localhost:23231`
-- ✅ Local skills repo at `~/.mycelium/skills/`
+- ✅ Kinoko server on `ssh://localhost:23231`
+- ✅ Local skills repo at `~/.kinoko/skills/`
 - ✅ A test skill demonstrating the format
 
 ## Next Steps

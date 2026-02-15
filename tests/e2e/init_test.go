@@ -9,22 +9,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mycelium-dev/mycelium/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/config"
 	"gopkg.in/yaml.v3"
 )
 
-func TestMyceliumInit(t *testing.T) {
+func TestKinokoInit(t *testing.T) {
 	RequireGitBinary(t)
 
 	// Create isolated test environment
-	tempDir, err := os.MkdirTemp("", "mycelium-init-test-*")
+	tempDir, err := os.MkdirTemp("", "kinoko-init-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Build mycelium binary
-	binaryPath := buildMyceliumBinary(t, tempDir)
+	// Build kinoko binary
+	binaryPath := buildKinokoBinary(t, tempDir)
 
 	// Create fake home directory for testing
 	homeDir := filepath.Join(tempDir, "home")
@@ -32,22 +32,22 @@ func TestMyceliumInit(t *testing.T) {
 		t.Fatalf("Failed to create fake home dir: %v", err)
 	}
 
-	// Run mycelium init with custom HOME
+	// Run kinoko init with custom HOME
 	cmd := exec.Command(binaryPath, "init")
 	cmd.Env = append(os.Environ(), "HOME="+homeDir)
 	cmd.Dir = tempDir
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("mycelium init failed: %v\nOutput: %s", err, output)
+		t.Fatalf("kinoko init failed: %v\nOutput: %s", err, output)
 	}
 
-	t.Logf("mycelium init output: %s", output)
+	t.Logf("kinoko init output: %s", output)
 
 	// Verify directory structure was created
 	expectedDirs := []string{
-		".mycelium",
-		".mycelium/skills",
+		".kinoko",
+		".kinoko/skills",
 	}
 
 	for _, dir := range expectedDirs {
@@ -58,7 +58,7 @@ func TestMyceliumInit(t *testing.T) {
 	}
 
 	// Verify config file was created and is valid
-	configPath := filepath.Join(homeDir, ".mycelium", "config.yaml")
+	configPath := filepath.Join(homeDir, ".kinoko", "config.yaml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Fatal("Config file was not created")
 	}
@@ -74,7 +74,7 @@ func TestMyceliumInit(t *testing.T) {
 	}
 
 	// Verify git repository was initialized
-	skillsDir := filepath.Join(homeDir, ".mycelium", "skills")
+	skillsDir := filepath.Join(homeDir, ".kinoko", "skills")
 	gitDir := filepath.Join(skillsDir, ".git")
 	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
 		t.Error("Git repository was not initialized in skills directory")
@@ -95,7 +95,7 @@ func TestMyceliumInit(t *testing.T) {
 
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			t.Fatalf("Second mycelium init failed: %v\nOutput: %s", err, output)
+			t.Fatalf("Second kinoko init failed: %v\nOutput: %s", err, output)
 		}
 
 		// Should not overwrite existing config
@@ -111,23 +111,23 @@ func TestMyceliumInit(t *testing.T) {
 	})
 }
 
-func TestMyceliumInitWithExistingConfig(t *testing.T) {
+func TestKinokoInitWithExistingConfig(t *testing.T) {
 	RequireGitBinary(t)
 
 	// Create test environment
-	tempDir, err := os.MkdirTemp("", "mycelium-init-existing-test-*")
+	tempDir, err := os.MkdirTemp("", "kinoko-init-existing-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	binaryPath := buildMyceliumBinary(t, tempDir)
+	binaryPath := buildKinokoBinary(t, tempDir)
 	homeDir := filepath.Join(tempDir, "home")
-	myceliumDir := filepath.Join(homeDir, ".mycelium")
+	kinokoDir := filepath.Join(homeDir, ".kinoko")
 
-	// Create .mycelium directory and config file first
-	if err := os.MkdirAll(myceliumDir, 0755); err != nil {
-		t.Fatalf("Failed to create mycelium dir: %v", err)
+	// Create .kinoko directory and config file first
+	if err := os.MkdirAll(kinokoDir, 0755); err != nil {
+		t.Fatalf("Failed to create kinoko dir: %v", err)
 	}
 
 	// Create existing config with custom values
@@ -148,19 +148,19 @@ libraries:
 defaults:
   author: "existing-user"`
 
-	configPath := filepath.Join(myceliumDir, "config.yaml")
+	configPath := filepath.Join(kinokoDir, "config.yaml")
 	if err := os.WriteFile(configPath, []byte(existingConfigContent), 0644); err != nil {
 		t.Fatalf("Failed to create existing config: %v", err)
 	}
 
-	// Run mycelium init
+	// Run kinoko init
 	cmd := exec.Command(binaryPath, "init")
 	cmd.Env = append(os.Environ(), "HOME="+homeDir)
 	cmd.Dir = tempDir
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("mycelium init failed: %v\nOutput: %s", err, output)
+		t.Fatalf("kinoko init failed: %v\nOutput: %s", err, output)
 	}
 
 	// Verify existing config was not overwritten
@@ -178,21 +178,21 @@ defaults:
 	}
 
 	// But skills directory should still be created
-	skillsDir := filepath.Join(homeDir, ".mycelium", "skills")
+	skillsDir := filepath.Join(homeDir, ".kinoko", "skills")
 	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
 		t.Error("Skills directory was not created when config already existed")
 	}
 }
 
-func TestMyceliumInitNoGit(t *testing.T) {
+func TestKinokoInitNoGit(t *testing.T) {
 	// Test init behavior when git is not available
-	tempDir, err := os.MkdirTemp("", "mycelium-init-nogit-test-*")
+	tempDir, err := os.MkdirTemp("", "kinoko-init-nogit-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	binaryPath := buildMyceliumBinary(t, tempDir)
+	binaryPath := buildKinokoBinary(t, tempDir)
 	homeDir := filepath.Join(tempDir, "home")
 	if err := os.MkdirAll(homeDir, 0755); err != nil {
 		t.Fatalf("Failed to create fake home dir: %v", err)
@@ -216,7 +216,7 @@ func TestMyceliumInitNoGit(t *testing.T) {
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("mycelium init should not fail when git is missing: %v\nOutput: %s", err, output)
+		t.Fatalf("kinoko init should not fail when git is missing: %v\nOutput: %s", err, output)
 	}
 
 	// Output should contain warning about missing git
@@ -227,18 +227,18 @@ func TestMyceliumInitNoGit(t *testing.T) {
 	}
 
 	// Should still create directories and config
-	myceliumDir := filepath.Join(homeDir, ".mycelium")
-	if _, err := os.Stat(myceliumDir); os.IsNotExist(err) {
-		t.Error("Mycelium directory was not created when git is missing")
+	kinokoDir := filepath.Join(homeDir, ".kinoko")
+	if _, err := os.Stat(kinokoDir); os.IsNotExist(err) {
+		t.Error("Kinoko directory was not created when git is missing")
 	}
 
-	configPath := filepath.Join(myceliumDir, "config.yaml")
+	configPath := filepath.Join(kinokoDir, "config.yaml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Error("Config file was not created when git is missing")
 	}
 
 	// Skills directory should exist but not be a git repo
-	skillsDir := filepath.Join(homeDir, ".mycelium", "skills")
+	skillsDir := filepath.Join(homeDir, ".kinoko", "skills")
 	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
 		t.Error("Skills directory was not created when git is missing")
 	}
@@ -249,19 +249,19 @@ func TestMyceliumInitNoGit(t *testing.T) {
 	}
 }
 
-func TestMyceliumInitPermissionError(t *testing.T) {
+func TestKinokoInitPermissionError(t *testing.T) {
 	// Test init behavior when home directory is not writable
 	if os.Getuid() == 0 {
 		t.Skip("Skipping permission test when running as root")
 	}
 
-	tempDir, err := os.MkdirTemp("", "mycelium-init-perm-test-*")
+	tempDir, err := os.MkdirTemp("", "kinoko-init-perm-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	binaryPath := buildMyceliumBinary(t, tempDir)
+	binaryPath := buildKinokoBinary(t, tempDir)
 	homeDir := filepath.Join(tempDir, "readonly-home")
 	
 	// Create readonly home directory
@@ -276,7 +276,7 @@ func TestMyceliumInitPermissionError(t *testing.T) {
 
 	output, err := cmd.CombinedOutput()
 	if err == nil {
-		t.Errorf("mycelium init should fail when home directory is not writable\nOutput: %s", output)
+		t.Errorf("kinoko init should fail when home directory is not writable\nOutput: %s", output)
 	}
 
 	// Error message should be helpful
@@ -287,17 +287,17 @@ func TestMyceliumInitPermissionError(t *testing.T) {
 	}
 }
 
-func TestMyceliumInitTildeExpansion(t *testing.T) {
+func TestKinokoInitTildeExpansion(t *testing.T) {
 	RequireGitBinary(t)
 
 	// Test that config paths with ~ get expanded correctly
-	tempDir, err := os.MkdirTemp("", "mycelium-init-tilde-test-*")
+	tempDir, err := os.MkdirTemp("", "kinoko-init-tilde-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	binaryPath := buildMyceliumBinary(t, tempDir)
+	binaryPath := buildKinokoBinary(t, tempDir)
 	homeDir := filepath.Join(tempDir, "home")
 	if err := os.MkdirAll(homeDir, 0755); err != nil {
 		t.Fatalf("Failed to create fake home dir: %v", err)
@@ -309,11 +309,11 @@ func TestMyceliumInitTildeExpansion(t *testing.T) {
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("mycelium init failed: %v\nOutput: %s", err, output)
+		t.Fatalf("kinoko init failed: %v\nOutput: %s", err, output)
 	}
 
 	// Load the generated config
-	configPath := filepath.Join(homeDir, ".mycelium", "config.yaml")
+	configPath := filepath.Join(homeDir, ".kinoko", "config.yaml")
 	configContent, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("Failed to read generated config: %v", err)
@@ -322,7 +322,7 @@ func TestMyceliumInitTildeExpansion(t *testing.T) {
 	configStr := string(configContent)
 
 	// Config should contain tilde paths (not yet expanded in the file)
-	if !strings.Contains(configStr, "~/.mycelium") {
+	if !strings.Contains(configStr, "~/.kinoko") {
 		t.Error("Generated config should contain tilde paths")
 	}
 
@@ -341,16 +341,16 @@ func TestMyceliumInitTildeExpansion(t *testing.T) {
 	}
 }
 
-func TestMyceliumInitValidatesSuccessMessage(t *testing.T) {
+func TestKinokoInitValidatesSuccessMessage(t *testing.T) {
 	RequireGitBinary(t)
 
-	tempDir, err := os.MkdirTemp("", "mycelium-init-message-test-*")
+	tempDir, err := os.MkdirTemp("", "kinoko-init-message-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	binaryPath := buildMyceliumBinary(t, tempDir)
+	binaryPath := buildKinokoBinary(t, tempDir)
 	homeDir := filepath.Join(tempDir, "home")
 	if err := os.MkdirAll(homeDir, 0755); err != nil {
 		t.Fatalf("Failed to create fake home dir: %v", err)
@@ -362,18 +362,18 @@ func TestMyceliumInitValidatesSuccessMessage(t *testing.T) {
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("mycelium init failed: %v\nOutput: %s", err, output)
+		t.Fatalf("kinoko init failed: %v\nOutput: %s", err, output)
 	}
 
 	outputStr := string(output)
 
 	// Verify success message contains expected elements
 	expectedPhrases := []string{
-		"Mycelium initialized successfully",
+		"Kinoko initialized successfully",
 		"Next steps",
 		"config.yaml",
-		"mycelium serve",
-		"~/.mycelium/",
+		"kinoko serve",
+		"~/.kinoko/",
 	}
 
 	for _, phrase := range expectedPhrases {
@@ -388,16 +388,16 @@ func TestMyceliumInitValidatesSuccessMessage(t *testing.T) {
 	}
 }
 
-func TestMyceliumInitFilePermissions(t *testing.T) {
+func TestKinokoInitFilePermissions(t *testing.T) {
 	RequireGitBinary(t)
 
-	tempDir, err := os.MkdirTemp("", "mycelium-init-perms-test-*")
+	tempDir, err := os.MkdirTemp("", "kinoko-init-perms-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	binaryPath := buildMyceliumBinary(t, tempDir)
+	binaryPath := buildKinokoBinary(t, tempDir)
 	homeDir := filepath.Join(tempDir, "home")
 	if err := os.MkdirAll(homeDir, 0755); err != nil {
 		t.Fatalf("Failed to create fake home dir: %v", err)
@@ -409,22 +409,22 @@ func TestMyceliumInitFilePermissions(t *testing.T) {
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("mycelium init failed: %v\nOutput: %s", err, output)
+		t.Fatalf("kinoko init failed: %v\nOutput: %s", err, output)
 	}
 
 	// Check directory permissions
-	myceliumDir := filepath.Join(homeDir, ".mycelium")
-	info, err := os.Stat(myceliumDir)
+	kinokoDir := filepath.Join(homeDir, ".kinoko")
+	info, err := os.Stat(kinokoDir)
 	if err != nil {
-		t.Fatalf("Failed to stat mycelium dir: %v", err)
+		t.Fatalf("Failed to stat kinoko dir: %v", err)
 	}
 
 	if info.Mode().Perm() != 0755 {
-		t.Errorf("Mycelium directory should have 0755 permissions, got %o", info.Mode().Perm())
+		t.Errorf("Kinoko directory should have 0755 permissions, got %o", info.Mode().Perm())
 	}
 
 	// Check config file permissions
-	configPath := filepath.Join(myceliumDir, "config.yaml")
+	configPath := filepath.Join(kinokoDir, "config.yaml")
 	info, err = os.Stat(configPath)
 	if err != nil {
 		t.Fatalf("Failed to stat config file: %v", err)
@@ -435,7 +435,7 @@ func TestMyceliumInitFilePermissions(t *testing.T) {
 	}
 
 	// Check skills directory permissions
-	skillsDir := filepath.Join(myceliumDir, "skills")
+	skillsDir := filepath.Join(kinokoDir, "skills")
 	info, err = os.Stat(skillsDir)
 	if err != nil {
 		t.Fatalf("Failed to stat skills dir: %v", err)

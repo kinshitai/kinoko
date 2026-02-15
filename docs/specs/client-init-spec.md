@@ -1,4 +1,4 @@
-# Spec: `mycelium init` for Client Adoption
+# Spec: `kinoko init` for Client Adoption
 
 **Ticket:** G3  
 **Author:** Hal (CTO)  
@@ -10,69 +10,69 @@
 
 ## Problem
 
-"Zero friction or zero adoption." Currently, connecting an agent runtime (OpenClaw, Claude Code) to a Mycelium server requires:
+"Zero friction or zero adoption." Currently, connecting an agent runtime (OpenClaw, Claude Code) to a Kinoko server requires:
 1. Knowing the server exists
 2. Understanding the hook model
 3. Manually integrating session start/end hooks
 4. Configuring the agent to send sessions somewhere
 
-That's not zero friction. `mycelium init` should make adoption a one-command affair.
+That's not zero friction. `kinoko init` should make adoption a one-command affair.
 
-The existing `init.go` creates `~/.mycelium/` with a config and local git repo. That's the **server** setup. We need **client** setup — the thing that connects an agent to an existing Mycelium server.
+The existing `init.go` creates `~/.kinoko/` with a config and local git repo. That's the **server** setup. We need **client** setup — the thing that connects an agent to an existing Kinoko server.
 
 ## Design
 
 ### Two Modes
 
-**`mycelium init` (existing)** — server mode. Creates `~/.mycelium/`, config, local skills dir. Already works. Keep it.
+**`kinoko init` (existing)** — server mode. Creates `~/.kinoko/`, config, local skills dir. Already works. Keep it.
 
-**`mycelium init --connect <url>`** — client mode. Connects this machine to a remote Mycelium server.
+**`kinoko init --connect <url>`** — client mode. Connects this machine to a remote Kinoko server.
 
 ```bash
 # Connect to a remote server
-mycelium init --connect ssh://mycelium.internal:23231
+kinoko init --connect ssh://kinoko.internal:23231
 
 # Connect to localhost (dev mode)
-mycelium init --connect localhost
+kinoko init --connect localhost
 ```
 
 ### Client Mode Flow
 
 ```
-$ mycelium init --connect ssh://mycelium.internal:23231
+$ kinoko init --connect ssh://kinoko.internal:23231
 
-🍄 Connecting to Mycelium server...
+🍄 Connecting to Kinoko server...
 
-✓ Server reachable at ssh://mycelium.internal:23231
+✓ Server reachable at ssh://kinoko.internal:23231
 ✓ 3 skill libraries available (local: 47 skills, company: 123 skills)
-✓ SSH key generated at ~/.mycelium/client_ed25519
-✓ Config written to ~/.mycelium/config.yaml
+✓ SSH key generated at ~/.kinoko/client_ed25519
+✓ Config written to ~/.kinoko/config.yaml
 
 Next steps:
   • Add this to your agent config to enable injection:
     
     # OpenClaw (openclaw.yaml)
     skills:
-      mycelium: ssh://mycelium.internal:23231
+      kinoko: ssh://kinoko.internal:23231
     
     # Claude Code (.claude/settings.json)  
-    "mycelium": { "server": "ssh://mycelium.internal:23231" }
+    "kinoko": { "server": "ssh://kinoko.internal:23231" }
     
   • Or run the auto-installer:
-    mycelium hook install openclaw
-    mycelium hook install claude-code
+    kinoko hook install openclaw
+    kinoko hook install claude-code
 ```
 
 ### Hook Installation
 
-**`mycelium hook install <runtime>`** — installs session hooks into agent runtimes.
+**`kinoko hook install <runtime>`** — installs session hooks into agent runtimes.
 
 Supported runtimes (start with these):
 
 **OpenClaw:**
 - Detect OpenClaw config at `~/.openclaw/` or `$OPENCLAW_HOME`
-- Add a skill entry pointing to the Mycelium server
-- Or: write a hook script that `mycelium` calls on session start/end
+- Add a skill entry pointing to the Kinoko server
+- Or: write a hook script that `kinoko` calls on session start/end
 
 **Claude Code:**
 - Detect Claude Code config at `~/.claude/`
@@ -132,7 +132,7 @@ func (c *Client) OnSessionEnd(ctx context.Context, sessionLog []byte) error
 
 ```
 ┌─────────────────┐          ┌──────────────────────────┐
-│     Client      │          │     Mycelium Server      │
+│     Client      │          │     Kinoko Server      │
 │                 │          │                          │
 │  1. POST /discover ──────► │  Query SQLite+embeddings │
 │     {prompt}    │          │  Return [{repo, score}]  │
@@ -149,7 +149,7 @@ func (c *Client) OnSessionEnd(ctx context.Context, sessionLog []byte) error
 └─────────────────┘          └──────────────────────────┘
 ```
 
-### `mycelium serve` API (discovery + ingestion)
+### `kinoko serve` API (discovery + ingestion)
 
 ```go
 // Discovery — client asks "what skills match this prompt?"
@@ -176,7 +176,7 @@ GET /api/v1/libraries
 Clients maintain a local cache of cloned repos:
 
 ```
-~/.mycelium/cache/
+~/.kinoko/cache/
   └── local/
       ├── fix-n-plus-one-queries/    (git clone)
       │   └── v1/SKILL.md
@@ -193,12 +193,12 @@ Clients maintain a local cache of cloned repos:
 ### Config Changes
 
 ```yaml
-# Client-side config (~/.mycelium/config.yaml)
+# Client-side config (~/.kinoko/config.yaml)
 client:
-  server: ssh://mycelium.internal:23231    # Soft Serve (git)
-  api: http://mycelium.internal:23232      # Discovery + ingestion API
-  ssh_key: ~/.mycelium/client_ed25519
-  cache_dir: ~/.mycelium/cache             # Local skill cache
+  server: ssh://kinoko.internal:23231    # Soft Serve (git)
+  api: http://kinoko.internal:23232      # Discovery + ingestion API
+  ssh_key: ~/.kinoko/client_ed25519
+  cache_dir: ~/.kinoko/cache             # Local skill cache
   pull_interval: 5m                        # How often to refresh cached repos
   prefetch: true                           # Clone all skills on init, not just on demand
 
@@ -215,13 +215,13 @@ server:
 
 **Phase 1 (this ticket):**
 - Discovery API on serve (`/discover`, `/ingest`, `/health`, `/libraries`)
-- `mycelium init --connect <url>` (test connection, generate SSH key, write client config)
+- `kinoko init --connect <url>` (test connection, generate SSH key, write client config)
 - Client library (`internal/client/`) — discover → clone → read → inject cycle
 - Local skill cache with git clone/pull
 
 **Phase 2 (follow-up):**
-- `mycelium hook install openclaw`
-- `mycelium hook install claude-code`
+- `kinoko hook install openclaw`
+- `kinoko hook install claude-code`
 - Background goroutine for periodic `git pull` on cached repos
 - Prefetch mode (clone everything on init)
 
@@ -241,15 +241,15 @@ server:
 
 | RFC-002 Requirement | This Spec | Status |
 |---|---|---|
-| `mycelium init` sets up local config + hooks | ✅ `init --connect` for client setup | Aligned |
-| `mycelium remote add home ssh://...` | ⚠️ Simplified — `init --connect` handles it in one step instead of separate `remote add` | Simpler but equivalent |
+| `kinoko init` sets up local config + hooks | ✅ `init --connect` for client setup | Aligned |
+| `kinoko remote add home ssh://...` | ⚠️ Simplified — `init --connect` handles it in one step instead of separate `remote add` | Simpler but equivalent |
 | Three agents, one server (Phase 1 users) | ✅ Hal (OpenClaw) + Egor (Claude Code × 2) | Aligned |
 | Framework-agnostic hook spec (Phase 3) | ⚠️ `hook install` starts with OpenClaw + Claude Code, generic webhook as fallback | Phase 1 covers our needs, generic comes later |
 | Layered libraries — adding cloud = adding a URL | ✅ Client config supports multiple remotes with priority | Aligned |
 | Self-hostable first | ✅ Everything runs locally, no cloud deps | Aligned |
-| One config file | ✅ `~/.mycelium/config.yaml` controls everything | Aligned |
+| One config file | ✅ `~/.kinoko/config.yaml` controls everything | Aligned |
 
-**Gap from RFC:** RFC-002 shows `mycelium remote add home ssh://...` as a separate command. This spec folds that into `init --connect` for simplicity. If we need multi-remote later (connect to both home server AND company server), we should add `mycelium remote add/remove/list` commands. Not needed for Phase 1 — one server is enough.
+**Gap from RFC:** RFC-002 shows `kinoko remote add home ssh://...` as a separate command. This spec folds that into `init --connect` for simplicity. If we need multi-remote later (connect to both home server AND company server), we should add `kinoko remote add/remove/list` commands. Not needed for Phase 1 — one server is enough.
 
 **Transport decision:** Git-first, as the RFC intended. Git delivers skills (clone/pull repos). HTTP is only for discovery ("which repos match this prompt?") and ingestion (sending session logs). Clients work offline after initial clone. This is the right architecture — git is the truth all the way to the client.
 

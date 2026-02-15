@@ -1,4 +1,4 @@
-# How Mycelium Thinks
+# How Kinoko Thinks
 
 A conceptual guide for contributors. This document explains *why* the system works the way it does, using four mental models that map to the four pipeline stages. For the technical specifics of each component, see [architecture.md](./architecture.md).
 
@@ -6,9 +6,9 @@ A conceptual guide for contributors. This document explains *why* the system wor
 
 ## The Problem
 
-Every day, AI agents help people solve problems. Every solution dies when the session ends. The next person with the same problem starts from zero. Mycelium captures that knowledge automatically and delivers it to future sessions — without anyone having to write documentation, publish anything, or even know the system exists.
+Every day, AI agents help people solve problems. Every solution dies when the session ends. The next person with the same problem starts from zero. Kinoko captures that knowledge automatically and delivers it to future sessions — without anyone having to write documentation, publish anything, or even know the system exists.
 
-The hard part isn't storing knowledge. It's deciding what's worth keeping, how good it is, who should receive it, and when to let it go. Four mental models explain how Mycelium makes those decisions.
+The hard part isn't storing knowledge. It's deciding what's worth keeping, how good it is, who should receive it, and when to let it go. Four mental models explain how Kinoko makes those decisions.
 
 ---
 
@@ -18,7 +18,7 @@ The hard part isn't storing knowledge. It's deciding what's worth keeping, how g
 
 **How it maps:** Most agent sessions don't produce reusable knowledge. They're routine work, failed experiments, or exploration with no conclusion. Running an expensive LLM critic on every session would be wasteful and slow.
 
-Instead, Mycelium filters in stages:
+Instead, Kinoko filters in stages:
 
 1. **Panning** (Stage 1) — Cheap metadata checks. Is the session long enough? Did the agent actually execute anything successfully? Sessions that are obviously worthless get rejected instantly, at near-zero cost.
 
@@ -38,7 +38,7 @@ Instead, Mycelium filters in stages:
 
 **How it maps:** Asking "is this knowledge good?" is like asking "is this wine good?" — it's too vague to produce reliable, consistent answers. Different evaluators will weigh different things, and you can't debug why something scored poorly.
 
-Mycelium evaluates skills on seven specific dimensions:
+Kinoko evaluates skills on seven specific dimensions:
 
 - **Problem Specificity** — Is the problem clearly defined?
 - **Solution Completeness** — Could someone follow this and solve the problem?
@@ -62,7 +62,7 @@ Each dimension is scored 1–5 with explicit criteria at each level. An LLM answ
 
 **How it maps:** Text similarity is a blunt instrument for matching knowledge to needs. A prompt about "React performance" is most *textually* similar to other documents mentioning React and performance. But the most *useful* skill might be about JavaScript memory profiling or browser DevTools — related by problem pattern, not by vocabulary.
 
-Mycelium matches in multiple steps:
+Kinoko matches in multiple steps:
 
 1. **Understand the question** — Classify the prompt's intent (building, fixing, optimizing), domain (frontend, backend, infrastructure), and specific problem pattern.
 
@@ -82,7 +82,7 @@ Mycelium matches in multiple steps:
 
 **How it maps:** A knowledge library that only grows eventually drowns in stale, outdated, or redundant information. API-specific workarounds go stale when the API changes. Deprecated library solutions become actively harmful. Without decay, the ratio of useful to useless knowledge degrades over time, and injection quality collapses under noise.
 
-Mycelium applies different decay rules to different types of knowledge:
+Kinoko applies different decay rules to different types of knowledge:
 
 - **Foundational skills** (old-growth trees) — Core patterns that rarely change: debugging race conditions, designing database schemas, structuring error handling. These decay slowly and require strong evidence to deprecate.
 

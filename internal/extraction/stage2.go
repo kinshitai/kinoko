@@ -6,11 +6,11 @@ import (
 	"log/slog"
 	"math"
 
-	"github.com/mycelium-dev/mycelium/internal/config"
-	"github.com/mycelium-dev/mycelium/internal/embedding"
-	"github.com/mycelium-dev/mycelium/internal/llm"
-	"github.com/mycelium-dev/mycelium/internal/llmutil"
-	"github.com/mycelium-dev/mycelium/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/embedding"
+	"github.com/kinoko-dev/kinoko/internal/llm"
+	"github.com/kinoko-dev/kinoko/internal/llmutil"
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 // Taxonomy is the canonical list of problem patterns from Appendix B.

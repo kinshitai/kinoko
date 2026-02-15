@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 // scanner is satisfied by both *sql.Row and *sql.Rows.

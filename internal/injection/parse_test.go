@@ -3,7 +3,7 @@ package injection
 import (
 	"testing"
 
-	"github.com/mycelium-dev/mycelium/internal/llmutil"
+	"github.com/kinoko-dev/kinoko/internal/llmutil"
 )
 
 func TestParseClassificationResponse_AllStrategies(t *testing.T) {

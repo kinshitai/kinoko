@@ -4,7 +4,7 @@
 **Reviewed by:** Hal (CTO)  
 **Date:** 2026-02-15  
 **Status:** Reviewed — ready for implementation  
-**Module:** `github.com/mycelium-dev/mycelium`
+**Module:** `github.com/kinoko-dev/kinoko`
 
 ---
 
@@ -734,10 +734,10 @@ Create `internal/injection/` implementing `Injector` from §2.1. Classify prompt
 Create `internal/decay/` implementing `DecayRunner`. Runs as scheduled job — reads usage stats, applies half-life decay per category, flags skills below deprecation threshold. Pure DB operations.
 
 ### Phase 8: CLI Integration
-Wire extraction into `mycelium serve` as a post-session hook. Wire injection into session startup. Add `mycelium extract <session-log>` for manual extraction. Add `mycelium decay --dry-run` for manual decay cycles.
+Wire extraction into `kinoko serve` as a post-session hook. Wire injection into session startup. Add `kinoko extract <session-log>` for manual extraction. Add `kinoko decay --dry-run` for manual decay cycles.
 
 ### Phase 9: A/B Testing & Metrics
-Add injection A/B test (§3.3) with configurable control ratio. Add `injection_events` logging. Add `mycelium stats` command showing pipeline metrics from §3.1-3.2.
+Add injection A/B test (§3.3) with configurable control ratio. Add `injection_events` logging. Add `kinoko stats` command showing pipeline metrics from §3.1-3.2.
 
 ---
 
@@ -792,7 +792,7 @@ type EmbeddingConfig struct {
     Model      string `yaml:"model"`       // default: "text-embedding-3-small"
     Dimensions int    `yaml:"dimensions"`  // default: 1536
     BaseURL    string `yaml:"base_url"`    // for local/custom providers
-    APIKey     string `yaml:"api_key"`     // env: MYCELIUM_EMBEDDING_API_KEY
+    APIKey     string `yaml:"api_key"`     // env: KINOKO_EMBEDDING_API_KEY
     Retry      RetryConfig          `yaml:"retry"`
     CircuitBreaker CircuitBreakerConfig `yaml:"circuit_breaker"`
 }

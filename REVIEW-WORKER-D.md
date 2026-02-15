@@ -2,7 +2,7 @@
 
 **Reviewer:** Jazz  
 **Date:** 2026-02-15  
-**Files:** `cmd/mycelium/serve.go`, `worker.go`, `importcmd.go`, `queuecmd.go`, `root.go`
+**Files:** `cmd/kinoko/serve.go`, `worker.go`, `importcmd.go`, `queuecmd.go`, `root.go`
 
 ---
 
@@ -81,7 +81,7 @@ If `T` is `worker.Pool` (an interface) and the value is a non-nil interface wrap
 content, err := os.ReadFile(p)
 ```
 
-If someone does `mycelium import /dev/zero` or passes a 10GB log, this OOMs. Add a size check or use `io.LimitReader`.
+If someone does `kinoko import /dev/zero` or passes a 10GB log, this OOMs. Add a size check or use `io.LimitReader`.
 
 ### D9 (Medium) — File extension filter is too restrictive and undocumented.
 

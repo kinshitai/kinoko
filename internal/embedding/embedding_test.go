@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/mycelium-dev/mycelium/internal/circuitbreaker"
+	"github.com/kinoko-dev/kinoko/internal/circuitbreaker"
 	"time"
 )
 

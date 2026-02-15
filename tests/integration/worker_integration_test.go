@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/decay"
-	"github.com/mycelium-dev/mycelium/internal/model"
-	"github.com/mycelium-dev/mycelium/internal/storage"
-	"github.com/mycelium-dev/mycelium/internal/worker"
+	"github.com/kinoko-dev/kinoko/internal/decay"
+	"github.com/kinoko-dev/kinoko/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/worker"
 )
 
 // =============================================================================

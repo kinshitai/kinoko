@@ -2,7 +2,7 @@
 
 ## Installation
 
-### "command not found: mycelium"
+### "command not found: kinoko"
 
 Go's bin directory isn't in your PATH:
 
@@ -27,7 +27,7 @@ lsof -i :23231        # macOS/Linux
 netstat -an | grep 23231  # Linux
 ```
 
-Fix: stop the conflicting process, or change the port in `~/.mycelium/config.yaml`:
+Fix: stop the conflicting process, or change the port in `~/.kinoko/config.yaml`:
 
 ```yaml
 server:
@@ -37,15 +37,15 @@ server:
 ### Permission denied creating directories
 
 ```bash
-chmod 755 ~/.mycelium
-mkdir -p ~/.mycelium/data
+chmod 755 ~/.kinoko
+mkdir -p ~/.kinoko/data
 ```
 
 Or change `server.dataDir` in config to a writable location.
 
 ### Config validation errors
 
-Mycelium validates config on startup. Common issues:
+Kinoko validates config on startup. Common issues:
 
 - **Port out of range:** must be 1–65535
 - **Invalid storage driver:** must be `"sqlite"` or `"postgres"`
@@ -56,7 +56,7 @@ Mycelium validates config on startup. Common issues:
 
 ### Connection refused
 
-1. Is the server running? Start it: `mycelium serve`
+1. Is the server running? Start it: `kinoko serve`
 2. Check firewall settings
 3. Debug with: `ssh -v -p 23231 localhost`
 
@@ -91,7 +91,7 @@ ssh-keygen -R "[localhost]:23231"
 ### "Not a git repository" in skills directory
 
 ```bash
-cd ~/.mycelium/skills
+cd ~/.kinoko/skills
 git init
 git add .
 git commit -m "Initial commit"
@@ -135,9 +135,9 @@ Must be 0.0–1.0 (e.g., `0.8`, not `80` or `1.5`).
 Include this info:
 
 ```bash
-mycelium --version
+kinoko --version
 go version
 git --version
 uname -a
-cat ~/.mycelium/config.yaml
+cat ~/.kinoko/config.yaml
 ```

@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/mycelium-dev/mycelium/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 type mockCommitter struct {

@@ -1,6 +1,6 @@
 ---
 name: tactical-skill
-id: 019c6352-388c-7f09-96ac-073dbcd4db78
+id: 019c635a-39f4-70f8-ba1b-81ca21c1e70a
 version: 1
 category: tactical
 extracted_by: pipeline-v1

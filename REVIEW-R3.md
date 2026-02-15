@@ -47,7 +47,7 @@ Fine. The developer DID fix the remaining issues from R2:
 Changed from `Version: "0.1.0"` to `var Version = "dev"` with proper build-time injection support. Finally learned how to use ldflags.
 
 ### 2. Non-existent Commands Referenced - FIXED ✅  
-The init success message no longer mentions `mycelium remote add` or other phantom commands. Now gives realistic next steps that correspond to actual functionality.
+The init success message no longer mentions `kinoko remote add` or other phantom commands. Now gives realistic next steps that correspond to actual functionality.
 
 ### 3. Better Architecture
 The new `gitserver` package is actually well-designed:

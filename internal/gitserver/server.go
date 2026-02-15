@@ -14,11 +14,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/config"
-	"github.com/mycelium-dev/mycelium/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
-// Server wraps the Soft Serve git server with Mycelium-specific functionality
+// Server wraps the Soft Serve git server with Kinoko-specific functionality
 type Server struct {
 	config         *config.Config
 	dataDir        string
@@ -73,7 +73,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 
 // Start starts the git server
 func (s *Server) Start() error {
-	s.logger.Info("Starting Mycelium git server with Soft Serve",
+	s.logger.Info("Starting Kinoko git server with Soft Serve",
 		"host", s.config.Server.Host,
 		"port", s.config.Server.Port,
 		"dataDir", s.dataDir)
@@ -160,7 +160,7 @@ func (s *Server) waitForReady() error {
 
 // Stop gracefully shuts down the git server
 func (s *Server) Stop() error {
-	s.logger.Info("Stopping Mycelium git server")
+	s.logger.Info("Stopping Kinoko git server")
 
 	if s.cmd == nil || s.cmd.Process == nil {
 		s.logger.Info("Git server was not running")

@@ -1,4 +1,4 @@
-# Mycelium Alignment Report
+# Kinoko Alignment Report
 
 **Author:** Luka Jensen  
 **Date:** 2026-02-15  
@@ -24,7 +24,7 @@ But here's the thing: we have zero users. The manifesto paints a picture of a ju
 
 The extraction side is genuinely zero-friction — background workers process sessions async, the session-end hook is <10ms, no human tags or reviews are required for the default flow. Good.
 
-The injection side requires... well, it requires the system to exist and be running. `mycelium serve` starts everything, `mycelium init` sets up a client. That's two commands. Not zero. The RFC-002 vision of `mycelium init` + `mycelium remote add home ssh://...` is designed but I don't see `mycelium init` fully implemented in the codebase — I see `serve`, config loading, and gitserver, but the client-side setup flow isn't complete.
+The injection side requires... well, it requires the system to exist and be running. `kinoko serve` starts everything, `kinoko init` sets up a client. That's two commands. Not zero. The RFC-002 vision of `kinoko init` + `kinoko remote add home ssh://...` is designed but I don't see `kinoko init` fully implemented in the codebase — I see `serve`, config loading, and gitserver, but the client-side setup flow isn't complete.
 
 More fundamentally: "zero friction" implies the system installs itself into existing workflows. The Entire.io reference in RFC-001 mentions `entire enable` as a model — one command, hooks installed. We have the architecture for hooks (`OnSessionStart`, `OnSessionEnd` on the gitserver) but the actual hook installation into agent runtimes (OpenClaw, Claude Code) isn't in this codebase. That's the adoption-critical path and it's not here.
 
@@ -76,7 +76,7 @@ The decay formula is mathematically sound — exponential decay anchored to `Las
 
 The layered library design (local > company > public, add a URL to config) supports open sharing. Git-based storage means skills are forkable, clonable, inspectable. No paywalls or token gates in the code.
 
-But "open by default" implies a default-public posture. Right now, a Mycelium instance is a private server. There's no public skill library, no federation, no discovery mechanism. The "open" part requires infrastructure that doesn't exist yet. The RFC lists "cloud hosted layer" and "federation" as Beyond-phase ideas.
+But "open by default" implies a default-public posture. Right now, a Kinoko instance is a private server. There's no public skill library, no federation, no discovery mechanism. The "open" part requires infrastructure that doesn't exist yet. The RFC lists "cloud hosted layer" and "federation" as Beyond-phase ideas.
 
 **Not violated, but not actualized.** The architecture doesn't prevent openness; it just doesn't enable it yet.
 
@@ -123,11 +123,11 @@ This drift was probably pragmatic — building a proper git-backed store is comp
 | Phase 3: Framework-agnostic hook spec | Not started | Yes — currently tied to the gitserver's hook model |
 | Pre-commit credential scanning | Config flag exists, no implementation | Yes — manifesto says day one |
 | Pre-commit prompt injection detection | Partial (Stage 3 delimiter sanitization) | Input sanitization needed |
-| `mycelium init` client setup | Not found in codebase | Yes — critical for adoption |
-| `mycelium extract <session-log>` manual extraction | Not found | Nice to have for debugging |
-| `mycelium decay --dry-run` | Not found | Nice to have |
-| `mycelium queue` inspection commands | Not found | Useful for operations |
-| `mycelium stats` metrics command | Not found | `metrics.Collector` exists but no CLI |
+| `kinoko init` client setup | Not found in codebase | Yes — critical for adoption |
+| `kinoko extract <session-log>` manual extraction | Not found | Nice to have for debugging |
+| `kinoko decay --dry-run` | Not found | Nice to have |
+| `kinoko queue` inspection commands | Not found | Useful for operations |
+| `kinoko stats` metrics command | Not found | `metrics.Collector` exists but no CLI |
 
 ### What was built that wasn't in the plan
 
@@ -164,7 +164,7 @@ The architecture supports this via layered libraries — add a remote URL, get s
 2. There is no skill synchronization protocol.
 3. There is no public skill registry.
 
-The "collective" is currently scoped to "whoever has access to the same Mycelium server." For the founding team (Hal + Egor, 3 agents), that's fine. For the manifesto vision, it's a long way off.
+The "collective" is currently scoped to "whoever has access to the same Kinoko server." For the founding team (Hal + Egor, 3 agents), that's fine. For the manifesto vision, it's a long way off.
 
 ### Is the git-based sharing mechanism real or theoretical?
 
@@ -183,7 +183,7 @@ Git is currently an infrastructure component (Soft Serve runs), not a knowledge 
 
 **For extraction: yes.** Background workers, async queue, <10ms hook. Excellent.
 
-**For adoption: no.** There's no `mycelium init` to set up a client. There's no hook installer for agent frameworks. The server runs, but connecting an agent to it requires manual integration that isn't documented or automated.
+**For adoption: no.** There's no `kinoko init` to set up a client. There's no hook installer for agent frameworks. The server runs, but connecting an agent to it requires manual integration that isn't documented or automated.
 
 **For injection: partially.** The injection pipeline runs, but it requires an LLM call for every prompt classification. That's not zero-friction — it's a latency and cost addition to every session start. The degraded mode (pattern-only) is a good fallback, but the primary path adds ~300ms to session startup.
 
@@ -193,7 +193,7 @@ Git is currently an infrastructure component (Soft Serve runs), not a knowledge 
 
 - Single binary (Go)
 - SQLite as default storage (one file)
-- `mycelium serve` starts everything
+- `kinoko serve` starts everything
 - Soft Serve for git (embedded subprocess)
 - No required cloud dependencies (embedding API is external but optional with degraded mode)
 - Config in one YAML file
@@ -281,7 +281,7 @@ The manifesto is aspirational. The implementation is foundational. The gap is:
 |---|---|
 | "Solved for everyone" | Solved for people on the same server |
 | "Agents extract, transport, and deliver" | Agents extract and deliver; transport is local |
-| "No one even knows it's happening" | You need to set up and run Mycelium |
+| "No one even knows it's happening" | You need to set up and run Kinoko |
 | "Open by default" | Private by default, open architecturally possible |
 | "Security is a precondition" | Security hooks not yet implemented |
 | "The value is in the network" | There is no network yet |
@@ -304,7 +304,7 @@ The manifesto says "ship on day one." We're past day one. Session logs contain s
 
 **Priority 3: Client-side hook installation.**
 
-`mycelium init` that installs hooks into OpenClaw/Claude Code. Without this, adoption requires manual integration, which violates zero-friction.
+`kinoko init` that installs hooks into OpenClaw/Claude Code. Without this, adoption requires manual integration, which violates zero-friction.
 
 **Priority 4: Remote library fetching.**
 
@@ -333,7 +333,7 @@ Even a simple `git clone` + periodic `git pull` for remote libraries would move 
 - Multi-agent collaboration
 - Trust and reputation
 - Public skill libraries
-- The "mycelial" part of Mycelium
+- The "mycelial" part of Kinoko
 
 **Overall:** We built an excellent extraction-injection engine. We haven't built a knowledge network yet. The foundation is solid — the architecture can grow into the vision if we prioritize the git integration and network layer next. The risk is that we keep polishing the pipeline (which is already good) and never build the network (which is the whole point).
 

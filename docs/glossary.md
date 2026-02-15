@@ -1,6 +1,6 @@
 # Glossary
 
-Terms used throughout the Mycelium project with specific meanings.
+Terms used throughout the Kinoko project with specific meanings.
 
 ---
 
@@ -76,7 +76,7 @@ A decay mechanic that boosts skills recently used with positive outcomes. If a s
 A single interaction between a user and an AI agent. Represented by `extraction.SessionRecord` with metadata: duration, tool calls, error rate, tokens, etc. The raw input to the extraction pipeline.
 
 **Skill**
-The atomic unit of knowledge in Mycelium. Represented by `extraction.SkillRecord` in the database and a `SKILL.md` file on disk with YAML front matter. Versioned. Contains quality scores, patterns, category, decay score, and usage statistics.
+The atomic unit of knowledge in Kinoko. Represented by `extraction.SkillRecord` in the database and a `SKILL.md` file on disk with YAML front matter. Versioned. Contains quality scores, patterns, category, decay score, and usage statistics.
 
 **SkillQuerier**
 An interface used by Stage 2 to find the nearest-neighbor skill by embedding: `QueryNearest(ctx, embedding, libraryID) → *SkillQueryResult`. Returns cosine similarity of the closest match.

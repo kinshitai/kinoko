@@ -1,4 +1,4 @@
-# Mycelium Structural Refactoring Plan
+# Kinoko Structural Refactoring Plan
 
 **Reviewer:** Jazz (still grumpy, now with a blueprint)
 **Date:** 2026-02-15
@@ -192,7 +192,7 @@ Clean. **Leave it.**
 
 ---
 
-### `cmd/mycelium/serve.go` — 349 lines
+### `cmd/kinoko/serve.go` — 349 lines
 
 **Responsibilities (4):**
 1. `runServe` command handler
@@ -201,13 +201,13 @@ Clean. **Leave it.**
 4. `startWorkerSystem` — creating queue + pool + scheduler
 5. `waitForShutdown` — graceful shutdown orchestration
 
-This is a composition root. It's supposed to wire things together. The problem isn't the file size — it's that `buildSessionHooks` and `buildPipeline` duplicate LLM/embedder client construction. They both do the `MYCELIUM_LLM_API_KEY` / `OPENAI_API_KEY` dance independently.
+This is a composition root. It's supposed to wire things together. The problem isn't the file size — it's that `buildSessionHooks` and `buildPipeline` duplicate LLM/embedder client construction. They both do the `KINOKO_LLM_API_KEY` / `OPENAI_API_KEY` dance independently.
 
 **Longest function:** `runServe` at ~60 lines. `buildSessionHooks` at ~60 lines. Both acceptable for a composition root.
 
 ---
 
-### `cmd/mycelium/extract.go` — 314 lines
+### `cmd/kinoko/extract.go` — 314 lines
 
 **Responsibilities (4):**
 1. `runExtract` command handler
@@ -226,7 +226,7 @@ This is a composition root. It's supposed to wire things together. The problem i
 
 ---
 
-### `cmd/mycelium/queuecmd.go` — 206 lines
+### `cmd/kinoko/queuecmd.go` — 206 lines
 
 **Responsibilities (4):** Four subcommands (stats, list, retry, flush) + helper. Fine for a CLI file.
 
@@ -249,7 +249,7 @@ Everything depends on `extraction`. It's the bottom of the dependency graph by a
 ### Dependency graph (current)
 
 ```
-cmd/mycelium
+cmd/kinoko
   ├── config
   ├── storage ──────→ extraction
   ├── extraction
@@ -311,13 +311,13 @@ No actual circular imports (Go wouldn't compile), but:
 **R2: Extract `internal/llm` package**
 
 - **What:** Move LLM client interfaces, error types, and the OpenAI implementation out of `extraction` and `cmd/`.
-- **Why:** `LLMClient` is defined in `extraction/stage2.go`. `LLMClientV2`, `LLMError`, `LLMCompleteResult` are in `extraction/stage3.go`. The actual OpenAI implementation lives in `cmd/mycelium/extract.go` (!!). Three different locations for one concern.
+- **Why:** `LLMClient` is defined in `extraction/stage2.go`. `LLMClientV2`, `LLMError`, `LLMCompleteResult` are in `extraction/stage3.go`. The actual OpenAI implementation lives in `cmd/kinoko/extract.go` (!!). Three different locations for one concern.
 - **How:**
   - Create `internal/llm/`.
   - `internal/llm/client.go`: `LLMClient`, `LLMClientV2`, `LLMCompleteResult` interfaces/types.
   - `internal/llm/errors.go`: `LLMError`, `isRetryable`, `isRateLimit`, `isTimeout`.
-  - `internal/llm/openai.go`: Move `openAILLMClient` + `openAIComplete` from `cmd/mycelium/extract.go`. Add constructor: `NewOpenAIClient(apiKey, model string) *OpenAIClient`.
-  - Remove `defaultHTTPClient` global from `cmd/mycelium/helpers.go`; put HTTP client inside `OpenAIClient` struct.
+  - `internal/llm/openai.go`: Move `openAILLMClient` + `openAIComplete` from `cmd/kinoko/extract.go`. Add constructor: `NewOpenAIClient(apiKey, model string) *OpenAIClient`.
+  - Remove `defaultHTTPClient` global from `cmd/kinoko/helpers.go`; put HTTP client inside `OpenAIClient` struct.
 - **Size:** M (1-2 hours)
 - **Dependencies:** R1 (model package should exist first so llm doesn't import extraction)
 - **Risk:** Low. Moving code, not changing behavior.
@@ -435,9 +435,9 @@ No actual circular imports (Go wouldn't compile), but:
 **R10: Deduplicate embedder/LLM client construction in `serve.go`**
 
 - **What:** Extract a `buildClients` helper that creates embedder + LLM client once.
-- **Why:** `buildSessionHooks` and `buildPipeline` both independently read env vars, create embedding configs, and construct clients. Same 10 lines of `MYCELIUM_EMBEDDING_API_KEY`/`OPENAI_API_KEY` dance, twice.
+- **Why:** `buildSessionHooks` and `buildPipeline` both independently read env vars, create embedding configs, and construct clients. Same 10 lines of `KINOKO_EMBEDDING_API_KEY`/`OPENAI_API_KEY` dance, twice.
 - **How:**
-  - After R2: Create a factory function in `serve.go` (or `cmd/mycelium/clients.go`): `buildClients(cfg) (embedding.Embedder, llm.Client, error)`. Call once, pass to both `buildSessionHooks` and `buildPipeline`.
+  - After R2: Create a factory function in `serve.go` (or `cmd/kinoko/clients.go`): `buildClients(cfg) (embedding.Embedder, llm.Client, error)`. Call once, pass to both `buildSessionHooks` and `buildPipeline`.
 - **Size:** S (30 min)
 - **Dependencies:** R2
 - **Risk:** Very low.
@@ -447,7 +447,7 @@ No actual circular imports (Go wouldn't compile), but:
 **R11: Deduplicate `decayConfigFromYAML` bridging**
 
 - **What:** Eliminate the `config.DecayConfig` → `decay.Config` translation.
-- **Why:** `config.DecayConfig` and `decay.Config` are identical structs with identical field names. `decayConfigFromYAML` in `cmd/mycelium/decay.go` manually copies each field with zero-value fallback. This is maintenance theater.
+- **Why:** `config.DecayConfig` and `decay.Config` are identical structs with identical field names. `decayConfigFromYAML` in `cmd/kinoko/decay.go` manually copies each field with zero-value fallback. This is maintenance theater.
 - **How:** Either (a) make `decay.Config` the one config struct and use it directly in `config.Config`, or (b) add a `decay.ConfigFromPartial(partial)` method that handles defaults. Option (a) is cleaner — `config.Config.Decay` becomes `decay.Config` directly.
 - **Size:** S (30 min)
 - **Dependencies:** None
@@ -492,7 +492,7 @@ No actual circular imports (Go wouldn't compile), but:
 
 ---
 
-**R15: Remove `reflect`-based `ignoreNil` from `cmd/mycelium/worker.go`**
+**R15: Remove `reflect`-based `ignoreNil` from `cmd/kinoko/worker.go`**
 
 - **What:** Replace the generic `ignoreNil[T]` with explicit nil checks.
 - **Why:** Using `reflect` to check if an interface is nil is a Go anti-pattern. The function exists to handle two call sites. Just write `if sched != nil { sched.Stop(ctx) }`.
@@ -593,7 +593,7 @@ internal/
 ### Dependency graph (after refactoring)
 
 ```
-cmd/mycelium
+cmd/kinoko
   ├── config
   ├── model (types only)
   ├── llm

@@ -1,12 +1,12 @@
 # Internal Architecture
 
-This document describes Mycelium's technical architecture: how knowledge flows from agent sessions into a shared library and back out into future sessions. Every claim here matches the implemented code.
+This document describes Kinoko's technical architecture: how knowledge flows from agent sessions into a shared library and back out into future sessions. Every claim here matches the implemented code.
 
 ---
 
 ## System Overview
 
-Mycelium is a pipeline with four subsystems:
+Kinoko is a pipeline with four subsystems:
 
 ```
 Agent Session → EXTRACTION → STORAGE → INJECTION → Agent Session
@@ -32,7 +32,7 @@ A session produces work. Extraction decides whether that work contains reusable 
 | `config` | `internal/config/` | YAML config loading and validation |
 | `gitserver` | `internal/gitserver/` | Soft Serve SSH git server |
 
-CLI entry points live in `cmd/mycelium/`.
+CLI entry points live in `cmd/kinoko/`.
 
 ---
 
@@ -410,7 +410,7 @@ Each component communicates through defined Go interfaces. Extraction does not k
 
 ## Server Integration
 
-`cmd/mycelium/serve.go` wires both pipelines into session lifecycle hooks:
+`cmd/kinoko/serve.go` wires both pipelines into session lifecycle hooks:
 
 - **`OnSessionStart`** — runs the injection pipeline (with optional A/B testing)
 - **`OnSessionEnd`** — runs the extraction pipeline on the session log

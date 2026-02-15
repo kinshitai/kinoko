@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 
-	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/kinoko-dev/kinoko/internal/extraction"
 )
 
 // NewSkillQuerier returns an extraction.SkillQuerier backed by the given store.

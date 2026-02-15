@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mycelium-dev/mycelium/internal/config"
-	"github.com/mycelium-dev/mycelium/internal/decay"
-	"github.com/mycelium-dev/mycelium/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/decay"
+	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
 var decayCmd = &cobra.Command{

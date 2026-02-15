@@ -1,12 +1,12 @@
 # Feedback Patterns
 
-How developers interact with the Mycelium system: inspecting what it does, correcting mistakes, and maintaining knowledge quality. This is a DX specification — it describes the interaction patterns the system should support, not their implementation.
+How developers interact with the Kinoko system: inspecting what it does, correcting mistakes, and maintaining knowledge quality. This is a DX specification — it describes the interaction patterns the system should support, not their implementation.
 
 ---
 
 ## Design Principle
 
-Mycelium operates automatically by default. Developers shouldn't *need* to interact with it. But when they want to — because something went wrong, because they're curious, or because they know something the system doesn't — the interaction should be clear, fast, and effective.
+Kinoko operates automatically by default. Developers shouldn't *need* to interact with it. But when they want to — because something went wrong, because they're curious, or because they know something the system doesn't — the interaction should be clear, fast, and effective.
 
 Every automated decision should be inspectable. Every inspectable decision should be correctable.
 

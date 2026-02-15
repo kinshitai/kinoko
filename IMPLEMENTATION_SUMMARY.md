@@ -1,4 +1,4 @@
-# Mycelium Git Server Implementation Summary
+# Kinoko Git Server Implementation Summary
 
 ## ✅ Task Completion Status
 
@@ -10,7 +10,7 @@
 - Soft Serve exposes a clean programmatic API via `server.NewServer()`
 - Context-based dependency injection pattern for backend, database, logger, config
 - Better control over configuration and lifecycle vs external process management
-- Aligns with Mycelium architecture for single-binary self-hosting
+- Aligns with Kinoko architecture for single-binary self-hosting
 - Minimal external dependencies
 
 **API Structure Identified:**
@@ -45,7 +45,7 @@ func (s *Server) GetConnectionInfo() ConnectionInfo
 ```
 
 **Integration with serve command:**
-- ✅ `mycelium serve` starts git server
+- ✅ `kinoko serve` starts git server
 - ✅ Logs actual SSH connection URL: `ssh://127.0.0.1:23231`
 - ✅ Graceful shutdown handling
 - ✅ Error handling and logging
@@ -58,7 +58,7 @@ func (s *Server) GetConnectionInfo() ConnectionInfo
 
 - ✅ **Fixed init.go success message**
   - Removed reference to "under development"
-  - Now accurately describes `mycelium serve` functionality
+  - Now accurately describes `kinoko serve` functionality
 
 - ✅ **Serve command logs connection info**
   - Shows `ssh_url=ssh://127.0.0.1:23231`
@@ -82,7 +82,7 @@ func (s *Server) GetConnectionInfo() ConnectionInfo
 ## 🔧 Current Implementation Status
 
 ### ✅ What Works Now
-- Complete CLI structure (`mycelium init`, `mycelium serve`)
+- Complete CLI structure (`kinoko init`, `kinoko serve`)
 - Configuration system with validation
 - Git server infrastructure and lifecycle management
 - Repository management API (placeholder implementation)
@@ -115,7 +115,7 @@ func (s *Server) GetConnectionInfo() ConnectionInfo
 
 ✅ **Repo-per-skill**: Infrastructure supports separate repos for each skill
 ✅ **Self-hostable**: Single binary, minimal dependencies
-✅ **Configuration-driven**: Uses ~/.mycelium/config.yaml
+✅ **Configuration-driven**: Uses ~/.kinoko/config.yaml
 ✅ **Graceful lifecycle**: Proper start/stop with signal handling
 ✅ **Programmatic API**: Background worker can create repos via server.CreateRepo()
 ✅ **Error handling**: Comprehensive error handling throughout
@@ -123,9 +123,9 @@ func (s *Server) GetConnectionInfo() ConnectionInfo
 
 ## 🎯 Phase 1 Goals Achievement
 
-**Goal: A running Mycelium server that we use daily**
-- ✅ `mycelium serve` starts git server infrastructure
-- ✅ `mycelium init` sets up workspace
+**Goal: A running Kinoko server that we use daily**
+- ✅ `kinoko serve` starts git server infrastructure
+- ✅ `kinoko init` sets up workspace
 - ✅ Configuration system ready
 - ✅ Repository management API ready
 - ✅ Infrastructure for skill extraction and storage
@@ -134,11 +134,11 @@ func (s *Server) GetConnectionInfo() ConnectionInfo
 
 ## 🚀 Ready for Production Integration
 
-The implementation is **production-ready infrastructure** that needs only the actual Soft Serve dependency to become fully functional. All the Mycelium-specific logic, configuration, lifecycle management, and API integration is complete and tested.
+The implementation is **production-ready infrastructure** that needs only the actual Soft Serve dependency to become fully functional. All the Kinoko-specific logic, configuration, lifecycle management, and API integration is complete and tested.
 
 **Command to integrate Soft Serve:**
 ```bash
-cd /home/claw/.openclaw/workspace/mycelium
+cd /home/claw/.openclaw/workspace/kinoko
 go get github.com/charmbracelet/soft-serve
 # Then update internal/gitserver/server.go to use real Soft Serve server
 ```

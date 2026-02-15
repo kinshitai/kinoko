@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/circuitbreaker"
+	"github.com/kinoko-dev/kinoko/internal/circuitbreaker"
 )
 
 // Tests for the embedding circuit breaker state transitions.

@@ -167,7 +167,7 @@ Based on everything above, here's the extraction output format.
 name: fix-postgres-connection-pool-exhaustion
 version: 1
 tags: [database, postgres, connection-pooling, performance]
-author: mycelium-extractor
+author: kinoko-extractor
 confidence: 0.82
 created: 2026-02-15
 dependencies: []

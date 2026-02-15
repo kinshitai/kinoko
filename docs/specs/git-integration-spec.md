@@ -51,7 +51,7 @@ SQLite is never written directly during extraction. It's populated by the hook.
 
 ### Read Path (Injection — server-side)
 
-For server-side injection (current architecture, `mycelium serve`):
+For server-side injection (current architecture, `kinoko serve`):
 ```
 Session starts
   → Injection pipeline queries SQLite for matching skills (embeddings + patterns)
@@ -77,10 +77,10 @@ Client works offline after initial clone. `git pull` periodically for updates.
 
 ```bash
 # Delete SQLite — it's just a cache
-rm ~/.mycelium/mycelium.db
+rm ~/.kinoko/kinoko.db
 
 # Rebuild from git (re-triggers hooks on all repos)
-mycelium git rebuild
+kinoko git rebuild
 # → Lists all repos in Soft Serve
 # → For each: clones, parses SKILL.md, computes embedding, inserts to SQLite
 # → Done. Full recovery.
@@ -107,75 +107,73 @@ company/circuit-breaker-pattern/v1/SKILL.md
 company/circuit-breaker-pattern/v2/SKILL.md
 ```
 
-### Indexing After Push
+### Soft Serve Hooks (native support confirmed)
 
-**Important:** Soft Serve doesn't natively support server-side git hooks (pre-receive/post-receive). It manages repos internally, not as bare repos on the filesystem.
+Soft Serve supports standard git server-side hooks: `pre-receive`, `update`, `post-update`, `post-receive`. Both per-repo hooks (in repo's `hooks/` dir) and **global hooks** (in `{SOFT_SERVE_DATA_PATH}/hooks/`). Standard shell scripts.
 
-Two options for triggering indexing after a push:
+Also supports **HTTP webhooks** per-repo for push events via `repo webhook create`.
 
-**Option A: Application-level hook (recommended for Phase 1)**
+This means the git-first architecture works natively:
 
-Since our extraction pipeline controls the push (via `GitCommitter.CommitSkill`), we index right after a successful push in the same call:
+**Global `post-receive` hook** at `{dataDir}/hooks/post-receive`:
 
-```go
-func (g *GitCommitter) CommitSkill(ctx context.Context, libraryID string, skill *SkillRecord, body []byte) (string, error) {
-    // 1. Create repo, clone workdir, write SKILL.md, git push
-    commitHash := ...
-    
-    // 2. Push succeeded → index into SQLite
-    if g.indexer != nil {
-        emb, _ := g.embedder.Embed(ctx, body)
-        g.indexer.IndexSkill(ctx, skill, emb)
-    }
-    
-    return commitHash, nil
-}
+```sh
+#!/bin/sh
+# Called after every successful push to any repo.
+# Triggers indexing: parse SKILL.md → compute embedding → write SQLite.
+#
+# Environment: GIT_DIR is set, stdin has "<old> <new> <ref>" lines.
+# The hook calls our indexer binary/endpoint.
+
+while read oldrev newrev refname; do
+    # Call kinoko's indexer
+    kinoko index --repo "$SOFT_SERVE_REPO_NAME" --ref "$refname" --rev "$newrev"
+done
 ```
 
-This works because in Phase 1, all pushes come from our pipeline. Git is still the truth — blow away SQLite, run `git rebuild`, the indexer re-reads from repos.
+**Implementation:** Rather than a shell script calling a CLI, we can write the hook as a small script that POSTs to our local HTTP API (G3), or calls `kinoko index` directly.
 
-**Option B: Polling watcher (for external contributors)**
+Better yet: use Soft Serve's **webhook** feature to POST to our discovery API on push events. This is the cleanest approach — no shell scripts, pure HTTP:
 
-When external contributors push skills directly via `git push`:
-
-```go
-// internal/gitserver/watcher.go
-type RepoWatcher struct {
-    server   *Server
-    indexer  model.SkillIndexer
-    embedder embedding.Embedder
-    interval time.Duration  // e.g. 30s
-}
-
-// Watch periodically lists repos and indexes any that changed since last check.
-func (w *RepoWatcher) Watch(ctx context.Context) {
-    // Compare repo list + latest commit hashes against indexed state
-    // Index any new/changed repos
-}
+```sh
+# Register a webhook for all repos (or per-repo)
+ssh -p 23231 localhost repo webhook create <repo> \
+    --url http://localhost:23232/api/v1/hooks/post-receive \
+    --event push \
+    --content-type json
 ```
 
-**Option C: Soft Serve webhook (future)**
+**Recommended approach — both hooks for defense in depth:**
 
-Soft Serve has a webhook feature via its API. When we add the HTTP API layer (G3), we can configure Soft Serve to POST to our discovery server on push events. This is the cleanest long-term solution but requires deeper Soft Serve integration.
+1. **Global `pre-receive` hook** — credential scanning (G2). Rejects pushes with secrets. Works for both our pipeline AND external contributors.
 
-**For Phase 1: Use Option A.** It's simple, synchronous, and we control all pushes. Add Option B when external contributors arrive (Phase 3).
+2. **Global `post-receive` hook** — calls `kinoko index` to parse SKILL.md, compute embedding, index into SQLite. Fires on every push from any source.
 
 ```go
 // internal/gitserver/hooks.go
 
-type PostPushIndexer struct {
-    indexer   model.SkillIndexer
-    embedder  embedding.Embedder
-    scanner   *sanitize.Scanner
-    logger    *slog.Logger
+// InstallHooks writes the global pre-receive and post-receive scripts
+// to the Soft Serve data directory.
+func InstallHooks(dataDir string, kinokoBinary string) error {
+    hooksDir := filepath.Join(dataDir, "hooks")
+    os.MkdirAll(hooksDir, 0o755)
+    
+    // pre-receive: credential scanning
+    preReceive := fmt.Sprintf(`#!/bin/sh
+%s scan --stdin --reject`, kinokoBinary)
+    
+    // post-receive: indexing
+    postReceive := fmt.Sprintf(`#!/bin/sh
+while read oldrev newrev refname; do
+    %s index --repo "$SOFT_SERVE_REPO_NAME" --rev "$newrev" &
+done`, kinokoBinary)
+    
+    // Write + chmod +x
 }
 
-// IndexAfterPush is called by GitCommitter after a successful push.
-func (p *PostPushIndexer) IndexAfterPush(ctx context.Context, repoName string, skill *model.SkillRecord, body []byte) error {
-    // 1. Credential scan (if scanner != nil)
-    // 2. Compute embedding
-    // 3. Upsert into SQLite
-}
+// NewCLI commands needed:
+// kinoko index --repo <name> --rev <hash>  → parse SKILL.md, embed, index
+// kinoko scan --stdin --reject             → scan stdin for credentials, exit 1 if found
 ```
 
 ### New Interface: `SkillIndexer`
@@ -247,14 +245,14 @@ func (g *GitCommitter) CommitSkill(ctx context.Context, libraryID string, skill 
 
 ### CLI Commands
 
-**`mycelium git rebuild`** — rebuild SQLite from all repos:
+**`kinoko git rebuild`** — rebuild SQLite from all repos:
 ```
 Lists all repos in Soft Serve → for each:
   clone → parse SKILL.md → compute embedding → index into SQLite
 Idempotent. Safe to run anytime.
 ```
 
-**`mycelium git status`** — show state:
+**`kinoko git status`** — show state:
 ```
 Library "local":
   Repos: 47 skills
@@ -262,7 +260,7 @@ Library "local":
   Last push: 2026-02-15 abc1234 "v1: fix-n-plus-one-queries"
 ```
 
-**`mycelium git sync`** — for migration from old architecture:
+**`kinoko git sync`** — for migration from old architecture:
 ```
 Walks skills in SQLite that have file_path but no git repo → commits them.
 One-time migration command.
@@ -274,7 +272,7 @@ The current `SkillStore.Put()` still works. Migration:
 
 1. Ship G1 with `SkillCommitter` as the new write path in Pipeline
 2. Keep `SkillStore.Put()` for backward compat (tests, manual imports)
-3. Add `mycelium git sync` to migrate existing skills → git repos
+3. Add `kinoko git sync` to migrate existing skills → git repos
 4. Post-receive hook populates SQLite from git
 5. Eventually, `SkillStore.Put()` becomes `SkillIndexer.IndexSkill()` (called only by hooks)
 
@@ -286,7 +284,7 @@ The current `SkillStore.Put()` still works. Migration:
 | Git is the truth, everything else is derived cache | ✅ SQLite populated by git hooks, recoverable from repos | Aligned |
 | Pre-commit hooks on contributor's machine | ⚠️ Phase 1: server-side scanning (G2). Phase 3: git pre-receive hooks on Soft Serve for external contributors | Deferred |
 | Skills shadow lower layers by name | ❌ Multi-library resolution is a separate feature | Out of scope |
-| Blow away DB and rebuild from git | ✅ `mycelium git rebuild` | Aligned |
+| Blow away DB and rebuild from git | ✅ `kinoko git rebuild` | Aligned |
 
 ## Testing
 
@@ -297,16 +295,8 @@ The current `SkillStore.Put()` still works. Migration:
 - Concurrent: two workers push simultaneously, no conflicts
 - Clone: after push, `git clone ssh://localhost:23231/{lib}/{skill}` works
 
-## Open Question
-
-Soft Serve doesn't support native git hooks. Our Phase 1 approach (application-level indexing after push) is clean but means external `git push` from contributors won't trigger indexing automatically. Options for Phase 3:
-- **RepoWatcher polling** — simple, slightly delayed
-- **Soft Serve webhook config** — need to investigate their API
-- **Fork Soft Serve** — add hook support ourselves (last resort)
-
-Research ticket for Luka: investigate Soft Serve's extensibility model for Phase 3.
-
 ## Dependencies
 
 - `git` binary on server
-- Soft Serve running (already is in `mycelium serve`)
+- Soft Serve running (already is in `kinoko serve`)
+- `kinoko` binary accessible from hook scripts (for `kinoko index` and `kinoko scan`)

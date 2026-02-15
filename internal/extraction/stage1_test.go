@@ -1,14 +1,14 @@
 package extraction
 
 import (
-	"github.com/mycelium-dev/mycelium/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/model"
 	"log/slog"
 	"math"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/config"
 )
 
 func defaultTestConfig() config.ExtractionConfig {

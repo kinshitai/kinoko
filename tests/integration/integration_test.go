@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/decay"
-	"github.com/mycelium-dev/mycelium/internal/extraction"
-	"github.com/mycelium-dev/mycelium/internal/model"
-	"github.com/mycelium-dev/mycelium/internal/injection"
-	"github.com/mycelium-dev/mycelium/internal/metrics"
-	"github.com/mycelium-dev/mycelium/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/decay"
+	"github.com/kinoko-dev/kinoko/internal/extraction"
+	"github.com/kinoko-dev/kinoko/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/injection"
+	"github.com/kinoko-dev/kinoko/internal/metrics"
+	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
 // =============================================================================

@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/config"
-	"github.com/mycelium-dev/mycelium/internal/gitserver"
+	"github.com/kinoko-dev/kinoko/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/gitserver"
 )
 
 // TestEnvironment manages a complete test environment for e2e testing
@@ -50,13 +50,13 @@ func SetupTestEnvironment(t *testing.T) *TestEnvironment {
 	t.Helper()
 
 	// Create temporary directory for this test
-	tempDir, err := os.MkdirTemp("", "mycelium-e2e-test-*")
+	tempDir, err := os.MkdirTemp("", "kinoko-e2e-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 
-	// Build mycelium binary if needed
-	binaryPath := buildMyceliumBinary(t, tempDir)
+	// Build kinoko binary if needed
+	binaryPath := buildKinokoBinary(t, tempDir)
 
 	// Find available ports
 	sshPort := findAvailablePort(t, 23240) // Start from non-standard port
@@ -103,7 +103,7 @@ func SetupTestEnvironment(t *testing.T) *TestEnvironment {
 	return env
 }
 
-// StartServer starts the mycelium server and waits for it to be ready
+// StartServer starts the kinoko server and waits for it to be ready
 func (env *TestEnvironment) StartServer() {
 	env.t.Helper()
 
@@ -111,7 +111,7 @@ func (env *TestEnvironment) StartServer() {
 		env.t.Fatal("Server already started")
 	}
 
-	env.t.Logf("Starting mycelium server on port %d", env.SSHPort)
+	env.t.Logf("Starting kinoko server on port %d", env.SSHPort)
 
 	// Start server process
 	env.ServerCmd = exec.Command(env.BinaryPath, "serve", "--config", env.ConfigPath)
@@ -132,7 +132,7 @@ func (env *TestEnvironment) StartServer() {
 	env.waitForServerReady()
 
 	// Setup SSH key paths
-	env.AdminKeyPath = filepath.Join(env.DataDir, "mycelium_admin_ed25519")
+	env.AdminKeyPath = filepath.Join(env.DataDir, "kinoko_admin_ed25519")
 	env.AdminPubKeyPath = env.AdminKeyPath + ".pub"
 }
 
@@ -280,11 +280,11 @@ func cleanupTempDir(dir string) {
 	os.RemoveAll(dir)
 }
 
-func buildMyceliumBinary(t *testing.T, tempDir string) string {
+func buildKinokoBinary(t *testing.T, tempDir string) string {
 	t.Helper()
 
 	// Check if we need to build the binary
-	binaryName := "mycelium-test"
+	binaryName := "kinoko-test"
 	binaryPath := filepath.Join(tempDir, binaryName)
 
 	// Find project root by looking for go.mod
@@ -293,15 +293,15 @@ func buildMyceliumBinary(t *testing.T, tempDir string) string {
 		t.Fatalf("Failed to find project root: %v", err)
 	}
 
-	t.Logf("Building mycelium binary from %s", projectRoot)
+	t.Logf("Building kinoko binary from %s", projectRoot)
 
 	// Build the binary
-	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/mycelium")
+	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/kinoko")
 	cmd.Dir = projectRoot
 	cmd.Env = os.Environ()
 
 	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("Failed to build mycelium binary: %v\nOutput: %s", err, output)
+		t.Fatalf("Failed to build kinoko binary: %v\nOutput: %s", err, output)
 	}
 
 	return binaryPath

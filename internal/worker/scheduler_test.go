@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/decay"
-	"github.com/mycelium-dev/mycelium/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/decay"
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 // --- mocks for scheduler tests ---

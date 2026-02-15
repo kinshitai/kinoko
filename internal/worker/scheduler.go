@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/decay"
+	"github.com/kinoko-dev/kinoko/internal/decay"
 )
 
 // Scheduler manages periodic background tasks.

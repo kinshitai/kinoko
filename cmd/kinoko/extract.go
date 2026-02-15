@@ -8,12 +8,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/mycelium-dev/mycelium/internal/config"
-	"github.com/mycelium-dev/mycelium/internal/embedding"
-	"github.com/mycelium-dev/mycelium/internal/extraction"
-	"github.com/mycelium-dev/mycelium/internal/llm"
-	"github.com/mycelium-dev/mycelium/internal/model"
-	"github.com/mycelium-dev/mycelium/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/embedding"
+	"github.com/kinoko-dev/kinoko/internal/extraction"
+	"github.com/kinoko-dev/kinoko/internal/llm"
+	"github.com/kinoko-dev/kinoko/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
 var extractCmd = &cobra.Command{
@@ -66,7 +66,7 @@ func runExtract(cmd *cobra.Command, args []string) error {
 
 	// Initialize embedder
 	embCfg := embedding.DefaultConfig()
-	embCfg.APIKey = os.Getenv("MYCELIUM_EMBEDDING_API_KEY")
+	embCfg.APIKey = os.Getenv("KINOKO_EMBEDDING_API_KEY")
 	if embCfg.APIKey == "" {
 		embCfg.APIKey = os.Getenv("OPENAI_API_KEY")
 	}
@@ -74,12 +74,12 @@ func runExtract(cmd *cobra.Command, args []string) error {
 
 	// Initialize LLM client — Stage2 and Stage3 need it.
 	// For CLI extract, we use the embedder's API key with a simple LLM shim.
-	llmAPIKey := os.Getenv("MYCELIUM_LLM_API_KEY")
+	llmAPIKey := os.Getenv("KINOKO_LLM_API_KEY")
 	if llmAPIKey == "" {
 		llmAPIKey = os.Getenv("OPENAI_API_KEY")
 	}
 	if llmAPIKey == "" {
-		return fmt.Errorf("OPENAI_API_KEY or MYCELIUM_LLM_API_KEY required for extraction")
+		return fmt.Errorf("OPENAI_API_KEY or KINOKO_LLM_API_KEY required for extraction")
 	}
 	llmClient := llm.NewOpenAIClient(llmAPIKey, "gpt-4o-mini")
 

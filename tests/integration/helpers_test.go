@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/config"
-	"github.com/mycelium-dev/mycelium/internal/extraction"
-	"github.com/mycelium-dev/mycelium/internal/model"
-	"github.com/mycelium-dev/mycelium/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/extraction"
+	"github.com/kinoko-dev/kinoko/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
 // --- Mock LLM ---

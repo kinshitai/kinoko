@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/mycelium-dev/mycelium/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/config"
 )
 
 func TestNewServer(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	adminKeyName      = "mycelium_admin_ed25519"
+	adminKeyName      = "kinoko_admin_ed25519"
 	adminKeyPubSuffix = ".pub"
 	adminKeyPerms     = 0600
 	adminKeyPubPerms  = 0644
@@ -35,7 +35,7 @@ func (s *Server) ensureAdminKeys() (string, error) {
 		"-t", "ed25519",
 		"-f", privateKeyPath,
 		"-N", "", // No passphrase
-		"-C", "mycelium-admin", // Comment
+		"-C", "kinoko-admin", // Comment
 	)
 	
 	if err := cmd.Run(); err != nil {

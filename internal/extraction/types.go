@@ -5,7 +5,7 @@
 // as SKILL.md files with structured front matter.
 package extraction
 
-import "github.com/mycelium-dev/mycelium/internal/model"
+import "github.com/kinoko-dev/kinoko/internal/model"
 
 // Stage1Filter performs metadata pre-filtering. Synchronous, cheap, no I/O.
 type Stage1Filter interface {

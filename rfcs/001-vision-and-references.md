@@ -7,7 +7,7 @@
 
 ---
 
-## What Is Mycelium
+## What Is Kinoko
 
 A collective knowledge system where agents automatically extract reusable knowledge from work sessions, share it through a version-controlled library, and transparently inject relevant knowledge into future sessions. Humans are the source and the beneficiary. Agents are the transport layer.
 

@@ -15,7 +15,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/circuitbreaker"
+	"github.com/kinoko-dev/kinoko/internal/circuitbreaker"
 )
 
 // Embedder computes vector embeddings for text.

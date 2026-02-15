@@ -94,14 +94,14 @@ The error pattern `(?i)(error|failed|exception|traceback)` matches normal log li
 ### 8. `extract.go` — no `--dry-run` flag
 **File:** `extract.go`
 
-The spec says `mycelium extract <session-log>` for manual extraction. But there's no way to run the pipeline without writing to the store. The decay command has `--dry-run` — extract should too. Extraction writes a skill to disk AND to the database.
+The spec says `kinoko extract <session-log>` for manual extraction. But there's no way to run the pipeline without writing to the store. The decay command has `--dry-run` — extract should too. Extraction writes a skill to disk AND to the database.
 
 **Severity:** 🟡 Missing spec requirement for safe manual testing.
 
 ### 9. `serve.go` — extraction/injection integration is just TODOs
 **File:** `serve.go`
 
-The spec says Phase 8 should "Wire extraction into `mycelium serve` as a post-session hook" and "Wire injection into session startup." These are comments, not code. The entire integration part of Phase 8 is unimplemented.
+The spec says Phase 8 should "Wire extraction into `kinoko serve` as a post-session hook" and "Wire injection into session startup." These are comments, not code. The entire integration part of Phase 8 is unimplemented.
 
 **Severity:** 🔴 Spec non-compliance. The CLI commands work standalone, but the actual *integration* into serve is missing.
 

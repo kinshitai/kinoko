@@ -12,34 +12,34 @@ import (
 
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Initialize Mycelium workspace",
-	Long: `Initialize a new Mycelium workspace in ~/.mycelium/.
+	Short: "Initialize Kinoko workspace",
+	Long: `Initialize a new Kinoko workspace in ~/.kinoko/.
 
 This creates the necessary directories, configuration file, and git repository
 for managing your local skills.`,
 	RunE: initCommand,
 }
 
-// initCommand implements the 'mycelium init' command
+// initCommand implements the 'kinoko init' command
 func initCommand(cmd *cobra.Command, args []string) error {
-	slog.Info("Initializing Mycelium workspace...")
+	slog.Info("Initializing Kinoko workspace...")
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get user home directory: %w", err)
 	}
 
-	myceliumDir := filepath.Join(homeDir, ".mycelium")
-	skillsDir := filepath.Join(myceliumDir, "skills")
-	configFile := filepath.Join(myceliumDir, "config.yaml")
+	kinokoDir := filepath.Join(homeDir, ".kinoko")
+	skillsDir := filepath.Join(kinokoDir, "skills")
+	configFile := filepath.Join(kinokoDir, "config.yaml")
 
-	// Create ~/.mycelium/ directory
-	if err := os.MkdirAll(myceliumDir, 0755); err != nil {
-		return fmt.Errorf("failed to create mycelium directory: %w", err)
+	// Create ~/.kinoko/ directory
+	if err := os.MkdirAll(kinokoDir, 0755); err != nil {
+		return fmt.Errorf("failed to create kinoko directory: %w", err)
 	}
-	slog.Info("Created directory", "path", myceliumDir)
+	slog.Info("Created directory", "path", kinokoDir)
 
-	// Create ~/.mycelium/skills/ directory
+	// Create ~/.kinoko/skills/ directory
 	if err := os.MkdirAll(skillsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create skills directory: %w", err)
 	}
@@ -69,26 +69,26 @@ func createDefaultConfig(configFile string) error {
 		return nil
 	}
 
-	defaultConfig := `# Mycelium Configuration
-# This file controls your local Mycelium setup
+	defaultConfig := `# Kinoko Configuration
+# This file controls your local Kinoko setup
 
 # Storage configuration
 storage:
   driver: sqlite
-  dsn: ~/.mycelium/mycelium.db
+  dsn: ~/.kinoko/kinoko.db
 
 # Library layers (resolution order: highest priority first)
 libraries:
   - name: local
-    path: ~/.mycelium/skills
+    path: ~/.kinoko/skills
     priority: 100
     description: "Local skills on this machine"
 
-# Server configuration (for 'mycelium serve')
+# Server configuration (for 'kinoko serve')
 server:
   host: "127.0.0.1"
   port: 23231
-  dataDir: ~/.mycelium/data
+  dataDir: ~/.kinoko/data
 
 # Extraction settings
 extraction:
@@ -145,7 +145,7 @@ func initGitRepo(skillsDir string) error {
 
 	// Create a basic .gitignore
 	gitignoreFile := filepath.Join(skillsDir, ".gitignore")
-	gitignoreContent := `# Mycelium local files
+	gitignoreContent := `# Kinoko local files
 *.tmp
 *.log
 .DS_Store
@@ -168,7 +168,7 @@ Thumbs.db
 	cmd = exec.Command("git", "add", ".")
 	cmd.Dir = skillsDir
 	if err := cmd.Run(); err == nil {
-		cmd = exec.Command("git", "commit", "-m", "Initial commit: Mycelium skills repository")
+		cmd = exec.Command("git", "commit", "-m", "Initial commit: Kinoko skills repository")
 		cmd.Dir = skillsDir
 		_ = cmd.Run() // Ignore error - commit might fail if git user is not configured
 	}
@@ -179,17 +179,17 @@ Thumbs.db
 // printSuccessMessage prints the success message and next steps
 func printSuccessMessage() {
 	fmt.Println()
-	fmt.Println("🍄 Mycelium initialized successfully!")
+	fmt.Println("🍄 Kinoko initialized successfully!")
 	fmt.Println()
-	fmt.Println("Your Mycelium workspace is ready at ~/.mycelium/")
+	fmt.Println("Your Kinoko workspace is ready at ~/.kinoko/")
 	fmt.Println()
 	fmt.Println("Next steps:")
-	fmt.Println("  • Edit ~/.mycelium/config.yaml to configure your setup")
+	fmt.Println("  • Edit ~/.kinoko/config.yaml to configure your setup")
 	fmt.Println("  • Set your preferred author in the config file")
-	fmt.Println("  • Run 'mycelium serve' to start the git server")
+	fmt.Println("  • Run 'kinoko serve' to start the git server")
 	fmt.Println("  • Agents can then git clone, push, and pull skill repositories over SSH")
 	fmt.Println()
-	fmt.Println("Your local skills will be stored in ~/.mycelium/skills/")
+	fmt.Println("Your local skills will be stored in ~/.kinoko/skills/")
 	fmt.Println("This directory is already a git repository for version control.")
 	fmt.Println()
 }

@@ -12,12 +12,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/embedding"
-	"github.com/mycelium-dev/mycelium/internal/extraction"
-	"github.com/mycelium-dev/mycelium/internal/llm"
-	"github.com/mycelium-dev/mycelium/internal/llmutil"
-	"github.com/mycelium-dev/mycelium/internal/model"
-	"github.com/mycelium-dev/mycelium/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/embedding"
+	"github.com/kinoko-dev/kinoko/internal/extraction"
+	"github.com/kinoko-dev/kinoko/internal/llm"
+	"github.com/kinoko-dev/kinoko/internal/llmutil"
+	"github.com/kinoko-dev/kinoko/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
 // maxPatterns caps the number of classified patterns forwarded to the query.

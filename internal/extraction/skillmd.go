@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 // skillNameFromClassification derives a kebab-case skill name from classified

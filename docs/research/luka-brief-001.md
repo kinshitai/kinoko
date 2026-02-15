@@ -1,5 +1,5 @@
 # Luka's Research Brief #001
-## Cross-Disciplinary Solutions for Mycelium's Three Unknowns
+## Cross-Disciplinary Solutions for Kinoko's Three Unknowns
 
 *Luka Jensen, Research Engineer*  
 *February 15, 2026*
@@ -8,7 +8,7 @@
 
 ## Problem 1: Extraction Quality
 
-### The Mycelium Problem
+### The Kinoko Problem
 
 We need to automatically determine if an agent session produced reusable knowledge or just did routine work. Our current plan is "LLM critic scores it," but that's essentially having one LLM judge another's output. We're stuck in a circular reasoning problem — how do we know the critic itself isn't hallucinating quality?
 
@@ -67,7 +67,7 @@ The dimensional evaluation replaces the single "is this good?" question with spe
 
 ## Problem 2: Injection Precision
 
-### The Mycelium Problem
+### The Kinoko Problem
 
 We need to match user prompts to relevant skills in our library. Embedding similarity is our current plan, but "similar text" doesn't equal "useful knowledge for this situation." A prompt about "debugging React performance" might be most similar to skills about React debugging, but maybe the most useful skill is actually about browser profiling tools or JavaScript memory management.
 
@@ -126,7 +126,7 @@ This addresses the core issue that text similarity misses problem-pattern simila
 
 ## Problem 3: Knowledge Decay & Quality Over Time
 
-### The Mycelium Problem
+### The Kinoko Problem
 
 Skills go stale. APIs change, libraries update, workarounds become unnecessary. A collective knowledge base can accumulate cruft over time, and worse, outdated knowledge can be actively harmful. We need mechanisms to keep knowledge fresh and detect when it's gone bad, but we also can't just delete everything constantly or we'll lose valuable niche knowledge.
 

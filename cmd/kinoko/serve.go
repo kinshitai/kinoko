@@ -10,23 +10,23 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/mycelium-dev/mycelium/internal/config"
-	"github.com/mycelium-dev/mycelium/internal/decay"
-	"github.com/mycelium-dev/mycelium/internal/embedding"
-	"github.com/mycelium-dev/mycelium/internal/extraction"
-	"github.com/mycelium-dev/mycelium/internal/llm"
-	"github.com/mycelium-dev/mycelium/internal/model"
-	"github.com/mycelium-dev/mycelium/internal/gitserver"
-	"github.com/mycelium-dev/mycelium/internal/injection"
-	"github.com/mycelium-dev/mycelium/internal/storage"
-	"github.com/mycelium-dev/mycelium/internal/worker"
+	"github.com/kinoko-dev/kinoko/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/decay"
+	"github.com/kinoko-dev/kinoko/internal/embedding"
+	"github.com/kinoko-dev/kinoko/internal/extraction"
+	"github.com/kinoko-dev/kinoko/internal/llm"
+	"github.com/kinoko-dev/kinoko/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/gitserver"
+	"github.com/kinoko-dev/kinoko/internal/injection"
+	"github.com/kinoko-dev/kinoko/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/worker"
 )
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Start the Mycelium git server",
+	Short: "Start the Kinoko git server",
 	Long: `Starts a Soft Serve git server for hosting skill repositories.
-This is the source of truth for all Mycelium knowledge.`,
+This is the source of truth for all Kinoko knowledge.`,
 	RunE: runServe,
 }
 
@@ -36,7 +36,7 @@ var (
 
 func init() {
 	// Set up flags
-	serveCmd.Flags().StringVar(&configPath, "config", "", "Config file path (default: ~/.mycelium/config.yaml)")
+	serveCmd.Flags().StringVar(&configPath, "config", "", "Config file path (default: ~/.kinoko/config.yaml)")
 }
 
 // SessionHooks holds callbacks for session lifecycle events.
@@ -57,14 +57,14 @@ func buildSessionHooks(cfg *config.Config, store *storage.SQLiteStore, logger *s
 
 	// Embedding client (shared by both pipelines).
 	embCfg := embedding.DefaultConfig()
-	embCfg.APIKey = os.Getenv("MYCELIUM_EMBEDDING_API_KEY")
+	embCfg.APIKey = os.Getenv("KINOKO_EMBEDDING_API_KEY")
 	if embCfg.APIKey == "" {
 		embCfg.APIKey = os.Getenv("OPENAI_API_KEY")
 	}
 	embedder := embedding.New(embCfg, logger)
 
 	// LLM client for extraction stages.
-	llmAPIKey := os.Getenv("MYCELIUM_LLM_API_KEY")
+	llmAPIKey := os.Getenv("KINOKO_LLM_API_KEY")
 	if llmAPIKey == "" {
 		llmAPIKey = os.Getenv("OPENAI_API_KEY")
 	}
@@ -121,7 +121,7 @@ func buildSessionHooks(cfg *config.Config, store *storage.SQLiteStore, logger *s
 // buildPipeline creates an extraction pipeline from config. Returns nil if no LLM key.
 // If gitSrv is non-nil, a GitCommitter is wired in for post-extraction git push.
 func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, gitSrv *gitserver.Server, logger *slog.Logger) (model.Extractor, error) {
-	llmAPIKey := os.Getenv("MYCELIUM_LLM_API_KEY")
+	llmAPIKey := os.Getenv("KINOKO_LLM_API_KEY")
 	if llmAPIKey == "" {
 		llmAPIKey = os.Getenv("OPENAI_API_KEY")
 	}
@@ -130,7 +130,7 @@ func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, gitSrv *gitse
 	}
 
 	embCfg := embedding.DefaultConfig()
-	embCfg.APIKey = os.Getenv("MYCELIUM_EMBEDDING_API_KEY")
+	embCfg.APIKey = os.Getenv("KINOKO_EMBEDDING_API_KEY")
 	if embCfg.APIKey == "" {
 		embCfg.APIKey = os.Getenv("OPENAI_API_KEY")
 	}
@@ -241,7 +241,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	logger := slog.Default()
-	logger.Info("Mycelium serve command started")
+	logger.Info("Kinoko serve command started")
 	logger.Info("Configuration loaded successfully",
 		"host", cfg.Server.Host,
 		"port", cfg.Server.Port,
@@ -295,7 +295,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Get connection info for logging
 	connInfo := server.GetConnectionInfo()
-	logger.Info("Mycelium git server is ready",
+	logger.Info("Kinoko git server is ready",
 		"ssh_url", connInfo.SSHUrl,
 		"host", connInfo.SSHHost,
 		"port", connInfo.SSHPort)
@@ -327,7 +327,7 @@ func waitForShutdown(ctx context.Context, server *gitserver.Server, sched worker
 		cancel()
 	}()
 
-	logger.Info("Mycelium is ready. Use Ctrl+C to shutdown gracefully.")
+	logger.Info("Kinoko is ready. Use Ctrl+C to shutdown gracefully.")
 	logger.Info("Agents can now git clone, push, and pull over SSH")
 
 	select {
@@ -362,6 +362,6 @@ func waitForShutdown(ctx context.Context, server *gitserver.Server, sched worker
 	}
 
 	// 4. Store is closed by deferred store.Close() in runServe.
-	logger.Info("Mycelium serve stopped successfully")
+	logger.Info("Kinoko serve stopped successfully")
 	return nil
 }

@@ -14,7 +14,7 @@ Pavel built a comprehensive e2e test framework in `tests/e2e/setup_test.go` that
 
 **The Good:**
 - **Proper isolation:** Each test gets its own temp directory, ports, config files
-- **Binary building:** Actually builds mycelium from source, not mocked
+- **Binary building:** Actually builds kinoko from source, not mocked
 - **Server lifecycle:** Clean startup/shutdown with proper timeout handling
 - **Resource cleanup:** No leaked processes or temp files
 - **Helper methods:** SSH commands, git operations, skill file creation
@@ -90,11 +90,11 @@ E2E Tests (30% of effort)
 **But Pavel made fundamental test assumption errors:**
 
 ```go
-func TestMyceliumInitNoGit(t *testing.T) {
+func TestKinokoInitNoGit(t *testing.T) {
     // ...
     output, err := cmd.CombinedOutput()
     if err != nil {
-        t.Fatalf("mycelium init should not fail when git is missing: %v", err)
+        t.Fatalf("kinoko init should not fail when git is missing: %v", err)
     }
 ```
 
@@ -171,7 +171,7 @@ Cyrillic, Arabic, RTL text, emoji - Pavel has been bitten by unicode bugs before
 
 Pavel claims his tests found 4 bugs. Let's analyze his accuracy:
 
-### ❌ False Positive: `TestMyceliumInitNoGit`
+### ❌ False Positive: `TestKinokoInitNoGit`
 **Pavel claims:** Init doesn't handle missing git properly  
 **Reality:** Code correctly handles this with warning and continues
 **Grade:** Test bug, not product bug
@@ -181,7 +181,7 @@ Pavel claims his tests found 4 bugs. Let's analyze his accuracy:
 **Reality:** Spec requires kebab-case, underscores should be rejected  
 **Grade:** Test assumption error
 
-### ✅ True Positive: `TestMyceliumInitTildeExpansion`
+### ✅ True Positive: `TestKinokoInitTildeExpansion`
 **Pavel claims:** Tilde expansion edge case in config
 **Reality:** `expandPath()` doesn't handle `~user/path` syntax
 **Grade:** Real bug found

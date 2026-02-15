@@ -266,7 +266,7 @@ func TestGitServer_ClonePushVerify(t *testing.T) {
 
 	// Configure git user for commit
 	for _, cfg := range [][]string{
-		{"config", "user.email", "test@mycelium.dev"},
+		{"config", "user.email", "test@kinoko.dev"},
 		{"config", "user.name", "Test"},
 	} {
 		cmd := exec.Command("git", cfg...)

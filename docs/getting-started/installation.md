@@ -2,17 +2,17 @@
 
 ## Quick Install (from source)
 
-Mycelium is currently installed from source. Pre-built binaries are not yet available.
+Kinoko is currently installed from source. Pre-built binaries are not yet available.
 
 ```bash
-git clone https://github.com/mycelium-dev/mycelium.git
-cd mycelium
-go install ./cmd/mycelium
+git clone https://github.com/kinoko-dev/kinoko.git
+cd kinoko
+go install ./cmd/kinoko
 ```
 
 Verify:
 ```bash
-mycelium --version
+kinoko --version
 ```
 
 ## Requirements
@@ -52,17 +52,17 @@ Pre-installed on macOS, most Linux distros, and Windows 10+.
 
 ```bash
 # Initialize workspace
-mycelium init
+kinoko init
 
 # Start server
-mycelium serve
+kinoko serve
 ```
 
 See the [Quickstart](quickstart.md) for a complete walkthrough.
 
 ## Common Issues
 
-### "command not found: mycelium"
+### "command not found: kinoko"
 
 Your Go bin directory isn't in PATH:
 
@@ -80,6 +80,6 @@ Go isn't installed or isn't in PATH. Install from https://golang.org/dl/ and ens
 ## Uninstall
 
 ```bash
-rm $(which mycelium)
-rm -rf ~/.mycelium  # WARNING: deletes all local skills and config
+rm $(which kinoko)
+rm -rf ~/.kinoko  # WARNING: deletes all local skills and config
 ```

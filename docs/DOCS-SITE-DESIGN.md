@@ -1,4 +1,4 @@
-# Mycelium Documentation Site — Design & Architecture
+# Kinoko Documentation Site — Design & Architecture
 
 *Charis — February 15, 2026*
 
@@ -6,7 +6,7 @@
 
 ## Preamble
 
-Mycelium is infrastructure where knowledge flows underground, invisibly, between AI agents and the humans they serve. The documentation site must embody that same philosophy: knowledge should arrive exactly when you need it, in exactly the form you need it, without friction.
+Kinoko is infrastructure where knowledge flows underground, invisibly, between AI agents and the humans they serve. The documentation site must embody that same philosophy: knowledge should arrive exactly when you need it, in exactly the form you need it, without friction.
 
 This document is the blueprint. It covers visual design direction, information architecture, tooling, and content gap analysis. It is opinionated by design — one recommendation per decision, defended with reasoning.
 
@@ -18,9 +18,9 @@ This document is the blueprint. It covers visual design direction, information a
 
 **What works:** Clean developer-facing aesthetic. "Payments Without Webhooks" — the headline *is* the value prop. Pricing is transparent and inline. The page is dense with information but reads effortlessly because hierarchy is crystal clear. The MCP-first integration callout signals "we understand the 2026 developer."
 
-**What to steal:** The headline-as-value-prop pattern. Flowglad opens with the *problem they kill*, not the product they built. Mycelium should do the same: "Every problem solved once is solved for everyone" above the fold, not "knowledge-sharing infrastructure for AI agents."
+**What to steal:** The headline-as-value-prop pattern. Flowglad opens with the *problem they kill*, not the product they built. Kinoko should do the same: "Every problem solved once is solved for everyone" above the fold, not "knowledge-sharing infrastructure for AI agents."
 
-**What doesn't fit:** Flowglad is a SaaS product with pricing tables and checkout flows. Mycelium is open-source infrastructure. We don't need conversion-optimized CTAs or pricing tiers. Their visual density works for a single-page product pitch but would overwhelm a docs site.
+**What doesn't fit:** Flowglad is a SaaS product with pricing tables and checkout flows. Kinoko is open-source infrastructure. We don't need conversion-optimized CTAs or pricing tiers. Their visual density works for a single-page product pitch but would overwhelm a docs site.
 
 ### Supabase Docs (supabase.com/docs)
 
@@ -28,7 +28,7 @@ This document is the blueprint. It covers visual design direction, information a
 
 **What to steal:** Almost everything structural. The sidebar navigation pattern. The product-section cards on the docs landing page. The way code examples sit alongside prose without breaking flow. The breadcrumb + sidebar + content three-column layout. The edit-on-GitHub link on every page.
 
-**What doesn't fit:** Supabase serves dozens of products across multiple languages. Their navigation depth (5+ levels) would be overkill for Mycelium's current scope. Their tone is neutral-corporate — Mycelium should feel warmer, more organic.
+**What doesn't fit:** Supabase serves dozens of products across multiple languages. Their navigation depth (5+ levels) would be overkill for Kinoko's current scope. Their tone is neutral-corporate — Kinoko should feel warmer, more organic.
 
 ### Physical Intelligence (pi.website)
 
@@ -36,15 +36,15 @@ This document is the blueprint. It covers visual design direction, information a
 
 **What to steal:** The restraint. Not everything needs a card, a gradient, or an animation. The chronological research feed pattern would work beautifully for a changelog or "What's New" section. The generous whitespace is a reminder that density ≠ clarity.
 
-**What doesn't fit:** Pi is a research lab, not a developer tool. Their site is read-only — no interactive elements, no code, no "try it now." Mycelium needs to be more hands-on.
+**What doesn't fit:** Pi is a research lab, not a developer tool. Their site is read-only — no interactive elements, no code, no "try it now." Kinoko needs to be more hands-on.
 
 ### Sesame (sesame.com)
 
 **What works:** Warm, conversational, human. "We believe in a future where computers are lifelike." The site feels like it was written by a person, not a marketing team. Minimal to the point of austerity — the design gets out of the way of the message.
 
-**What to steal:** The warmth. Mycelium's manifesto already has this voice ("A junior developer in São Paulo starts debugging a problem they've never seen before"). The docs site should carry that same humanity. Also: the courage to say less. Sesame's homepage is ~50 words. That's confidence in your message.
+**What to steal:** The warmth. Kinoko's manifesto already has this voice ("A junior developer in São Paulo starts debugging a problem they've never seen before"). The docs site should carry that same humanity. Also: the courage to say less. Sesame's homepage is ~50 words. That's confidence in your message.
 
-**What doesn't fit:** Sesame is consumer-facing AI. Too minimal for developer docs — developers need code examples, reference tables, and structured information. Pure minimalism would frustrate the people actually trying to use Mycelium.
+**What doesn't fit:** Sesame is consumer-facing AI. Too minimal for developer docs — developers need code examples, reference tables, and structured information. Pure minimalism would frustrate the people actually trying to use Kinoko.
 
 ---
 
@@ -61,7 +61,7 @@ This document is the blueprint. It covers visual design direction, information a
 | Background (dark) | Deep Soil | `#0F0F0F` | Near-black with warmth, not blue-tinted |
 | Background (light) | Birch | `#FAFAF7` | Off-white, cream warmth |
 | Surface | Loam | `#1A1A18` | Cards, code blocks, elevated surfaces |
-| Text primary | Mycelium White | `#E8E4DF` | Warm off-white, never pure white |
+| Text primary | Kinoko White | `#E8E4DF` | Warm off-white, never pure white |
 | Text secondary | Stone | `#9B9590` | Muted, readable on dark backgrounds |
 | Accent primary | Spore | `#C4A265` | Warm gold — the color of mycelial networks |
 | Accent secondary | Moss | `#5B8C5A` | Life, growth, health indicators |
@@ -91,17 +91,17 @@ This document is the blueprint. It covers visual design direction, information a
 
 ### Personality
 
-Mycelium should feel like **a field guide written by a mycologist who also happens to write beautiful code.** It's knowledgeable without being academic. Precise without being cold. It uses biological metaphors not because they're clever, but because they're accurate — the system really does work like a mycelial network.
+Kinoko should feel like **a field guide written by a mycologist who also happens to write beautiful code.** It's knowledgeable without being academic. Precise without being cold. It uses biological metaphors not because they're clever, but because they're accurate — the system really does work like a mycelial network.
 
 The tone is: "Here's something genuinely interesting. Let me show you how it works."
 
 ### Key Differentiators
 
-What makes Mycelium docs NOT look like every other developer docs site:
+What makes Kinoko docs NOT look like every other developer docs site:
 
 1. **The biological metaphor is structural, not decorative.** The four mental models (Gold Panning, Wine Tasting, Reference Librarian, Forest Fires) aren't just clever names — they organize how information is presented. The concepts section uses these models as navigation anchors.
 
-2. **AI-native docs.** A first-class `/llms.txt` endpoint. Structured metadata on every page. The docs site is designed to be consumed by the very agents Mycelium serves — a meta-loop that most docs sites don't even consider.
+2. **AI-native docs.** A first-class `/llms.txt` endpoint. Structured metadata on every page. The docs site is designed to be consumed by the very agents Kinoko serves — a meta-loop that most docs sites don't even consider.
 
 3. **The warm dark palette.** Most dev docs are either blue-corporate-dark (Supabase, Stripe) or white-clinical-light (MDN, React). The soil/gold/moss palette says "this is something organic, something alive."
 
@@ -119,8 +119,8 @@ What makes Mycelium docs NOT look like every other developer docs site:
 │   ├── /docs/quickstart            5-minute quickstart
 │   ├── /docs/installation          Platform-specific setup
 │   │
-│   ├── /docs/concepts/             Understanding Mycelium
-│   │   ├── overview                How Mycelium thinks (the 4 mental models)
+│   ├── /docs/concepts/             Understanding Kinoko
+│   │   ├── overview                How Kinoko thinks (the 4 mental models)
 │   │   ├── extraction              Gold Panning — the extraction pipeline
 │   │   ├── quality                 Wine Tasting — dimensional scoring
 │   │   ├── injection               Reference Librarian — skill matching
@@ -144,7 +144,7 @@ What makes Mycelium docs NOT look like every other developer docs site:
 │   │   ├── taxonomy                Problem pattern taxonomy (the 20 patterns)
 │   │   └── glossary                Terminology
 │   │
-│   ├── /docs/operations/           Running Mycelium
+│   ├── /docs/operations/           Running Kinoko
 │   │   ├── troubleshooting         Common issues and fixes
 │   │   ├── monitoring              Pipeline metrics and health
 │   │   └── security                Credential scanning, sanitization, trust model
@@ -157,10 +157,10 @@ What makes Mycelium docs NOT look like every other developer docs site:
 │   └── /docs/ai/                   For AI agents
 │       ├── llms.txt                Machine-readable project summary
 │       ├── llms-full.txt           Complete structured reference
-│       └── agent-integration       How agents interact with Mycelium
+│       └── agent-integration       How agents interact with Kinoko
 │
 ├── /blog/                          Changelog, deep dives, design decisions
-├── /manifesto                      The Mycelium Manifesto (standalone page)
+├── /manifesto                      The Kinoko Manifesto (standalone page)
 └── /rfcs/                          Living RFCs
 ```
 
@@ -224,12 +224,12 @@ AI Agents
 **Above the fold:**
 
 ```
-[Logo: 🍄 Mycelium]
+[Logo: 🍄 Kinoko]
 
 Every problem solved once is solved for everyone.
 
 Knowledge-sharing infrastructure for AI agents. When an agent
-solves a problem, Mycelium extracts the knowledge and injects
+solves a problem, Kinoko extracts the knowledge and injects
 it into future sessions — automatically.
 
 [Get Started →]   [View on GitHub →]
@@ -255,9 +255,9 @@ Each card links to its concepts page.
 **Section 3 — Quick Start:**
 
 ```bash
-git clone https://github.com/mycelium-dev/mycelium.git
-cd mycelium && go install ./cmd/mycelium
-mycelium init && mycelium serve
+git clone https://github.com/kinoko-dev/kinoko.git
+cd kinoko && go install ./cmd/kinoko
+kinoko init && kinoko serve
 ```
 
 Three commands. That's it.
@@ -282,7 +282,7 @@ These types form a Diátaxis-inspired taxonomy. Concepts teach understanding. Gu
 
 The `/docs/ai/` section serves machines:
 
-**`/llms.txt`** — Served at the root domain as well (`mycelium.dev/llms.txt`). Contains:
+**`/llms.txt`** — Served at the root domain as well (`kinoko.dev/llms.txt`). Contains:
 - Project name, one-line description
 - Core concepts (3 sentences each)
 - Available CLI commands
@@ -297,7 +297,7 @@ The `/docs/ai/` section serves machines:
 - Problem pattern taxonomy
 - Glossary
 
-**Agent Integration guide** — How an AI agent should interact with Mycelium:
+**Agent Integration guide** — How an AI agent should interact with Kinoko:
 - How injection works from the agent's perspective
 - How to format session logs for optimal extraction
 - How to interpret injected skills
@@ -348,7 +348,7 @@ Both `.txt` files are auto-generated from the docs source at build time. Single 
 | **Dark/Light mode** | Starlight built-in. Dark default, CSS custom properties for our palette. |
 | **Edit on GitHub** | Starlight built-in. `editLink` config. |
 | **OpenGraph images** | Auto-generated via `@astrojs/og` or a custom OG template. Each page gets a branded card. |
-| **Version switcher** | Not needed yet. When Mycelium hits v2, add Starlight's version dropdown. |
+| **Version switcher** | Not needed yet. When Kinoko hits v2, add Starlight's version dropdown. |
 | **RSS/Changelog** | Astro's built-in RSS for the `/blog/` section. |
 | **llms.txt generation** | Custom Astro integration that builds `llms.txt` and `llms-full.txt` from docs source at build time. |
 | **Copy code button** | Starlight built-in. |
@@ -386,7 +386,7 @@ Both `.txt` files are auto-generated from the docs source at build time. Single 
 - **Glossary** — Complete for current scope. Ready.
 - **Troubleshooting** — Covers common issues. Ready.
 - **Architecture** — Deeply detailed. Ready (could use diagrams).
-- **Concepts (How Mycelium Thinks)** — Beautifully written. The four mental models are superb. Needs splitting into sub-pages.
+- **Concepts (How Kinoko Thinks)** — Beautifully written. The four mental models are superb. Needs splitting into sub-pages.
 - **Feedback Patterns** — Complete DX specification. Ready.
 
 ### 🔄 Exists but Needs Rewriting or Expansion
@@ -409,15 +409,15 @@ Both `.txt` files are auto-generated from the docs source at build time. Single 
 | **Guide: Injection Tuning** | P1 | Configure injection, monitor what's being injected, improve relevance. |
 | **Guide: Library Management** | P1 | Local vs team vs public libraries. Priority layering. How to set up a team library. |
 | **Reference: Taxonomy** | P1 | The 20 problem patterns as a standalone reference page. Currently buried in architecture.md. |
-| **Operations: Monitoring** | P1 | How to use `mycelium stats`, what metrics mean, when to worry. |
+| **Operations: Monitoring** | P1 | How to use `kinoko stats`, what metrics mean, when to worry. |
 | **Operations: Security** | P1 | Credential scanning, sanitization, trust model, prompt injection defenses. |
 | **Contributing: Development Setup** | P1 | Clone, build, test, run. For people who want to contribute code. |
 | **Contributing: Architecture Guide** | P2 | Package map, where to make changes, interface boundaries. |
 | **Contributing: Writing Skills** | P2 | Style guide for SKILL.md files. What makes a good skill. |
 | **Guide: A/B Testing** | P2 | Set up, run, and interpret A/B tests. |
 | **Guide: Decay Management** | P2 | Monitor decay, rescue skills, expedite deprecation. |
-| **AI: Agent Integration** | P2 | How agents consume and contribute to Mycelium. |
-| **Blog: Launch Post** | P2 | "What is Mycelium and why we built it." |
+| **AI: Agent Integration** | P2 | How agents consume and contribute to Kinoko. |
+| **Blog: Launch Post** | P2 | "What is Kinoko and why we built it." |
 | **llms-full.txt** | P2 | Complete structured reference for AI agent consumption. Auto-generated. |
 
 ### Recommended Build Order
@@ -449,7 +449,7 @@ Both `.txt` files are auto-generated from the docs source at build time. Single 
 
 ## Closing Thought
 
-Mycelium's documentation should be the first skill the system extracts about itself. If we build it right — structured, honest, dual-audience — the docs become a proof of concept for the product. An AI agent reading our docs should get better at using Mycelium automatically. A developer reading our docs should understand the system in 5 minutes and be productive in 15.
+Kinoko's documentation should be the first skill the system extracts about itself. If we build it right — structured, honest, dual-audience — the docs become a proof of concept for the product. An AI agent reading our docs should get better at using Kinoko automatically. A developer reading our docs should understand the system in 5 minutes and be productive in 15.
 
 The manifesto says: "Knowledge sharing should be a byproduct of work, not a separate activity." The docs site is where we prove we believe that.
 

@@ -1,4 +1,4 @@
-# Mycelium Manifesto
+# Kinoko Manifesto
 
 ## The Waste
 
@@ -36,6 +36,6 @@ Build infrastructure where every problem solved once is solved for everyone. Peo
 
 ## What Success Looks Like
 
-A junior developer in São Paulo starts debugging a problem they've never seen before. Their agent already knows three approaches that worked for other people, in other companies, on other continents. The developer doesn't search for anything, doesn't ask for help, doesn't even know Mycelium exists. They just get a better answer, faster.
+A junior developer in São Paulo starts debugging a problem they've never seen before. Their agent already knows three approaches that worked for other people, in other companies, on other continents. The developer doesn't search for anything, doesn't ask for help, doesn't even know Kinoko exists. They just get a better answer, faster.
 
 That's it. That's the whole thing.

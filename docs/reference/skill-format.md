@@ -1,6 +1,6 @@
 # SKILL.md Format
 
-Skills are structured knowledge stored as Markdown files with YAML front matter. Each skill lives in a subdirectory of a skills repository (e.g., `~/.mycelium/skills/my-skill/SKILL.md`).
+Skills are structured knowledge stored as Markdown files with YAML front matter. Each skill lives in a subdirectory of a skills repository (e.g., `~/.kinoko/skills/my-skill/SKILL.md`).
 
 ## Structure
 
@@ -149,7 +149,7 @@ When you suspect race conditions in concurrent Go code.
 Skills are stored as `SKILL.md` inside named subdirectories:
 
 ```
-~/.mycelium/skills/
+~/.kinoko/skills/
 ├── simple-tip/
 │   └── SKILL.md
 ├── golang-race-condition-debugging/

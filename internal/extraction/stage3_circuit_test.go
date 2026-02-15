@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/circuitbreaker"
-	"github.com/mycelium-dev/mycelium/internal/llm"
+	"github.com/kinoko-dev/kinoko/internal/circuitbreaker"
+	"github.com/kinoko-dev/kinoko/internal/llm"
 )
 
 // Tests for the stage3 circuit breaker state transitions.

@@ -61,13 +61,13 @@ No complaints. This is exactly the split the plan called for.
 | `logparser.go` | 106 | `internal/extraction/` |
 | `querier.go` | 31 | `internal/storage/` |
 
-Both files are in the right packages. `ParseSessionFromLog` is exported and used by `cmd/mycelium/extract.go` and `cmd/mycelium/importcmd.go` — verified. `storage.NewSkillQuerier` returns `extraction.SkillQuerier` and is used by both `extract.go` and `serve.go` — verified.
+Both files are in the right packages. `ParseSessionFromLog` is exported and used by `cmd/kinoko/extract.go` and `cmd/kinoko/importcmd.go` — verified. `storage.NewSkillQuerier` returns `extraction.SkillQuerier` and is used by both `extract.go` and `serve.go` — verified.
 
 **Nits:**
 - `logparser.go` still uses `bufio.Scanner` on content that was already `strings.Split` into `lines` (line 38 vs line 42). The `lines` variable from the Split is only used for `msgCount := len(lines)`. Wasteful — scan once, count lines during the scan. Not a correctness issue but it's the kind of sloppy that accumulates.
 - `querier.go` is 31 lines. Tiny but correct. The adapter pattern is clean. `NewSkillQuerier(nil)` doesn't panic at construction time (verified by test), which is fine since it'll fail on use.
 
-**Stale reference check:** `cmd/mycelium/extract_test.go` has comments referencing "R9 area" and "Must exist BEFORE moving to internal/extraction/logparser.go" — these comments are now outdated since the move is done. The tests themselves correctly import `extraction.ParseSessionFromLog`. The comments should be cleaned up but aren't blocking.
+**Stale reference check:** `cmd/kinoko/extract_test.go` has comments referencing "R9 area" and "Must exist BEFORE moving to internal/extraction/logparser.go" — these comments are now outdated since the move is done. The tests themselves correctly import `extraction.ParseSessionFromLog`. The comments should be cleaned up but aren't blocking.
 
 ---
 
@@ -121,7 +121,7 @@ Plus R4 (llmutil JSON parser) and R5 (taxonomy package) for deduplication.
 | `extraction/pipeline.go` | 553 | 331 | ✅ Under 350 |
 | `extraction/stage3.go` | 540 | 315 | ✅ Under 350 |
 | `storage/store.go` | 765 | Split into 5 files | ✅ |
-| `cmd/mycelium/extract.go` | 314 | Trimmed (logparser+querier moved) | ✅ |
+| `cmd/kinoko/extract.go` | 314 | Trimmed (logparser+querier moved) | ✅ |
 
 ### What's left from the plan
 

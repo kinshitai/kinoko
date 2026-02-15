@@ -97,7 +97,7 @@ Those hooks are assigned to `_`. The comment says "invoked by the session lifecy
 
 ## 3. Missing Glue
 
-### 3.1 What Breaks on `mycelium extract <session.log>`
+### 3.1 What Breaks on `kinoko extract <session.log>`
 
 Running this for real would:
 
@@ -179,7 +179,7 @@ This is actually **one of the better aspects**. Grudgingly.
 ## 6. Dependency Graph
 
 ```
-cmd/mycelium
+cmd/kinoko
   ├── config
   ├── extraction (types, pipeline, stages)
   ├── storage

@@ -79,7 +79,7 @@ cmd := exec.Command("ssh-keygen",
     "-t", "ed25519",
     "-f", privateKeyPath,
     "-N", "", // No passphrase
-    "-C", "mycelium-admin",
+    "-C", "kinoko-admin",
 )
 ```
 
@@ -219,7 +219,7 @@ The server startup involves:
 **Total**: 2-5 seconds typical startup. Reasonable for development use.
 
 ### Resource Usage
-Running one subprocess per Mycelium instance is clean and contained. No resource leaks observed in the code.
+Running one subprocess per Kinoko instance is clean and contained. No resource leaks observed in the code.
 
 ### Error Recovery
 Good error handling throughout. Process failures are detected and reported properly.
@@ -270,7 +270,7 @@ But these are **minor improvements**, not blocking issues.
 
 For the first time in four rounds, I can say: **This software does what it claims to do.** 
 
-You can run `mycelium serve`, it will start a real git server, you can create repositories, clone them, push skills to them, and pull them back. The integration test script proves this works end-to-end.
+You can run `kinoko serve`, it will start a real git server, you can create repositories, clone them, push skills to them, and pull them back. The integration test script proves this works end-to-end.
 
 **Time to implement from R3 state**: They probably spent 2-3 days doing this properly. That's exactly what I estimated it would take to implement the real thing instead of building golden TODO lists.
 

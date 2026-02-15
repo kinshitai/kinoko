@@ -1,8 +1,8 @@
-# Mycelium Test Strategy
+# Kinoko Test Strategy
 
 ## Product Understanding
 
-**What is Mycelium?**
+**What is Kinoko?**
 - Infrastructure for automatic knowledge sharing between AI agents
 - Phase 1: Git-based skill repository server using Soft Serve
 - Skills stored as repo-per-skill, SKILL.md format with YAML front matter
@@ -19,12 +19,12 @@
 
 ## Critical User Journeys
 
-### 1. Fresh Install Flow (`mycelium init`)
-**User story:** Developer installs Mycelium for the first time
-**Critical path:** `mycelium init` → creates workspace → ready to use
+### 1. Fresh Install Flow (`kinoko init`)
+**User story:** Developer installs Kinoko for the first time
+**Critical path:** `kinoko init` → creates workspace → ready to use
 
 **Success criteria:**
-- Creates `~/.mycelium/` directory structure
+- Creates `~/.kinoko/` directory structure
 - Generates valid `config.yaml` with sensible defaults
 - Initializes git repo in `skills/` directory
 - Idempotent (safe to run multiple times)
@@ -32,15 +32,15 @@
 
 **Edge cases to test:**
 - No home directory permissions
-- Existing `.mycelium/` directory (partial)
+- Existing `.kinoko/` directory (partial)
 - Existing config file (don't overwrite)
 - Missing `git` binary
 - Disk full during creation
 - Unicode/special characters in home directory path
 
-### 2. Server Startup Flow (`mycelium serve`)
-**User story:** Developer starts the Mycelium server
-**Critical path:** `mycelium serve` → loads config → starts Soft Serve → ready for git operations
+### 2. Server Startup Flow (`kinoko serve`)
+**User story:** Developer starts the Kinoko server
+**Critical path:** `kinoko serve` → loads config → starts Soft Serve → ready for git operations
 
 **Success criteria:**
 - Server starts and binds to configured port
@@ -81,7 +81,7 @@
 - Disk full during push operations
 
 ### 4. Config Management
-**User story:** Developer configures Mycelium for their environment
+**User story:** Developer configures Kinoko for their environment
 **Critical path:** Edit config → Restart server → Settings applied
 
 **Success criteria:**

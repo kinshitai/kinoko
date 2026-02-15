@@ -1,13 +1,13 @@
-# Contributing to Mycelium
+# Contributing to Kinoko
 
-Mycelium is early-stage and built in the open. Contributions welcome.
+Kinoko is early-stage and built in the open. Contributions welcome.
 
 ## Getting Started
 
 ```bash
-git clone https://github.com/mycelium-dev/mycelium.git
-cd mycelium
-go build ./cmd/mycelium
+git clone https://github.com/kinoko-dev/kinoko.git
+cd kinoko
+go build ./cmd/kinoko
 go test ./...
 ```
 
@@ -16,7 +16,7 @@ go test ./...
 ## Project Structure
 
 ```
-cmd/mycelium/       CLI entry point (cobra commands)
+cmd/kinoko/       CLI entry point (cobra commands)
 internal/config/    Configuration loading and validation
 internal/gitserver/ Soft Serve git server wrapper
 pkg/skill/          SKILL.md parsing and validation
@@ -59,7 +59,7 @@ Include:
 - What you did
 - What you expected
 - What happened
-- Output of `mycelium --version`, `go version`, and `uname -a`
+- Output of `kinoko --version`, `go version`, and `uname -a`
 
 ## Questions?
 

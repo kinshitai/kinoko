@@ -1,6 +1,6 @@
 # Configuration Reference
 
-Mycelium configuration lives at `~/.mycelium/config.yaml`. Created by `mycelium init` with sensible defaults.
+Kinoko configuration lives at `~/.kinoko/config.yaml`. Created by `kinoko init` with sensible defaults.
 
 ## Full Configuration
 
@@ -8,15 +8,15 @@ Mycelium configuration lives at `~/.mycelium/config.yaml`. Created by `mycelium 
 server:
   host: "127.0.0.1"
   port: 23231
-  dataDir: ~/.mycelium/data
+  dataDir: ~/.kinoko/data
 
 storage:
   driver: sqlite
-  dsn: ~/.mycelium/mycelium.db
+  dsn: ~/.kinoko/kinoko.db
 
 libraries:
   - name: local
-    path: ~/.mycelium/skills
+    path: ~/.kinoko/skills
     priority: 100
     description: "Local skills on this machine"
 
@@ -67,13 +67,13 @@ defaults:
 
 ### `server`
 
-Controls the git server started by `mycelium serve`.
+Controls the git server started by `kinoko serve`.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `host` | string | `"127.0.0.1"` | IP to bind. Use `"0.0.0.0"` for all interfaces. |
 | `port` | int | `23231` | SSH port. Must be 1–65535. |
-| `dataDir` | string | `~/.mycelium/data` | Directory for server data (git repos, metadata). Auto-created. |
+| `dataDir` | string | `~/.kinoko/data` | Directory for server data (git repos, metadata). Auto-created. |
 
 ### `storage`
 
@@ -82,7 +82,7 @@ Database backend for skills, sessions, and injection events.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `driver` | string | `"sqlite"` | `"sqlite"` or `"postgres"` |
-| `dsn` | string | `~/.mycelium/mycelium.db` | Connection string. File path for SQLite, URL for Postgres. |
+| `dsn` | string | `~/.kinoko/kinoko.db` | Connection string. File path for SQLite, URL for Postgres. |
 
 SQLite uses WAL mode, 5s busy timeout, and foreign keys. Schema is auto-migrated on startup.
 
@@ -153,7 +153,7 @@ Configures the embedding provider used for skill and prompt embeddings.
 | `model` | string | `"text-embedding-3-small"` | Embedding model name |
 | `base_url` | string | `"https://api.openai.com"` | Base URL for API calls |
 
-API key is set via `MYCELIUM_EMBEDDING_API_KEY` or `OPENAI_API_KEY` environment variable (not in config file).
+API key is set via `KINOKO_EMBEDDING_API_KEY` or `OPENAI_API_KEY` environment variable (not in config file).
 
 ### `llm`
 
@@ -163,7 +163,7 @@ Configures the LLM used for extraction scoring, critic evaluation, and prompt cl
 |-------|------|---------|-------------|
 | `model` | string | `"gpt-4o-mini"` | LLM model name |
 
-API key is set via `MYCELIUM_LLM_API_KEY` or `OPENAI_API_KEY` environment variable (not in config file).
+API key is set via `KINOKO_LLM_API_KEY` or `OPENAI_API_KEY` environment variable (not in config file).
 
 ### `hooks`
 
@@ -189,8 +189,8 @@ Default values for new skills.
 | Variable | Purpose |
 |---|---|
 | `OPENAI_API_KEY` | Fallback API key for both embeddings and LLM |
-| `MYCELIUM_EMBEDDING_API_KEY` | API key for embedding calls (overrides `OPENAI_API_KEY`) |
-| `MYCELIUM_LLM_API_KEY` | API key for LLM calls (overrides `OPENAI_API_KEY`) |
+| `KINOKO_EMBEDDING_API_KEY` | API key for embedding calls (overrides `OPENAI_API_KEY`) |
+| `KINOKO_LLM_API_KEY` | API key for LLM calls (overrides `OPENAI_API_KEY`) |
 
 ## Path Expansion
 
@@ -201,12 +201,12 @@ All path fields support `~` expansion:
 ## Config Loading Order
 
 1. Explicit path via `--config` flag
-2. `~/.mycelium/config.yaml`
+2. `~/.kinoko/config.yaml`
 3. Built-in defaults (if no file exists)
 
 ## Validation
 
-Mycelium validates config on startup. You'll get clear error messages for:
+Kinoko validates config on startup. You'll get clear error messages for:
 - Port out of range
 - Empty required fields
 - Invalid confidence values

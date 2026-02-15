@@ -8,10 +8,10 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/mycelium-dev/mycelium/internal/config"
-	"github.com/mycelium-dev/mycelium/internal/extraction"
-	"github.com/mycelium-dev/mycelium/internal/storage"
-	"github.com/mycelium-dev/mycelium/internal/worker"
+	"github.com/kinoko-dev/kinoko/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/extraction"
+	"github.com/kinoko-dev/kinoko/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/worker"
 )
 
 var importCmd = &cobra.Command{
@@ -20,9 +20,9 @@ var importCmd = &cobra.Command{
 	Long: `Parse session log files and enqueue them for extraction.
 Does NOT start workers — sessions wait for 'serve' or 'worker' to process them.
 
-  mycelium import session.log
-  mycelium import --dir ./logs/
-  mycelium import a.log b.log c.log`,
+  kinoko import session.log
+  kinoko import --dir ./logs/
+  kinoko import a.log b.log c.log`,
 	RunE: runImport,
 }
 

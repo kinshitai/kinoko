@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mycelium-dev/mycelium/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 // Tests for kebab/titleCase/skillNameFromClassification — R7 area.

@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/mycelium-dev/mycelium/internal/extraction"
-	"github.com/mycelium-dev/mycelium/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/extraction"
+	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
 func TestExtractCmdArgs(t *testing.T) {

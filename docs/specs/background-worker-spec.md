@@ -3,7 +3,7 @@
 **Authors:** Hal (CTO), Luka Jensen  
 **Date:** 2026-02-15  
 **Status:** Ready for implementation  
-**Module:** `github.com/mycelium-dev/mycelium`
+**Module:** `github.com/kinoko-dev/kinoko`
 
 ---
 
@@ -225,16 +225,16 @@ type SchedulerConfig struct {
 
 ## 5. CLI
 
-### `mycelium serve`
+### `kinoko serve`
 Starts git server + worker pool + scheduler. Production mode.
 
-### `mycelium worker`
+### `kinoko worker`
 Standalone worker pool + scheduler, no git server. For scaling workers separately.
 
-### `mycelium import <path>`
+### `kinoko import <path>`
 Batch-imports session logs into queue. `--dir` for directories. Does NOT start workers — sessions wait for `serve` or `worker`.
 
-### `mycelium queue`
+### `kinoko queue`
 Queue inspection: `queue stats`, `queue list`, `queue retry <id>`, `queue flush`.
 
 ---
@@ -250,7 +250,7 @@ internal/worker/
     queue_test.go
     pool_test.go
     scheduler_test.go
-cmd/mycelium/
+cmd/kinoko/
     serve.go         // modified: starts pool + scheduler
     worker.go        // new: standalone mode
     import.go        // new: batch import

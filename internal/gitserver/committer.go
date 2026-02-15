@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mycelium-dev/mycelium/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 // Compile-time check.
@@ -165,10 +165,10 @@ func (g *GitCommitter) commitAndPush(ctx context.Context, workdir, message strin
 	sshCmd := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR", sshKey)
 	env := append(os.Environ(),
 		"GIT_SSH_COMMAND="+sshCmd,
-		"GIT_AUTHOR_NAME=mycelium",
-		"GIT_AUTHOR_EMAIL=mycelium@local",
-		"GIT_COMMITTER_NAME=mycelium",
-		"GIT_COMMITTER_EMAIL=mycelium@local",
+		"GIT_AUTHOR_NAME=kinoko",
+		"GIT_AUTHOR_EMAIL=kinoko@local",
+		"GIT_COMMITTER_NAME=kinoko",
+		"GIT_COMMITTER_EMAIL=kinoko@local",
 	)
 
 	cmds := [][]string{

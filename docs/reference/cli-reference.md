@@ -3,38 +3,38 @@
 ## Overview
 
 ```
-mycelium - Knowledge sharing infrastructure for AI agents
+kinoko - Knowledge sharing infrastructure for AI agents
 
 USAGE:
-  mycelium [command] [flags]
+  kinoko [command] [flags]
 
 AVAILABLE COMMANDS:
-  init      Initialize Mycelium workspace
-  serve     Start the Mycelium git server
+  init      Initialize Kinoko workspace
+  serve     Start the Kinoko git server
   extract   Run extraction pipeline on a session log file
   decay     Run one decay cycle
   stats     Print pipeline metrics
   help      Help about any command
 
 GLOBAL FLAGS:
-  -h, --help      Help for mycelium
-      --version   Version for mycelium
+  -h, --help      Help for kinoko
+      --version   Version for kinoko
 ```
 
 ---
 
-## `mycelium init`
+## `kinoko init`
 
-Initialize a new Mycelium workspace in `~/.mycelium/`.
+Initialize a new Kinoko workspace in `~/.kinoko/`.
 
 ```bash
-mycelium init
+kinoko init
 ```
 
 **Creates:**
-- `~/.mycelium/` — workspace root
-- `~/.mycelium/config.yaml` — default configuration
-- `~/.mycelium/skills/` — local skills directory (initialized as a git repo)
+- `~/.kinoko/` — workspace root
+- `~/.kinoko/config.yaml` — default configuration
+- `~/.kinoko/skills/` — local skills directory (initialized as a git repo)
 
 **Behavior:**
 - Safe to run multiple times — won't overwrite existing files
@@ -43,19 +43,19 @@ mycelium init
 
 ---
 
-## `mycelium serve`
+## `kinoko serve`
 
 Start the Soft Serve git server for hosting skill repositories. Wires extraction and injection pipelines into session lifecycle hooks.
 
 ```bash
-mycelium serve [flags]
+kinoko serve [flags]
 ```
 
 **Flags:**
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--config` | string | `~/.mycelium/config.yaml` | Path to config file |
+| `--config` | string | `~/.kinoko/config.yaml` | Path to config file |
 
 **Behavior:**
 - Binds to `server.host`:`server.port` from config (default `127.0.0.1:23231`)
@@ -70,24 +70,24 @@ mycelium serve [flags]
 | Variable | Purpose |
 |---|---|
 | `OPENAI_API_KEY` | Fallback API key for both embeddings and LLM |
-| `MYCELIUM_EMBEDDING_API_KEY` | API key for embeddings (overrides `OPENAI_API_KEY`) |
-| `MYCELIUM_LLM_API_KEY` | API key for LLM calls (overrides `OPENAI_API_KEY`) |
+| `KINOKO_EMBEDDING_API_KEY` | API key for embeddings (overrides `OPENAI_API_KEY`) |
+| `KINOKO_LLM_API_KEY` | API key for LLM calls (overrides `OPENAI_API_KEY`) |
 
 **Example:**
 ```bash
 export OPENAI_API_KEY=sk-...
-mycelium serve
-mycelium serve --config ./my-config.yaml
+kinoko serve
+kinoko serve --config ./my-config.yaml
 ```
 
 ---
 
-## `mycelium extract`
+## `kinoko extract`
 
 Run the 3-stage extraction pipeline on a session log file. For manual testing and debugging.
 
 ```bash
-mycelium extract <session-log> [flags]
+kinoko extract <session-log> [flags]
 ```
 
 **Arguments:**
@@ -115,26 +115,26 @@ mycelium extract <session-log> [flags]
 | Variable | Purpose |
 |---|---|
 | `OPENAI_API_KEY` | Fallback API key for embeddings and LLM |
-| `MYCELIUM_EMBEDDING_API_KEY` | API key for embeddings |
-| `MYCELIUM_LLM_API_KEY` | API key for LLM calls (required) |
+| `KINOKO_EMBEDDING_API_KEY` | API key for embeddings |
+| `KINOKO_LLM_API_KEY` | API key for LLM calls (required) |
 
 **Example:**
 ```bash
 export OPENAI_API_KEY=sk-...
-mycelium extract ./session.log
-mycelium extract ./session.log --library my-team --config ./config.yaml
+kinoko extract ./session.log
+kinoko extract ./session.log --library my-team --config ./config.yaml
 ```
 
 **Output:** JSON `ExtractionResult` including stage results, skill record (if extracted), timing, and status.
 
 ---
 
-## `mycelium decay`
+## `kinoko decay`
 
 Run one decay cycle over all skills in a library. Applies half-life degradation, rescues recently-used skills, and deprecates stale ones.
 
 ```bash
-mycelium decay [flags]
+kinoko decay [flags]
 ```
 
 **Flags:**
@@ -153,9 +153,9 @@ mycelium decay [flags]
 
 **Example:**
 ```bash
-mycelium decay --library my-team
-mycelium decay --dry-run
-mycelium decay --config ./config.yaml --library local
+kinoko decay --library my-team
+kinoko decay --dry-run
+kinoko decay --config ./config.yaml --library local
 ```
 
 **Output:**
@@ -169,12 +169,12 @@ Decay cycle complete for library "local"
 
 ---
 
-## `mycelium stats`
+## `kinoko stats`
 
 Query the database and print pipeline metrics.
 
 ```bash
-mycelium stats [flags]
+kinoko stats [flags]
 ```
 
 **Flags:**
@@ -198,30 +198,30 @@ mycelium stats [flags]
 
 **Example:**
 ```bash
-mycelium stats
-mycelium stats --config ./config.yaml
+kinoko stats
+kinoko stats --config ./config.yaml
 ```
 
 ---
 
-## `mycelium --version`
+## `kinoko --version`
 
 Print the version string. Development builds show `dev`; release builds show a semantic version set via ldflags.
 
 ```bash
-mycelium --version
+kinoko --version
 ```
 
 ---
 
-## `mycelium help`
+## `kinoko help`
 
 Show help for any command.
 
 ```bash
-mycelium help
-mycelium help extract
-mycelium help decay
+kinoko help
+kinoko help extract
+kinoko help decay
 ```
 
 ---
@@ -232,6 +232,6 @@ mycelium help decay
 |------|---------|
 | 0 | Success |
 | 1 | Error (config issues, startup failures, runtime errors) |
-| 2 | Extraction rejected (`mycelium extract` only) |
-| 3 | Extraction error (`mycelium extract` only) |
+| 2 | Extraction rejected (`kinoko extract` only) |
+| 3 | Extraction error (`kinoko extract` only) |
 | 130 | Interrupted (Ctrl+C) |

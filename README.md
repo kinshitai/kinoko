@@ -1,8 +1,8 @@
-# Mycelium
+# Kinoko
 
 **Every problem solved once is solved for everyone.**
 
-Mycelium is knowledge-sharing infrastructure for AI agents. When an agent solves a problem, Mycelium extracts the knowledge, stores it as a version-controlled skill, and injects it into future sessions — automatically.
+Kinoko is knowledge-sharing infrastructure for AI agents. When an agent solves a problem, Kinoko extracts the knowledge, stores it as a version-controlled skill, and injects it into future sessions — automatically.
 
 ```
 Agent solves problem → Knowledge extracted → Stored in git → Injected into future sessions
@@ -13,11 +13,11 @@ Agent solves problem → Knowledge extracted → Stored in git → Injected into
 **Active development.** Core infrastructure and extraction pipeline are implemented. 11 packages, 373 tests, ~17K lines of Go.
 
 **What works today:**
-- `mycelium init` — set up a workspace
-- `mycelium serve` — run a local git server with automatic extraction and injection hooks
-- `mycelium extract` — manually run the 3-stage extraction pipeline on a session log
-- `mycelium decay` — run a decay cycle to demote stale skills
-- `mycelium stats` — view pipeline metrics, A/B test results, and decay distribution
+- `kinoko init` — set up a workspace
+- `kinoko serve` — run a local git server with automatic extraction and injection hooks
+- `kinoko extract` — manually run the 3-stage extraction pipeline on a session log
+- `kinoko decay` — run a decay cycle to demote stale skills
+- `kinoko stats` — view pipeline metrics, A/B test results, and decay distribution
 - Full extraction pipeline: metadata filtering → embedding novelty + rubric scoring → LLM critic
 - Skill storage in SQLite with embedding-based similarity search
 - Injection pipeline with prompt classification, pattern matching, and degraded mode
@@ -31,41 +31,41 @@ Agent solves problem → Knowledge extracted → Stored in git → Injected into
 
 ```bash
 # Install
-git clone https://github.com/mycelium-dev/mycelium.git
-cd mycelium
-go install ./cmd/mycelium
+git clone https://github.com/kinoko-dev/kinoko.git
+cd kinoko
+go install ./cmd/kinoko
 
 # Set up workspace
-mycelium init
+kinoko init
 
 # Set API key (needed for extraction and injection)
 export OPENAI_API_KEY=sk-...
 
 # Start the server (extraction + injection hooks active)
-mycelium serve
+kinoko serve
 ```
 
-Your Mycelium server is now running at `ssh://localhost:23231`.
+Your Kinoko server is now running at `ssh://localhost:23231`.
 
 ### Run extraction manually
 
 ```bash
 # Extract knowledge from a session log
-mycelium extract ./session.log
+kinoko extract ./session.log
 
 # View pipeline metrics
-mycelium stats
+kinoko stats
 
 # Run decay cycle
-mycelium decay --library local
-mycelium decay --dry-run  # preview changes
+kinoko decay --library local
+kinoko decay --dry-run  # preview changes
 ```
 
 ### Create a test skill
 
 ```bash
-mkdir -p ~/.mycelium/skills/hello-world
-cat > ~/.mycelium/skills/hello-world/SKILL.md << 'EOF'
+mkdir -p ~/.kinoko/skills/hello-world
+cat > ~/.kinoko/skills/hello-world/SKILL.md << 'EOF'
 ---
 name: hello-world
 version: 1
@@ -78,13 +78,13 @@ created: 2026-02-15
 # Hello World
 
 ## When to Use
-Testing that your Mycelium setup works.
+Testing that your Kinoko setup works.
 
 ## Solution
 If you can read this, it works.
 EOF
 
-cd ~/.mycelium/skills
+cd ~/.kinoko/skills
 git add hello-world/
 git commit -m "Add hello-world skill"
 ```
@@ -103,7 +103,7 @@ Extracted skills are persisted as `SKILL.md` files with YAML front matter and st
 
 ### Injection Pipeline
 
-When an agent starts a session, Mycelium classifies the prompt, queries the skill store, and injects the top-ranked skills as context. Ranking combines pattern overlap, embedding similarity, and historical success rate. Falls back to pattern-only matching when embeddings are unavailable.
+When an agent starts a session, Kinoko classifies the prompt, queries the skill store, and injects the top-ranked skills as context. Ranking combines pattern overlap, embedding similarity, and historical success rate. Falls back to pattern-only matching when embeddings are unavailable.
 
 ### Decay System
 

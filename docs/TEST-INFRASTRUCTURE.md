@@ -26,7 +26,7 @@ The project uses in-memory SQLite, mock LLM/embedder, and real goroutines for in
 
 ### Option A: Docker Compose
 
-Soft Serve container + Mycelium test container, orchestrated via `docker-compose.yml`.
+Soft Serve container + Kinoko test container, orchestrated via `docker-compose.yml`.
 
 | | |
 |---|---|
@@ -82,7 +82,7 @@ Don't change anything. Add a few tests that shell out to git commands against a 
 
 4. **Graceful degradation.** If `soft` isn't installed (CI without it, developer without it), tests skip with `t.Skip()`. Existing tests unaffected.
 
-5. **Production parity.** Docker Compose tests a different deployment model than what Mycelium actually uses. We'd be testing Docker, not Mycelium.
+5. **Production parity.** Docker Compose tests a different deployment model than what Kinoko actually uses. We'd be testing Docker, not Kinoko.
 
 ### When to Add Docker (Future)
 

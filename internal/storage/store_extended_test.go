@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 // TestBug_UnboundedINClause tests the P1 issue where loadPatternsMulti and

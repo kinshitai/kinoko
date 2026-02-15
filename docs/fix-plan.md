@@ -12,7 +12,7 @@
 
 2. **Incorrect test assumptions about git init behavior**
    - **File:** `tests/e2e/init_test.go`
-   - **Issue:** `TestMyceliumInitNoGit` expects different behavior than documented
+   - **Issue:** `TestKinokoInitNoGit` expects different behavior than documented
    - **Fix:** Test should verify graceful degradation (no git repo created) not failure
 
 3. **Wrong dependency name validation expectations**
@@ -42,7 +42,7 @@
    - **Function:** `expandPath()`
    - **Bug:** Only handles `~/path`, fails on `~username/path`
    - **Fix:** Parse user portion before tilde, lookup user's home directory
-   - **Impact:** Config paths like `~otso/.mycelium/skills` won't expand correctly
+   - **Impact:** Config paths like `~otso/.kinoko/skills` won't expand correctly
 
 ### Potential Bug
 

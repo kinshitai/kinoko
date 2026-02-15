@@ -12,9 +12,9 @@ import (
 	"reflect"
 
 	"github.com/spf13/cobra"
-	"github.com/mycelium-dev/mycelium/internal/config"
-	"github.com/mycelium-dev/mycelium/internal/storage"
-	"github.com/mycelium-dev/mycelium/internal/worker"
+	"github.com/kinoko-dev/kinoko/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/worker"
 )
 
 var workerCmd = &cobra.Command{
@@ -41,7 +41,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 
 	logger := slog.Default()
-	logger.Info("Mycelium worker starting")
+	logger.Info("Kinoko worker starting")
 
 	store, err := storage.NewSQLiteStore(cfg.Storage.DSN, "")
 	if err != nil {

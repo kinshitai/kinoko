@@ -2,7 +2,7 @@
 
 **Reviewer:** Jazz  
 **Date:** 2026-02-15  
-**Files:** `internal/injection/ab.go`, `internal/metrics/collector.go`, `cmd/mycelium/stats.go`  
+**Files:** `internal/injection/ab.go`, `internal/metrics/collector.go`, `cmd/kinoko/stats.go`  
 **Grade: B-**
 
 Not bad structurally, but there are real bugs hiding in the metric queries and a spec mismatch that'll silently produce wrong data. The A/B injector is clean but has a thread-safety gap and a subtle randomization concern.

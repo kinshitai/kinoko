@@ -1,4 +1,4 @@
-module github.com/mycelium-dev/mycelium
+module github.com/kinoko-dev/kinoko
 
 go 1.24.2
 

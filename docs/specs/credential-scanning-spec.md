@@ -97,29 +97,33 @@ if p.scanner != nil && p.scanner.HasSecrets(skillBody) {
 }
 ```
 
-**3. Application-level scan before push (in GitCommitter):**
+**3. Soft Serve global `pre-receive` hook (git-native gate):**
 
-Since Soft Serve doesn't support native git hooks, we scan at the application level before pushing:
+Soft Serve supports native server-side hooks — `pre-receive`, `update`, `post-update`, `post-receive`. Global hooks live at `{SOFT_SERVE_DATA_PATH}/hooks/` and fire on every push to every repo.
 
-```go
-// internal/gitserver/committer.go — CommitSkill()
-// Before git push:
-if scanner != nil && scanner.HasSecrets(string(body)) {
-    body = []byte(scanner.Redact(string(body)))
-    log.Warn("credentials redacted before git push", "repo", repoName)
-}
-// Then git add + commit + push with clean content
+```sh
+#!/bin/sh
+# {dataDir}/hooks/pre-receive
+# Scans pushed content for credentials. Exit 1 = push rejected.
+kinoko scan --stdin --reject
 ```
 
-For Phase 3 (external contributors pushing via `git push`), the RepoWatcher (see G1) scans after push and can quarantine/flag repos with credentials. Not as strong as a pre-receive rejection, but Soft Serve doesn't give us that hook point. If this becomes a real concern, we fork Soft Serve or switch to a server that supports hooks.
+The `kinoko scan --stdin` command:
+1. Reads the pushed refs from stdin (`<old> <new> <ref>` per line)
+2. For each ref, reads the changed files from git
+3. Scans SKILL.md content for credentials
+4. If high-confidence findings: prints error message to stderr (shown to pusher), exits 1 → push rejected
+5. If clean: exits 0 → push proceeds
 
-**4. `mycelium scan` CLI command:**
+This works for both our extraction pipeline AND external contributors. Server-enforced, can't be bypassed. True pre-commit security gate.
+
+**4. `kinoko scan` CLI command:**
 
 Manual scanning for existing content:
 ```bash
-mycelium scan <file>           # Scan a single file
-mycelium scan --dir <path>     # Scan directory recursively
-mycelium scan --skills         # Scan all skills in git
+kinoko scan <file>           # Scan a single file
+kinoko scan --dir <path>     # Scan directory recursively
+kinoko scan --skills         # Scan all skills in git
 ```
 
 Output: findings per file with line numbers and types. Exit code 1 if high-confidence findings.
@@ -154,12 +158,12 @@ hooks:
 
 | RFC-002 Requirement | This Spec | Status |
 |---|---|---|
-| Pre-commit credential scanning | ⚠️ Application-level scan before push (Soft Serve lacks native git hooks) | Phase 1: scan in pipeline + GitCommitter. Phase 3: RepoWatcher for external pushes. |
-| Pre-commit format validation | ⚠️ Application-level validation before push | Same approach as credential scanning |
+| Pre-commit credential scanning | ✅ Soft Serve global `pre-receive` hook runs `kinoko scan` — rejects push if secrets found | Aligned — server-enforced, can't be bypassed |
+| Pre-commit format validation | ✅ Same `pre-receive` hook validates SKILL.md schema | Aligned |
 | Pre-commit prompt injection detection | ⚠️ Stage 3 has delimiter sanitization for its own prompts, but no general input scanning | Partial — extend later |
 | "Security is not a feature" / "ships on day one" | ✅ This spec addresses it | Overdue but correct |
 
-**Alignment note:** RFC says "pre-commit hooks run on contributor's machine." Soft Serve doesn't support native git hooks (pre-receive/post-receive). For Phase 1, we scan at the application level before pushing — our pipeline controls all pushes, so nothing bypasses it. For Phase 3 (external contributors), we need either a RepoWatcher that scans after push, or a git server that supports hooks. This is a known gap — see G1 open question.
+**Alignment note:** RFC says "pre-commit hooks run on contributor's machine." Soft Serve's global `pre-receive` hook is actually stronger — it's server-enforced, fires on every push, and can't be bypassed by skipping client-side hooks. Same security guarantee, better enforcement. Git-native.
 
 ## Dependencies
 

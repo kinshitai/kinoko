@@ -179,7 +179,7 @@ func TestConfigValidation(t *testing.T) {
 
 func TestConfigLoadAndSave(t *testing.T) {
 	// Create temporary directory for test
-	tempDir, err := os.MkdirTemp("", "mycelium-config-test")
+	tempDir, err := os.MkdirTemp("", "kinoko-config-test")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestConfigLoadAndSave(t *testing.T) {
 
 func TestConfigLoadInvalidYAML(t *testing.T) {
 	// Create temporary directory for test
-	tempDir, err := os.MkdirTemp("", "mycelium-config-test")
+	tempDir, err := os.MkdirTemp("", "kinoko-config-test")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestConfigLoadInvalidYAML(t *testing.T) {
 
 func TestTildeExpansion(t *testing.T) {
 	// Create temporary directory for test
-	tempDir, err := os.MkdirTemp("", "mycelium-config-test")
+	tempDir, err := os.MkdirTemp("", "kinoko-config-test")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -263,7 +263,7 @@ func TestTildeExpansion(t *testing.T) {
 	// Create config with tilde paths
 	configContent := `storage:
   driver: sqlite
-  dsn: ~/mycelium.db
+  dsn: ~/kinoko.db
 
 server:
   host: 127.0.0.1
@@ -292,7 +292,7 @@ libraries:
 		t.Fatalf("failed to get home dir: %v", err)
 	}
 
-	expectedDSN := filepath.Join(homeDir, "mycelium.db")
+	expectedDSN := filepath.Join(homeDir, "kinoko.db")
 	expectedDataDir := filepath.Join(homeDir, "data")
 	expectedLibPath := filepath.Join(homeDir, "skills")
 
@@ -410,7 +410,7 @@ func TestExpandPathNonexistentUser(t *testing.T) {
 
 func TestConfigPartialMerging(t *testing.T) {
 	// Create temporary directory for test
-	tempDir, err := os.MkdirTemp("", "mycelium-config-test")
+	tempDir, err := os.MkdirTemp("", "kinoko-config-test")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -452,14 +452,14 @@ func TestConfigPartialMerging(t *testing.T) {
 			name: "only storage section", 
 			configContent: `storage:
   driver: postgres
-  dsn: "postgres://user:pass@localhost/mycelium"
+  dsn: "postgres://user:pass@localhost/kinoko"
 `,
 			validateResult: func(t *testing.T, cfg *Config) {
 				// Storage section should be overridden
 				if cfg.Storage.Driver != "postgres" {
 					t.Errorf("expected driver 'postgres', got '%s'", cfg.Storage.Driver)
 				}
-				if cfg.Storage.DSN != "postgres://user:pass@localhost/mycelium" {
+				if cfg.Storage.DSN != "postgres://user:pass@localhost/kinoko" {
 					t.Errorf("expected postgres DSN, got '%s'", cfg.Storage.DSN)
 				}
 				

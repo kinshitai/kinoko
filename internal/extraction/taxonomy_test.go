@@ -3,7 +3,7 @@ package extraction
 import (
 	"testing"
 
-	"github.com/mycelium-dev/mycelium/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 // Tests for taxonomy/validation in stage2.go — R5 area.

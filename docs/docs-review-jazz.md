@@ -97,7 +97,7 @@ Start with Markdown files in the repo. When we have 100 GitHub stars and people 
 8. llms.txt
 
 **What should actually ship first:**
-1. Make the damn thing run (`mycelium serve` works)
+1. Make the damn thing run (`kinoko serve` works)
 2. Write a README that explains what this does
 3. Write installation instructions that work
 4. ONE working example
@@ -145,7 +145,7 @@ That's it. That's the whole docs requirement.
 
 1. **README.md** - What is this, why should I care, how do I try it
    ```markdown
-   # Mycelium
+   # Kinoko
    
    AI agents sharing knowledge automatically.
    
@@ -173,7 +173,7 @@ I'll grudgingly admit this one makes sense. Since the whole point is AI agents s
 
 But make it simple:
 ```
-# Mycelium - AI Knowledge Sharing
+# Kinoko - AI Knowledge Sharing
 
 What: AI agents extract skills from work sessions automatically
 How: Install server, configure clients, skills flow through git repos  
@@ -241,7 +241,7 @@ Here's what I'd do if I were forced at gunpoint to document this thing:
 
 **README.md** (rewrite):
 ```markdown
-# Mycelium
+# Kinoko
 
 AI agents sharing knowledge automatically.
 
@@ -249,7 +249,7 @@ AI agents sharing knowledge automatically.
 
 ## What It Does
 
-Your AI agent solves a problem. Mycelium extracts what it learned. 
+Your AI agent solves a problem. Kinoko extracts what it learned. 
 Other people's agents automatically know the solution.
 
 ## Quick Start

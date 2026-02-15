@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mycelium-dev/mycelium/pkg/skill"
+	"github.com/kinoko-dev/kinoko/pkg/skill"
 )
 
 func TestSkillParsingEdgeCases(t *testing.T) {
