@@ -397,12 +397,16 @@ postgres://root:pass@db:5432/prod`
 // =============================================================================
 
 func TestEdge_ConcurrentSameSkillExtraction(t *testing.T) {
-	store := newTestStore(t)
+	// Use file-based DB for concurrent access (`:memory:` gives separate DBs per connection).
+	dbPath := filepath.Join(t.TempDir(), "concurrent.db")
+	store, err := storage.NewSQLiteStore(dbPath, "test-embed-model")
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
 	ctx := context.Background()
-	embedder := newPredictableEmbedder(3)
 
 	indexer := storage.NewSQLiteIndexer(store)
-	committer := &indexingCommitter{indexer: indexer, embedder: embedder}
 
 	const n = 5
 	var wg sync.WaitGroup
@@ -415,7 +419,9 @@ func TestEdge_ConcurrentSameSkillExtraction(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			// Each goroutine gets its own LLM/stages to avoid data races on callLog.
+			// Each goroutine gets its own LLM/stages/embedder to avoid data races.
+			embedder := newPredictableEmbedder(3)
+			committer := &indexingCommitter{indexer: indexer, embedder: embedder}
 			llm := &predictableLLM{
 				rubricResponse: goodRubricJSON(),
 				criticResponse: extractVerdictJSON(),
