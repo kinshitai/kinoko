@@ -35,9 +35,18 @@ func testConfig() Config {
 	}
 }
 
+func mustNew(t *testing.T, cfg Config, clk Clock) *Breaker {
+	t.Helper()
+	b, err := New(cfg, clk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
 func TestClosedToOpen(t *testing.T) {
 	clk := newFakeClock(time.Now())
-	b := New(testConfig(), clk)
+	b := mustNew(t, testConfig(), clk)
 
 	// Under threshold: still closed.
 	for i := 0; i < 2; i++ {
@@ -61,7 +70,7 @@ func TestClosedToOpen(t *testing.T) {
 
 func TestOpenToHalfOpenToClosed(t *testing.T) {
 	clk := newFakeClock(time.Now())
-	b := New(testConfig(), clk)
+	b := mustNew(t, testConfig(), clk)
 
 	// Trip breaker.
 	for i := 0; i < 3; i++ {
@@ -91,7 +100,7 @@ func TestOpenToHalfOpenToClosed(t *testing.T) {
 func TestHalfOpenFailureEscalates(t *testing.T) {
 	clk := newFakeClock(time.Now())
 	cfg := testConfig()
-	b := New(cfg, clk)
+	b := mustNew(t, cfg, clk)
 
 	// Trip: 5min base.
 	for i := 0; i < 3; i++ {
@@ -129,7 +138,7 @@ func TestMaxDurationCap(t *testing.T) {
 		BaseDuration: 10 * time.Minute,
 		MaxDuration:  15 * time.Minute,
 	}
-	b := New(cfg, clk)
+	b := mustNew(t, cfg, clk)
 
 	// Trip.
 	b.Allow()
@@ -155,7 +164,7 @@ func TestMaxDurationCap(t *testing.T) {
 
 func TestSuccessResetsBackoff(t *testing.T) {
 	clk := newFakeClock(time.Now())
-	b := New(testConfig(), clk)
+	b := mustNew(t, testConfig(), clk)
 
 	// Trip, escalate once.
 	for i := 0; i < 3; i++ {
@@ -185,7 +194,7 @@ func TestSuccessResetsBackoff(t *testing.T) {
 
 func TestHalfOpenRejectsSecondCaller(t *testing.T) {
 	clk := newFakeClock(time.Now())
-	b := New(testConfig(), clk)
+	b := mustNew(t, testConfig(), clk)
 
 	// Trip.
 	for i := 0; i < 3; i++ {
@@ -207,7 +216,7 @@ func TestHalfOpenRejectsSecondCaller(t *testing.T) {
 
 func TestConcurrentAccess(t *testing.T) {
 	clk := newFakeClock(time.Now())
-	b := New(testConfig(), clk)
+	b := mustNew(t, testConfig(), clk)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
@@ -224,5 +233,39 @@ func TestConcurrentAccess(t *testing.T) {
 	// Should not panic; state should be consistent.
 	if err := b.Allow(); err != nil {
 		t.Fatalf("unexpected error after concurrent access: %v", err)
+	}
+}
+
+func TestNew_InvalidConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Config
+	}{
+		{"zero threshold", Config{Threshold: 0, BaseDuration: time.Second, MaxDuration: time.Second}},
+		{"negative threshold", Config{Threshold: -1, BaseDuration: time.Second, MaxDuration: time.Second}},
+		{"zero base duration", Config{Threshold: 1, BaseDuration: 0, MaxDuration: time.Second}},
+		{"negative base duration", Config{Threshold: 1, BaseDuration: -time.Second, MaxDuration: time.Second}},
+		{"max < base", Config{Threshold: 1, BaseDuration: 10 * time.Second, MaxDuration: 5 * time.Second}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := New(tt.cfg, nil)
+			if err == nil {
+				t.Fatal("expected error for invalid config")
+			}
+			if b != nil {
+				t.Fatal("expected nil breaker on error")
+			}
+		})
+	}
+}
+
+func TestNew_ValidConfig(t *testing.T) {
+	b, err := New(Config{Threshold: 1, BaseDuration: time.Second, MaxDuration: time.Second}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if b == nil {
+		t.Fatal("expected non-nil breaker")
 	}
 }

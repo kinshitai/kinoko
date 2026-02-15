@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mycelium-dev/mycelium/internal/circuitbreaker"
 	"github.com/mycelium-dev/mycelium/internal/llm"
 )
 
@@ -35,8 +36,8 @@ func TestStage3CB_ClosedToOpenToHalfOpenToClosed(t *testing.T) {
 
 	// Verify open
 	_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
-	if !errors.Is(err, ErrCircuitOpen) {
-		t.Fatalf("expected ErrCircuitOpen, got %v", err)
+	if !errors.Is(err, circuitbreaker.ErrOpen) {
+		t.Fatalf("expected circuitbreaker.ErrOpen, got %v", err)
 	}
 
 	// Open → Half-open: advance past open duration
@@ -83,7 +84,7 @@ func TestStage3CB_HalfOpenFailEscalates(t *testing.T) {
 	// Still open at 5min after re-open
 	now = now.Add(5 * time.Minute)
 	_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
-	if !errors.Is(err, ErrCircuitOpen) {
+	if !errors.Is(err, circuitbreaker.ErrOpen) {
 		t.Fatalf("expected still open (doubled to 10min), got %v", err)
 	}
 
@@ -94,7 +95,7 @@ func TestStage3CB_HalfOpenFailEscalates(t *testing.T) {
 	// Verify doubled again: still open after 10min
 	now = now.Add(10 * time.Minute)
 	_, err = critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
-	if !errors.Is(err, ErrCircuitOpen) {
+	if !errors.Is(err, circuitbreaker.ErrOpen) {
 		t.Fatalf("expected still open (doubled to 20min), got %v", err)
 	}
 }

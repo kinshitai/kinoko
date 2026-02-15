@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+
+	"github.com/mycelium-dev/mycelium/internal/circuitbreaker"
 	"time"
 )
 
@@ -236,7 +238,7 @@ func TestCircuitBreaker_NotTrippedBy4xx(t *testing.T) {
 			t.Fatal("expected error")
 		}
 		// Should always be permanent, never circuit open.
-		if errors.Is(err, ErrCircuitOpen) {
+		if errors.Is(err, circuitbreaker.ErrOpen) {
 			t.Fatalf("circuit breaker should not trip on 4xx (call %d)", i+1)
 		}
 	}
@@ -383,7 +385,7 @@ func TestCircuitBreaker_EscalatingOpenDuration(t *testing.T) {
 	// Verify: should still be open at 60ms (since new duration is 100ms).
 	time.Sleep(60 * time.Millisecond)
 	_, err := client.Embed(context.Background(), "test")
-	if !errors.Is(err, ErrCircuitOpen) {
+	if !errors.Is(err, circuitbreaker.ErrOpen) {
 		t.Fatalf("expected circuit still open (escalated to 100ms), got %v", err)
 	}
 
@@ -398,7 +400,7 @@ func TestCircuitBreaker_EscalatingOpenDuration(t *testing.T) {
 	// Verify the open duration is now 200ms by checking it's still open after 100ms.
 	time.Sleep(110 * time.Millisecond)
 	_, err = client.Embed(context.Background(), "test")
-	if !errors.Is(err, ErrCircuitOpen) {
+	if !errors.Is(err, circuitbreaker.ErrOpen) {
 		t.Fatalf("expected circuit still open (escalated to 200ms), got %v", err)
 	}
 }

@@ -4,6 +4,7 @@ package circuitbreaker
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -52,7 +53,17 @@ type Breaker struct {
 }
 
 // New creates a Breaker. If clock is nil, real time is used.
-func New(cfg Config, clock Clock) *Breaker {
+// Returns an error if the config is invalid.
+func New(cfg Config, clock Clock) (*Breaker, error) {
+	if cfg.Threshold <= 0 {
+		return nil, fmt.Errorf("circuitbreaker: Threshold must be > 0, got %d", cfg.Threshold)
+	}
+	if cfg.BaseDuration <= 0 {
+		return nil, fmt.Errorf("circuitbreaker: BaseDuration must be > 0, got %v", cfg.BaseDuration)
+	}
+	if cfg.MaxDuration < cfg.BaseDuration {
+		return nil, fmt.Errorf("circuitbreaker: MaxDuration (%v) must be >= BaseDuration (%v)", cfg.MaxDuration, cfg.BaseDuration)
+	}
 	if clock == nil {
 		clock = realClock{}
 	}
@@ -60,7 +71,7 @@ func New(cfg Config, clock Clock) *Breaker {
 		cfg:          cfg,
 		clock:        clock,
 		openDuration: cfg.BaseDuration,
-	}
+	}, nil
 }
 
 // Allow checks whether a request is allowed. Returns ErrOpen if the circuit is open.

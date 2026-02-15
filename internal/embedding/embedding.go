@@ -95,9 +95,6 @@ func IsPermanent(err error) bool {
 	return errors.As(err, &pe)
 }
 
-// ErrCircuitOpen is an alias for circuitbreaker.ErrOpen for backward compatibility.
-var ErrCircuitOpen = circuitbreaker.ErrOpen
-
 // Client is the OpenAI-compatible embedding client.
 type Client struct {
 	cfg    Config
@@ -106,20 +103,24 @@ type Client struct {
 	cb     *circuitbreaker.Breaker
 }
 
-// New creates a new embedding Client.
+// New creates a new embedding Client. Panics if circuit breaker config is invalid.
 func New(cfg Config, logger *slog.Logger) *Client {
 	if logger == nil {
 		logger = slog.Default()
+	}
+	cb, err := circuitbreaker.New(circuitbreaker.Config{
+		Threshold:    cfg.CircuitBreaker.FailureThreshold,
+		BaseDuration: cfg.CircuitBreaker.OpenDuration,
+		MaxDuration:  30 * time.Minute,
+	}, nil)
+	if err != nil {
+		panic(fmt.Sprintf("embedding: invalid circuit breaker config: %v", err))
 	}
 	return &Client{
 		cfg:    cfg,
 		http:   &http.Client{Timeout: 30 * time.Second},
 		logger: logger.With("component", "embedding"),
-		cb: circuitbreaker.New(circuitbreaker.Config{
-			Threshold:    cfg.CircuitBreaker.FailureThreshold,
-			BaseDuration: cfg.CircuitBreaker.OpenDuration,
-			MaxDuration:  30 * time.Minute,
-		}, nil),
+		cb:     cb,
 	}
 }
 

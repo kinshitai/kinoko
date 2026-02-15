@@ -22,9 +22,6 @@ import (
 // maxContentBytes is the truncation limit for session content sent to the LLM.
 const maxContentBytes = 100 * 1024
 
-// ErrCircuitOpen is an alias for circuitbreaker.ErrOpen for backward compatibility.
-var ErrCircuitOpen = circuitbreaker.ErrOpen
-
 // Stage3Critic evaluates a session via LLM and returns an extract/reject verdict.
 type Stage3Critic interface {
 	Evaluate(ctx context.Context, session model.SessionRecord, content []byte, stage2 *model.Stage2Result) (*model.Stage3Result, error)
@@ -58,11 +55,11 @@ func NewStage3Critic(
 		llmClient: llmClient,
 		cfg:       cfg,
 		log:       log,
-		cb: circuitbreaker.New(circuitbreaker.Config{
+		cb: mustNewBreaker(circuitbreaker.Config{
 			Threshold:    5,
 			BaseDuration: 5 * time.Minute,
 			MaxDuration:  30 * time.Minute,
-		}, nil),
+		}),
 		clock: time.Now,
 		sleep: time.Sleep,
 	}
@@ -70,6 +67,14 @@ func NewStage3Critic(
 		c.llmV2 = v2
 	}
 	return c
+}
+
+func mustNewBreaker(cfg circuitbreaker.Config) *circuitbreaker.Breaker {
+	b, err := circuitbreaker.New(cfg, nil)
+	if err != nil {
+		panic(fmt.Sprintf("extraction: invalid circuit breaker config: %v", err))
+	}
+	return b
 }
 
 func (c *stage3Critic) Evaluate(ctx context.Context, session model.SessionRecord, content []byte, stage2 *model.Stage2Result) (*model.Stage3Result, error) {

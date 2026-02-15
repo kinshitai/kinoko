@@ -1,14 +1,14 @@
 ---
 name: fix-backend-database-connection
-id: 019c6325-2a2d-7724-806e-7d4c592b1df3
+id: 019c632b-7739-7eca-9cab-391dbfe50866
 version: 1
 category: tactical
 patterns:
   - FIX/Backend/DatabaseConnection
-extracted_by: stats-pipeline-test
+extracted_by: pipeline-v1
 quality: 3.65
 confidence: 0.87
-source_session: sess-sp-1
+source_session: sess-cei-1
 created: 2026-02-15
 ---
 
@@ -23,7 +23,7 @@ Category: tactical
 ## Solution
 
 ```
-fix database connection pooling
+unique extraction problem 1
 ```
 
 ## Why It Works

@@ -587,8 +587,8 @@ func TestStage3Critic_CircuitBreaker(t *testing.T) {
 
 		// 6th should be circuit open
 		_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2())
-		if !errors.Is(err, ErrCircuitOpen) {
-			t.Errorf("expected ErrCircuitOpen, got %v", err)
+		if !errors.Is(err, circuitbreaker.ErrOpen) {
+			t.Errorf("expected circuitbreaker.ErrOpen, got %v", err)
 		}
 	})
 
@@ -661,7 +661,7 @@ func TestStage3Critic_CircuitBreaker(t *testing.T) {
 		succeedNext = false
 		for i := 0; i < 4; i++ {
 			_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
-			if errors.Is(err, ErrCircuitOpen) {
+			if errors.Is(err, circuitbreaker.ErrOpen) {
 				t.Fatalf("circuit should not be open after reset, failed on call %d", i+1)
 			}
 		}
@@ -1052,7 +1052,7 @@ func TestStage3Critic_HalfOpenFailureDoublesDuration(t *testing.T) {
 	// Should still be open at 5 min after re-open.
 	now = now.Add(5 * time.Minute)
 	_, err = critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
-	if !errors.Is(err, ErrCircuitOpen) {
+	if !errors.Is(err, circuitbreaker.ErrOpen) {
 		t.Errorf("circuit should still be open after 5 min (doubled to 10 min), got %v", err)
 	}
 
@@ -1289,10 +1289,14 @@ func newTestCriticWithClock(llm llm.LLMClient, clock func() time.Time) *stage3Cr
 	c := NewStage3Critic(llm, s3testConfig(), s3testLogger()).(*stage3Critic)
 	c.clock = clock
 	c.sleep = func(d time.Duration) {}
-	c.cb = circuitbreaker.New(circuitbreaker.Config{
+	cb, err := circuitbreaker.New(circuitbreaker.Config{
 		Threshold:    5,
 		BaseDuration: 5 * time.Minute,
 		MaxDuration:  30 * time.Minute,
 	}, clockAdapter{fn: clock})
+	if err != nil {
+		panic(err)
+	}
+	c.cb = cb
 	return c
 }

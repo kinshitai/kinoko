@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/mycelium-dev/mycelium/internal/circuitbreaker"
 )
 
 // Tests for the embedding circuit breaker state transitions.
@@ -42,8 +44,8 @@ func TestEmbeddingCB_ClosedToOpenToHalfOpenToClosed(t *testing.T) {
 
 	// Verify open
 	_, err := client.Embed(context.Background(), "test")
-	if !errors.Is(err, ErrCircuitOpen) {
-		t.Fatalf("expected ErrCircuitOpen, got %v", err)
+	if !errors.Is(err, circuitbreaker.ErrOpen) {
+		t.Fatalf("expected circuitbreaker.ErrOpen, got %v", err)
 	}
 
 	// Open → Half-open → Closed
@@ -92,7 +94,7 @@ func TestEmbeddingCB_HalfOpenFailEscalates(t *testing.T) {
 	// Still open at 60ms (duration is now 100ms)
 	time.Sleep(60 * time.Millisecond)
 	_, err := client.Embed(context.Background(), "test")
-	if !errors.Is(err, ErrCircuitOpen) {
+	if !errors.Is(err, circuitbreaker.ErrOpen) {
 		t.Fatalf("expected still open (escalated to 100ms), got %v", err)
 	}
 
@@ -103,7 +105,7 @@ func TestEmbeddingCB_HalfOpenFailEscalates(t *testing.T) {
 	// Still open at 110ms (duration is now 200ms)
 	time.Sleep(110 * time.Millisecond)
 	_, err = client.Embed(context.Background(), "test")
-	if !errors.Is(err, ErrCircuitOpen) {
+	if !errors.Is(err, circuitbreaker.ErrOpen) {
 		t.Fatalf("expected still open (escalated to 200ms), got %v", err)
 	}
 }
