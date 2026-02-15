@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -354,9 +355,14 @@ func findAvailablePort(t *testing.T, startPort int) int {
 }
 
 func isPortAvailable(port int) bool {
-	// Try to bind to the port
-	cmd := exec.Command("sh", "-c", fmt.Sprintf("nc -z 127.0.0.1 %d", port))
-	return cmd.Run() != nil // If command fails, port is available
+	// Try to bind to the port using net.Listen
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return false // Port not available
+	}
+	ln.Close()
+	return true // Port is available
 }
 
 func (env *TestEnvironment) waitForServerReady() {

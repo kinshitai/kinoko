@@ -219,6 +219,13 @@ func TestMyceliumInitNoGit(t *testing.T) {
 		t.Fatalf("mycelium init should not fail when git is missing: %v\nOutput: %s", err, output)
 	}
 
+	// Output should contain warning about missing git
+	outputStr := string(output)
+	if !strings.Contains(outputStr, "git") && !strings.Contains(outputStr, "warning") {
+		t.Logf("Expected warning about missing git in output: %s", outputStr)
+		// Note: This is documenting expected behavior - graceful degradation with warning
+	}
+
 	// Should still create directories and config
 	myceliumDir := filepath.Join(homeDir, ".mycelium")
 	if _, err := os.Stat(myceliumDir); os.IsNotExist(err) {

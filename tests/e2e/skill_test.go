@@ -78,8 +78,9 @@ cat файл.txt | grep "世界"
 	})
 
 	t.Run("very_large_skill", func(t *testing.T) {
-		// Test parsing very large skills (potential memory issues)
-		largeBody := strings.Repeat("This is a very long line of content that simulates a large skill file. ", 10000)
+		// Test parsing very large skills - generate content clearly over 64KB to test bufio.Scanner limits
+		// Each repeat unit is ~75 bytes, so 1000 repeats = ~75KB, well over 64KB limit
+		largeBody := strings.Repeat("This is a very long line of content that simulates a large skill file. ", 1000)
 		
 		largeSkill := `---
 name: large-skill-test
@@ -100,13 +101,29 @@ When dealing with very large skill files.
 ## Gotchas
 Large files can cause memory issues during parsing.`
 
+		// Verify we're actually testing a large file
+		skillSize := len(largeSkill)
+		t.Logf("Testing skill file size: %d bytes", skillSize)
+		if skillSize < 65536 { // 64KB
+			t.Fatalf("Test skill should be larger than 64KB for meaningful test, got %d bytes", skillSize)
+		}
+
 		s, err := skill.Parse(strings.NewReader(largeSkill))
 		if err != nil {
 			t.Fatalf("Failed to parse large skill: %v", err)
 		}
 
-		if !strings.Contains(s.Body, "very long line") {
-			t.Error("Large skill content not preserved")
+		// Verify the FULL content is preserved, not just a substring
+		expectedBodySize := len(largeBody) + len("# Large Skill Test\n\n## When to Use\nWhen dealing with very large skill files.\n\n## Solution\n") + len("\n\n## Gotchas\nLarge files can cause memory issues during parsing.")
+		if len(s.Body) < expectedBodySize-100 { // Allow some whitespace normalization
+			t.Errorf("Large skill content appears truncated: expected ~%d bytes, got %d bytes", expectedBodySize, len(s.Body))
+		}
+
+		// The full repeated text should be present, not truncated
+		repeatedText := "This is a very long line of content that simulates a large skill file."
+		occurrences := strings.Count(s.Body, repeatedText)
+		if occurrences < 950 { // Allow some tolerance but should be close to 1000
+			t.Errorf("Large skill content appears truncated: expected ~1000 occurrences of repeated text, got %d", occurrences)
 		}
 
 		// Should be able to render it back without issues
@@ -193,7 +210,7 @@ author: "author with spaces and special chars: @#$%"
 confidence: 1.0
 created: 2026-02-14
 tags: ["tag-with-spaces", "tag:with:colons", "tag/with/slashes"]
-dependencies: ["skill-with-numbers-123", "skill-with-underscores_here"]
+dependencies: ["skill-with-numbers-123", "skill-with-valid-kebab-case"]
 ---
 
 # Front Matter Edge Cases

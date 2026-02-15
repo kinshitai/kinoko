@@ -120,13 +120,13 @@
 ## Test Pyramid
 
 ```
-        E2E Tests (30%)
+        E2E Tests (10%)
        - Full user journeys
        - Real Soft Serve integration
        - Cross-platform testing
        - Performance under load
 
-        Integration Tests (40%)
+        Integration Tests (30%)
        - Component integration
        - Config loading & validation
        - Git operations
@@ -150,7 +150,7 @@
 - Tilde expansion logic
 - SSH key path construction
 
-### Integration Tests (40% of effort)  
+### Integration Tests (30% of effort)  
 **Focus:** Component interactions, real dependencies
 - Config loading from files
 - Git server startup/shutdown
@@ -158,7 +158,7 @@
 - Repository operations (create/list/delete)
 - Process lifecycle management
 
-### E2E Tests (30% of effort)
+### E2E Tests (10% of effort)
 **Focus:** Complete user workflows, real environment
 - Full init → serve → repo lifecycle
 - Multi-client scenarios
