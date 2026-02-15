@@ -31,6 +31,9 @@ Injection operating without embeddings. Re-ranks skills as `0.7 × PatternOverla
 **Dimensional Scoring**
 The evaluation method for skill quality. Seven independent dimensions, each scored 1–5.
 
+**Half-life**
+The time period over which a skill's decay score drops by half. Varies by category: 365 days for foundational, 180 for contextual, 90 for tactical.
+
 **Embedding**
 A vector representation of content, used for similarity-based retrieval. Default model: `text-embedding-3-small`.
 
@@ -55,6 +58,9 @@ A database row tracking a single skill's injection into a single session. Record
 **Knowledge Library**
 A collection of skills scoped by `library_id`. Libraries are layered by priority: local → team → public.
 
+**Novelty**
+A measure of how different a candidate skill is from existing skills in the library, computed via embedding distance. Minimum and maximum thresholds prevent duplicates and outliers.
+
 **LLMClient**
 A lightweight interface for LLM calls: `Complete(ctx, prompt) → (string, error)`.
 
@@ -75,6 +81,9 @@ A single interaction between a user and an AI agent. The raw input to the extrac
 
 **Skill**
 The atomic unit of knowledge in Kinoko. A `SKILL.md` file with YAML front matter containing quality scores, patterns, category, decay score, and usage statistics.
+
+**Soft Serve**
+The Git server that Kinoko embeds for hosting skill repositories over SSH. Based on [Charm's Soft Serve](https://github.com/charmbracelet/soft-serve).
 
 **SkillStore**
 The main storage interface: `Put`, `Get`, `GetLatestByName`, `Query`, `UpdateUsage`, `UpdateDecay`, `ListByDecay`. Implemented by `SQLiteStore`.

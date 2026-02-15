@@ -34,3 +34,89 @@
   --sl-color-gray-6: #fafaf7;
   --sl-color-black: #fafaf7;
 }
+
+/* Typography refinements */
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  margin-top: 2.5rem;
+}
+
+h3 {
+  margin-top: 2rem;
+}
+
+/* Link hover transitions */
+a {
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+a:hover {
+  opacity: 0.85;
+}
+
+/* Code block refinements */
+pre {
+  border-radius: 0.5rem;
+  border: 1px solid var(--sl-color-gray-4);
+}
+
+code:not(pre code) {
+  padding: 0.15em 0.35em;
+  border-radius: 0.25rem;
+  font-size: 0.9em;
+}
+
+/* Splash/hero page improvements */
+.hero {
+  padding-block: 3rem;
+}
+
+.hero .tagline {
+  max-width: 42ch;
+  line-height: 1.5;
+}
+
+/* Card grid spacing */
+.card-grid {
+  gap: 1.5rem;
+}
+
+.card {
+  border-radius: 0.75rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  border-color: var(--sl-color-accent);
+  box-shadow: 0 2px 12px rgba(196, 162, 101, 0.08);
+}
+
+/* Footer */
+.site-footer::after {
+  content: 'Built by fungi 🍄';
+  display: block;
+  text-align: center;
+  padding: 1rem 0;
+  font-size: 0.85rem;
+  color: var(--sl-color-gray-2);
+  letter-spacing: 0.02em;
+}
+
+/* Admonition/aside styling */
+.starlight-aside {
+  border-radius: 0.5rem;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 50rem) {
+  .hero {
+    padding-block: 2rem;
+  }
+
+  .hero .tagline {
+    font-size: 1rem;
+  }
+}
