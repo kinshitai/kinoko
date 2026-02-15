@@ -91,6 +91,76 @@ func TestSQLiteIndexer_IndexSkill(t *testing.T) {
 	}
 }
 
+func TestSQLiteIndexer_ValidationRejectsEmptyID(t *testing.T) {
+	store, err := NewSQLiteStore("file::memory:?cache=shared", "test-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	idx := NewSQLiteIndexer(store)
+	skill := &model.SkillRecord{ID: "", Name: "test"}
+	if err := idx.IndexSkill(context.Background(), skill, nil); err == nil {
+		t.Fatal("expected error for empty ID")
+	}
+}
+
+func TestSQLiteIndexer_ValidationRejectsEmptyName(t *testing.T) {
+	store, err := NewSQLiteStore("file::memory:?cache=shared", "test-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	idx := NewSQLiteIndexer(store)
+	skill := &model.SkillRecord{ID: "x", Name: ""}
+	if err := idx.IndexSkill(context.Background(), skill, nil); err == nil {
+		t.Fatal("expected error for empty name")
+	}
+}
+
+func TestSQLiteIndexer_NoStructMutation(t *testing.T) {
+	store, err := NewSQLiteStore("file::memory:?cache=shared", "test-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	idx := NewSQLiteIndexer(store)
+	now := time.Now().UTC()
+	skill := &model.SkillRecord{
+		ID:          "mut-001",
+		Name:        "test-mutation",
+		Version:     1,
+		LibraryID:   "local",
+		Category:    model.CategoryFoundational,
+		ExtractedBy: "test",
+		FilePath:    "skills/test/v1/SKILL.md",
+		DecayScore:  1.0,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		Quality: model.QualityScores{
+			ProblemSpecificity: 3, SolutionCompleteness: 3, ContextPortability: 3,
+			ReasoningTransparency: 3, TechnicalAccuracy: 3, VerificationEvidence: 3,
+			InnovationLevel: 3, CompositeScore: 3.0, CriticConfidence: 0.8,
+		},
+	}
+
+	originalCreated := skill.CreatedAt
+	originalUpdated := skill.UpdatedAt
+
+	if err := idx.IndexSkill(context.Background(), skill, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if !skill.CreatedAt.Equal(originalCreated) {
+		t.Error("IndexSkill mutated CreatedAt")
+	}
+	if !skill.UpdatedAt.Equal(originalUpdated) {
+		t.Error("IndexSkill mutated UpdatedAt")
+	}
+}
+
 func TestSQLiteIndexer_NilEmbedding(t *testing.T) {
 	store, err := NewSQLiteStore("file::memory:?cache=shared", "test-model")
 	if err != nil {

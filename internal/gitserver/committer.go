@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
@@ -28,6 +29,7 @@ type GitCommitter struct {
 	indexer  model.SkillIndexer
 	embedder Embedder
 	logger   *slog.Logger
+	locks    sync.Map // keyed by "{libraryID}/{skillName}" → *sync.Mutex
 }
 
 // GitCommitterConfig holds constructor parameters.
@@ -55,9 +57,19 @@ func NewGitCommitter(cfg GitCommitterConfig) *GitCommitter {
 
 // CommitSkill creates a repo (if needed), writes the skill body, pushes to
 // Soft Serve, and indexes into SQLite after a successful push.
+// skillMutex returns a per-skill mutex to prevent concurrent workdir stomping.
+func (g *GitCommitter) skillMutex(key string) *sync.Mutex {
+	v, _ := g.locks.LoadOrStore(key, &sync.Mutex{})
+	return v.(*sync.Mutex)
+}
+
 func (g *GitCommitter) CommitSkill(ctx context.Context, libraryID string, skill *model.SkillRecord, body []byte) (string, error) {
 	repoName := fmt.Sprintf("%s/%s", libraryID, skill.Name)
 	workdir := filepath.Join(g.dataDir, "workdir", libraryID, skill.Name)
+
+	mu := g.skillMutex(repoName)
+	mu.Lock()
+	defer mu.Unlock()
 
 	// Create repo (ignore "already exists").
 	if err := g.server.CreateRepo(repoName, skill.Name); err != nil {

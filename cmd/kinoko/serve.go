@@ -249,8 +249,17 @@ func runServe(cmd *cobra.Command, args []string) error {
 		"storageDriver", cfg.Storage.Driver,
 		"libraries", len(cfg.Libraries))
 
+	// Determine embedding model name for store.
+	embeddingModel := cfg.Embedding.Model
+	if embeddingModel == "" {
+		embeddingModel = os.Getenv("KINOKO_EMBEDDING_MODEL")
+	}
+	if embeddingModel == "" {
+		embeddingModel = "text-embedding-3-small"
+	}
+
 	// Open store for hooks.
-	store, err := storage.NewSQLiteStore(cfg.Storage.DSN, "")
+	store, err := storage.NewSQLiteStore(cfg.Storage.DSN, embeddingModel)
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}

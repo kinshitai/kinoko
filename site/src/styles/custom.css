@@ -1,0 +1,36 @@
+/* Kinoko — Forest Floor palette */
+
+:root {
+  --sl-color-accent-low: #2a2318;
+  --sl-color-accent: #c4a265;
+  --sl-color-accent-high: #e8d9b8;
+  --sl-color-white: #e8e4df;
+  --sl-color-gray-1: #d4cfc8;
+  --sl-color-gray-2: #9b9590;
+  --sl-color-gray-3: #6b6560;
+  --sl-color-gray-4: #3a3530;
+  --sl-color-gray-5: #1a1a18;
+  --sl-color-gray-6: #0f0f0f;
+  --sl-color-black: #0a0a08;
+  --sl-color-green-low: #1a2e1a;
+  --sl-color-green: #5b8c5a;
+  --sl-color-green-high: #a3c4a2;
+  --sl-color-red-low: #2e1a15;
+  --sl-color-red: #c45b3c;
+  --sl-color-red-high: #e0a090;
+  --sl-font-system-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+}
+
+[data-theme='light'] {
+  --sl-color-accent-low: #f0e8d8;
+  --sl-color-accent: #9a7b3e;
+  --sl-color-accent-high: #4a3a1e;
+  --sl-color-white: #1a1a18;
+  --sl-color-gray-1: #3a3530;
+  --sl-color-gray-2: #6b6560;
+  --sl-color-gray-3: #9b9590;
+  --sl-color-gray-4: #d4cfc8;
+  --sl-color-gray-5: #f0ede8;
+  --sl-color-gray-6: #fafaf7;
+  --sl-color-black: #fafaf7;
+}
