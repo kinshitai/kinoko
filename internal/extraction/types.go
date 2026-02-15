@@ -1,6 +1,14 @@
 package extraction
 
-import "time"
+import (
+	"context"
+	"time"
+)
+
+// Extractor runs the 3-stage extraction pipeline on a session.
+type Extractor interface {
+	Extract(ctx context.Context, session SessionRecord, content []byte) (*ExtractionResult, error)
+}
 
 // SkillRecord is the database representation of an extracted skill.
 type SkillRecord struct {

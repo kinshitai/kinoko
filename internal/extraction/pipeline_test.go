@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -272,12 +273,12 @@ func TestPipelineSampling(t *testing.T) {
 		randVal    int
 		wantSample bool
 	}{
-		{"sampled at 1%", 0.01, 50, true},        // 50 < 100 (0.01*10000)
-		{"not sampled at 1%", 0.01, 500, false},   // 500 >= 100
+		{"sampled at 1%", 0.01, 50, true},        // 50 < 200 (0.01*2*10000)
+		{"not sampled at 1%", 0.01, 500, false},   // 500 >= 200
 		{"always sampled", 1.0, 9999, true},       // 9999 < 10000
 		{"never sampled", 0.0, 0, false},          // rate=0
-		{"boundary sampled", 0.01, 99, true},      // 99 < 100
-		{"boundary not sampled", 0.01, 100, false}, // 100 >= 100
+		{"boundary sampled", 0.01, 199, true},      // 199 < 200 (stratified 2x)
+		{"boundary not sampled", 0.01, 200, false}, // 200 >= 200 (stratified 2x)
 	}
 
 	for _, tt := range tests {
@@ -303,7 +304,7 @@ func TestPipelineSampling(t *testing.T) {
 	}
 }
 
-func TestPipelineSkillName(t *testing.T) {
+func TestPipelineSkillNameFromClassification(t *testing.T) {
 	p := NewPipeline(PipelineConfig{
 		Stage1: &mockStage1{result: passStage1()},
 		Stage2: &mockStage2{result: passStage2()},
@@ -312,36 +313,36 @@ func TestPipelineSkillName(t *testing.T) {
 		Log:    testLog(),
 	})
 
-	result, _ := p.Extract(context.Background(), pipelineTestSession(), []byte("Fix database connection pooling issue\nMore details here"))
+	result, _ := p.Extract(context.Background(), pipelineTestSession(), []byte("anything"))
 	if result.Skill == nil {
 		t.Fatal("expected skill")
 	}
-	if result.Skill.Name == "" {
-		t.Error("empty skill name")
-	}
-	if result.Skill.Name != "fix-database-connection-pooling-issue" {
-		t.Errorf("skill name = %q, want %q", result.Skill.Name, "fix-database-connection-pooling-issue")
+	// passStage2 classifies as FIX/Backend/DatabaseConnection
+	want := "fix-backend-database-connection"
+	if result.Skill.Name != want {
+		t.Errorf("skill name = %q, want %q", result.Skill.Name, want)
 	}
 }
 
-func TestGenerateSkillName(t *testing.T) {
+func TestSkillNameFromClassification(t *testing.T) {
 	tests := []struct {
-		input string
-		want  string
+		name     string
+		patterns []string
+		category SkillCategory
+		want     string
 	}{
-		{"Fix database pooling", "fix-database-pooling"},
-		{"# Header line\nActual content here", "header-line"},
-		{"", "unnamed-skill"},
-		{"   \n\n  ", "unnamed-skill"},
-		{"A very long name that exceeds the fifty character limit for skill names in the system", "a-very-long-name-that-exceeds-the-fifty-character"},
-		{"Special!@#chars$%^here", "special-chars-here"},
+		{"pattern to kebab", []string{"FIX/Backend/DatabaseConnection"}, CategoryTactical, "fix-backend-database-connection"},
+		{"build pattern", []string{"BUILD/Frontend/ComponentDesign"}, CategoryFoundational, "build-frontend-component-design"},
+		{"no patterns", nil, CategoryTactical, "tactical-skill"},
+		{"empty patterns", []string{}, CategoryContextual, "contextual-skill"},
+		{"no category", nil, "", "unnamed-skill"},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := generateSkillName([]byte(tt.input))
+		t.Run(tt.name, func(t *testing.T) {
+			got := skillNameFromClassification(tt.patterns, tt.category)
 			if got != tt.want {
-				t.Errorf("generateSkillName(%q) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("skillNameFromClassification(%v, %q) = %q, want %q", tt.patterns, tt.category, got, tt.want)
 			}
 		})
 	}
@@ -378,6 +379,17 @@ func TestPipelineSkillFields(t *testing.T) {
 	}
 	if s.Version != 1 {
 		t.Errorf("Version = %d, want 1", s.Version)
+	}
+	// UUIDv7 check: must be valid UUID
+	if len(s.ID) != 36 || s.ID[8] != '-' {
+		t.Errorf("ID = %q, want UUIDv7 format", s.ID)
+	}
+	// Timestamps must be set
+	if s.CreatedAt.IsZero() {
+		t.Error("CreatedAt is zero")
+	}
+	if s.UpdatedAt.IsZero() {
+		t.Error("UpdatedAt is zero")
 	}
 	if !w.called {
 		t.Error("writer not called")
@@ -474,6 +486,52 @@ func TestPipelineNeverReturnsError(t *testing.T) {
 				t.Errorf("Extract returned error: %v", err)
 			}
 		})
+	}
+}
+
+func TestBuildSkillMD(t *testing.T) {
+	skill := &SkillRecord{
+		ID:              "01234567-89ab-7def-8000-000000000001",
+		Name:            "fix-backend-database-connection",
+		Version:         1,
+		Category:        CategoryTactical,
+		Patterns:        []string{"FIX/Backend/DatabaseConnection"},
+		Quality:         QualityScores{CompositeScore: 3.6, CriticConfidence: 0.85},
+		SourceSessionID: "sess-001",
+		ExtractedBy:     "test-v1",
+		CreatedAt:       time.Date(2026, 2, 15, 0, 0, 0, 0, time.UTC),
+	}
+
+	body := string(buildSkillMD(skill))
+
+	// Check front matter fields
+	for _, want := range []string{
+		"name: fix-backend-database-connection",
+		"id: 01234567-89ab-7def-8000-000000000001",
+		"version: 1",
+		"category: tactical",
+		"extracted_by: test-v1",
+		"quality: 3.60",
+		"confidence: 0.85",
+		"source_session: sess-001",
+		"created: 2026-02-15",
+		"  - FIX/Backend/DatabaseConnection",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q", want)
+		}
+	}
+
+	// Check structured sections
+	for _, section := range []string{
+		"## When to Use",
+		"## Solution",
+		"## Why It Works",
+		"## Pitfalls",
+	} {
+		if !strings.Contains(body, section) {
+			t.Errorf("body missing section %q", section)
+		}
 	}
 }
 

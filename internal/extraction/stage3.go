@@ -235,16 +235,6 @@ func (c *stage3Critic) parseAndValidate(resp string) (*Stage3Result, error) {
 	}, nil
 }
 
-func allScoresAre(q QualityScores, val int) bool {
-	return q.ProblemSpecificity == val &&
-		q.SolutionCompleteness == val &&
-		q.ContextPortability == val &&
-		q.ReasoningTransparency == val &&
-		q.TechnicalAccuracy == val &&
-		q.VerificationEvidence == val &&
-		q.InnovationLevel == val
-}
-
 // averageScore returns the mean of all 7 rubric scores.
 func averageScore(q QualityScores) float64 {
 	sum := q.ProblemSpecificity + q.SolutionCompleteness + q.ContextPortability +

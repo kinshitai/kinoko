@@ -13,6 +13,9 @@ import (
 	"github.com/google/uuid"
 )
 
+// Compile-time interface check.
+var _ Extractor = (*Pipeline)(nil)
+
 // SkillWriter persists a skill record and its SKILL.md body.
 type SkillWriter interface {
 	Put(ctx context.Context, skill *SkillRecord, body []byte) error
@@ -185,8 +188,9 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 	p.log.Info("stage3 pass", "session_id", session.ID, "stage3_ms", s3Ms)
 
 	// Build skill and persist
-	skillName := generateSkillName(content)
-	skillID := fmt.Sprintf("skill-%s-%d", skillName, start.UnixMilli())
+	skillName := skillNameFromClassification(s2.ClassifiedPatterns, s2.ClassifiedCategory)
+	skillID := uuid.Must(uuid.NewV7()).String()
+	now := time.Now()
 
 	skill := &SkillRecord{
 		ID:              skillID,
@@ -199,9 +203,11 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 		SourceSessionID: session.ID,
 		ExtractedBy:     p.extractor,
 		FilePath:        fmt.Sprintf("skills/%s/v1/SKILL.md", skillName),
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
-	body := buildSkillMD(skill, content)
+	body := buildSkillMD(skill)
 
 	storeStart := time.Now()
 	if err := p.writer.Put(ctx, skill, body); err != nil {
@@ -236,20 +242,33 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 	return result, nil
 }
 
-// maybeSample writes to human_review_samples with configured probability.
+// maybeSample writes to human_review_samples with stratified sampling per §3.4.
+// The effective per-pool rate is doubled so that each pool (extracted, rejected/error)
+// contributes 50% of the total sample budget.
 func (p *Pipeline) maybeSample(ctx context.Context, sessionID string, result *ExtractionResult) {
 	if p.reviewer == nil || p.sampleRate <= 0 {
 		return
 	}
 
-	// Roll dice: sample if rand < sampleRate * 10000
-	threshold := int(p.sampleRate * 10000)
+	// Stratified: 50% from extracted, 50% from rejected/error.
+	// Double the rate per pool so overall rate stays at sampleRate.
+	poolRate := p.sampleRate * 2.0
+	if poolRate > 1.0 {
+		poolRate = 1.0
+	}
+
+	threshold := int(poolRate * 10000)
 	if threshold <= 0 {
 		return
 	}
 	roll := p.randIntn(10000)
 	if roll >= threshold {
 		return
+	}
+
+	pool := "rejected"
+	if result.Status == StatusExtracted {
+		pool = "extracted"
 	}
 
 	data, err := json.Marshal(result)
@@ -263,62 +282,77 @@ func (p *Pipeline) maybeSample(ctx context.Context, sessionID string, result *Ex
 		return
 	}
 
-	p.log.Info("human review sampled", "session_id", sessionID, "status", result.Status)
+	p.log.Info("human review sampled", "session_id", sessionID, "status", result.Status, "pool", pool)
 }
 
-var nonAlphaNum = regexp.MustCompile(`[^a-z0-9]+`)
-
-// generateSkillName extracts a kebab-case name from content.
-func generateSkillName(content []byte) string {
-	// Take first line or first 80 chars of meaningful text.
-	s := string(content)
-	s = strings.TrimSpace(s)
-
-	// Try first non-empty line.
-	for _, line := range strings.SplitN(s, "\n", 10) {
-		line = strings.TrimSpace(line)
-		// Skip markdown headers markers, timestamps, empty lines.
-		cleaned := strings.TrimLeft(line, "# ")
-		cleaned = strings.TrimSpace(cleaned)
-		if len(cleaned) > 5 {
-			s = cleaned
-			break
+// skillNameFromClassification derives a kebab-case skill name from classified
+// patterns and category. E.g. "FIX/Backend/DatabaseConnection" → "fix-backend-database-connection".
+func skillNameFromClassification(patterns []string, category SkillCategory) string {
+	if len(patterns) > 0 {
+		// Use first pattern: split on "/" and kebab-case.
+		parts := strings.Split(patterns[0], "/")
+		var segments []string
+		for _, p := range parts {
+			seg := kebab(p)
+			if seg != "" {
+				segments = append(segments, seg)
+			}
+		}
+		if name := strings.Join(segments, "-"); name != "" {
+			if len(name) > 50 {
+				name = name[:50]
+				name = strings.TrimRight(name, "-")
+			}
+			return name
 		}
 	}
 
-	// Truncate to reasonable length.
-	if len(s) > 60 {
-		s = s[:60]
+	// Fallback to category.
+	if category != "" {
+		return string(category) + "-skill"
 	}
-
-	s = strings.ToLower(s)
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			return r
-		}
-		return ' '
-	}, s)
-	s = strings.TrimSpace(s)
-	s = nonAlphaNum.ReplaceAllString(s, "-")
-	s = strings.Trim(s, "-")
-
-	if s == "" {
-		s = "unnamed-skill"
-	}
-
-	// Cap at 50 chars.
-	if len(s) > 50 {
-		s = s[:50]
-		s = strings.TrimRight(s, "-")
-	}
-
-	return s
+	return "unnamed-skill"
 }
 
-func buildSkillMD(skill *SkillRecord, content []byte) []byte {
+// kebab converts a CamelCase or mixed string to kebab-case.
+// Handles all-caps segments: "FIX" → "fix", "DatabaseConnection" → "database-connection".
+func kebab(s string) string {
+	var out strings.Builder
+	runes := []rune(s)
+	for i, r := range runes {
+		if r >= 'A' && r <= 'Z' {
+			// Insert dash before uppercase if preceded by lowercase or
+			// if this is the start of a new word (upper followed by lower, after uppers).
+			if i > 0 {
+				prev := runes[i-1]
+				prevIsLower := prev >= 'a' && prev <= 'z'
+				prevIsDigit := prev >= '0' && prev <= '9'
+				nextIsLower := i+1 < len(runes) && runes[i+1] >= 'a' && runes[i+1] <= 'z'
+				if prevIsLower || prevIsDigit || (prev >= 'A' && prev <= 'Z' && nextIsLower) {
+					out.WriteByte('-')
+				}
+			}
+			out.WriteRune(r + ('a' - 'A'))
+		} else if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			out.WriteRune(r)
+		} else if r == '-' || r == '_' || r == ' ' {
+			if out.Len() > 0 {
+				out.WriteByte('-')
+			}
+		}
+	}
+	return strings.Trim(out.String(), "-")
+}
+
+// buildSkillMD generates a proper SKILL.md with YAML front matter and structured body.
+func buildSkillMD(skill *SkillRecord) []byte {
 	var b strings.Builder
+
+	// YAML front matter
 	fmt.Fprintf(&b, "---\n")
 	fmt.Fprintf(&b, "name: %s\n", skill.Name)
+	fmt.Fprintf(&b, "id: %s\n", skill.ID)
+	fmt.Fprintf(&b, "version: %d\n", skill.Version)
 	fmt.Fprintf(&b, "category: %s\n", skill.Category)
 	if len(skill.Patterns) > 0 {
 		fmt.Fprintf(&b, "patterns:\n")
@@ -326,16 +360,25 @@ func buildSkillMD(skill *SkillRecord, content []byte) []byte {
 			fmt.Fprintf(&b, "  - %s\n", p)
 		}
 	}
+	fmt.Fprintf(&b, "extracted_by: %s\n", skill.ExtractedBy)
+	fmt.Fprintf(&b, "quality: %.2f\n", skill.Quality.CompositeScore)
+	fmt.Fprintf(&b, "confidence: %.2f\n", skill.Quality.CriticConfidence)
 	fmt.Fprintf(&b, "source_session: %s\n", skill.SourceSessionID)
+	fmt.Fprintf(&b, "created: %s\n", skill.CreatedAt.Format(time.DateOnly))
 	fmt.Fprintf(&b, "---\n\n")
 
-	// Include a summary from content (first 2000 bytes).
-	summary := string(content)
-	if len(summary) > 2000 {
-		summary = summary[:2000] + "\n\n[truncated]"
-	}
-	b.WriteString(summary)
-	b.WriteString("\n")
+	// Structured body — title from name
+	title := strings.ReplaceAll(skill.Name, "-", " ")
+	title = strings.Title(title) //nolint:staticcheck
+	fmt.Fprintf(&b, "# %s\n\n", title)
+	fmt.Fprintf(&b, "## When to Use\n\n")
+	fmt.Fprintf(&b, "<!-- Trigger conditions for this skill -->\n\n")
+	fmt.Fprintf(&b, "## Solution\n\n")
+	fmt.Fprintf(&b, "<!-- Core knowledge extracted from the session -->\n\n")
+	fmt.Fprintf(&b, "## Why It Works\n\n")
+	fmt.Fprintf(&b, "<!-- Reasoning that enables adaptation -->\n\n")
+	fmt.Fprintf(&b, "## Pitfalls\n\n")
+	fmt.Fprintf(&b, "<!-- Failed approaches and anti-patterns -->\n\n")
 
 	return []byte(b.String())
 }
