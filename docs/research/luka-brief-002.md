@@ -280,3 +280,21 @@ All three components work together:
 The key insight remains: **quality and relevance emerge from multiple independent measures**, not single-metric optimization. Each component provides different signal that combines into robust, game-resistant skill curation.
 
 *Now we build the training data and test whether librarians, wine tasters, and geologists actually know something about AI knowledge management.*
+
+---
+
+## Addendum: Post-Session Extraction Signals (Egor + Hal, 2026-02-15)
+
+The strongest extraction signals may not come from session analysis at all — they come from what happens AFTER the session:
+
+**Return signal:** User reopens an old chat after days/weeks. Nobody returns to a dead session for fun. This is the highest-confidence signal that a session contains extractable knowledge.
+
+**Artifact persistence:** Session produces files that get committed, READMEs that stay in repos, configs that persist. If the output survives, the knowledge is real.
+
+**Cross-reference signal:** An artifact from session A appears in session B. A README written in one session gets referenced in another. This is citation count for agent sessions.
+
+**Refinement depth:** Sessions with iterative back-and-forth (try → adjust → better → yes) contain more nuanced knowledge than single-shot Q&A.
+
+**Implication for architecture:** Extraction shouldn't only happen at session end. We need a delayed extraction pass that evaluates sessions retroactively based on return visits, artifact survival, and cross-references. The best knowledge reveals itself over time, not at the moment of creation.
+
+**Privacy implication:** The most valuable sessions (ones users return to) are often the most personal. Extraction must separate transferable patterns from personal context. "I debugged our billing race condition at 2 AM" → skill is "debugging race conditions in concurrent services." The story stays local, the pattern travels.
