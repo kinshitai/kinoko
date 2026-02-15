@@ -70,6 +70,11 @@ func (q QualityScores) InjectionPriority() float64 {
 	return float64(q.ContextPortability)*0.6 + float64(q.VerificationEvidence)*0.4
 }
 
+// Stage1Filter performs metadata pre-filtering. Synchronous, cheap, no I/O.
+type Stage1Filter interface {
+	Filter(session SessionRecord) *Stage1Result
+}
+
 // SessionRecord captures metadata about an agent session for extraction evaluation.
 type SessionRecord struct {
 	ID                string           `db:"id"`

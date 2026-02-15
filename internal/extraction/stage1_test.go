@@ -1,11 +1,21 @@
 package extraction
 
 import (
+	"log/slog"
+	"math"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/mycelium-dev/mycelium/internal/config"
 )
 
-func validSession() SessionRecord {
+func defaultTestConfig() config.ExtractionConfig {
+	c := config.DefaultConfig()
+	return c.Extraction
+}
+
+func passingSession() SessionRecord {
 	return SessionRecord{
 		ID:                "test-session-1",
 		StartedAt:         time.Now().Add(-10 * time.Minute),
@@ -13,182 +23,303 @@ func validSession() SessionRecord {
 		DurationMinutes:   10,
 		ToolCallCount:     5,
 		ErrorCount:        1,
+		MessageCount:      12,
 		ErrorRate:         0.2,
 		HasSuccessfulExec: true,
+		TokensUsed:        5000,
+		AgentModel:        "claude-3",
+		UserID:            "user-1",
+		LibraryID:         "lib-1",
 	}
 }
 
-func TestStage1Filter_HappyPath(t *testing.T) {
-	f := NewStage1Filter(DefaultStage1Config())
-	r := f.Filter(validSession())
-	if !r.Passed {
-		t.Fatalf("expected pass, got reject: %s", r.Reason)
+func TestStage1Filter(t *testing.T) {
+	tests := []struct {
+		name           string
+		mutate         func(*SessionRecord)
+		cfg            *config.ExtractionConfig
+		passed         bool
+		durationOK     bool
+		toolCallCountOK bool
+		errorRateOK    bool
+		hasSuccessExec bool
+		reasonContains []string
+	}{
+		{
+			name:           "happy path",
+			passed:         true,
+			durationOK:     true,
+			toolCallCountOK: true,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+		},
+		{
+			name:           "duration too short",
+			mutate:         func(s *SessionRecord) { s.DurationMinutes = 1 },
+			durationOK:     false,
+			toolCallCountOK: true,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+			reasonContains: []string{"duration"},
+		},
+		{
+			name:           "duration too long",
+			mutate:         func(s *SessionRecord) { s.DurationMinutes = 200 },
+			durationOK:     false,
+			toolCallCountOK: true,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+			reasonContains: []string{"duration"},
+		},
+		{
+			name:           "too few tool calls",
+			mutate:         func(s *SessionRecord) { s.ToolCallCount = 2; s.ErrorCount = 0; s.ErrorRate = 0 },
+			durationOK:     true,
+			toolCallCountOK: false,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+			reasonContains: []string{"tool_calls"},
+		},
+		{
+			name:           "error rate too high",
+			mutate:         func(s *SessionRecord) { s.ErrorRate = 0.8; s.ErrorCount = 4 },
+			durationOK:     true,
+			toolCallCountOK: true,
+			errorRateOK:    false,
+			hasSuccessExec: true,
+			reasonContains: []string{"error_rate"},
+		},
+		{
+			name:           "no successful exec",
+			mutate:         func(s *SessionRecord) { s.HasSuccessfulExec = false },
+			durationOK:     true,
+			toolCallCountOK: true,
+			errorRateOK:    true,
+			hasSuccessExec: false,
+			reasonContains: []string{"no successful execution"},
+		},
+		{
+			name:           "boundary min duration",
+			mutate:         func(s *SessionRecord) { s.DurationMinutes = 2 },
+			passed:         true,
+			durationOK:     true,
+			toolCallCountOK: true,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+		},
+		{
+			name:           "boundary max duration",
+			mutate:         func(s *SessionRecord) { s.DurationMinutes = 180 },
+			passed:         true,
+			durationOK:     true,
+			toolCallCountOK: true,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+		},
+		{
+			name:           "boundary min tool calls",
+			mutate:         func(s *SessionRecord) { s.ToolCallCount = 3; s.ErrorCount = 0; s.ErrorRate = 0 },
+			passed:         true,
+			durationOK:     true,
+			toolCallCountOK: true,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+		},
+		{
+			name:           "boundary max error rate",
+			mutate:         func(s *SessionRecord) { s.ErrorRate = 0.7; s.ErrorCount = 3 },
+			passed:         true,
+			durationOK:     true,
+			toolCallCountOK: true,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+		},
+		{
+			name: "zero tool calls fails min check",
+			mutate: func(s *SessionRecord) {
+				s.ToolCallCount = 0
+				s.ErrorCount = 0
+				s.ErrorRate = 0
+			},
+			durationOK:     true,
+			toolCallCountOK: false,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+			reasonContains: []string{"tool_calls"},
+		},
+		{
+			name: "multiple failures",
+			mutate: func(s *SessionRecord) {
+				s.DurationMinutes = 0.5
+				s.ToolCallCount = 1
+				s.ErrorCount = 1
+				s.ErrorRate = 0.9
+				s.HasSuccessfulExec = false
+			},
+			durationOK:     false,
+			toolCallCountOK: false,
+			errorRateOK:    false,
+			hasSuccessExec: false,
+			reasonContains: []string{"duration", "tool_calls", "error_rate", "no successful execution"},
+		},
+		{
+			name: "custom config",
+			cfg: &config.ExtractionConfig{
+				MinDurationMinutes: 5,
+				MaxDurationMinutes: 60,
+				MinToolCalls:       10,
+				MaxErrorRate:       0.3,
+			},
+			mutate:         nil, // uses passingSession (duration=10, tools=5)
+			durationOK:     true,
+			toolCallCountOK: false,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+			reasonContains: []string{"tool_calls"},
+		},
+		// Edge cases
+		{
+			name:           "negative duration",
+			mutate:         func(s *SessionRecord) { s.DurationMinutes = -5 },
+			durationOK:     false,
+			toolCallCountOK: true,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+			reasonContains: []string{"duration"},
+		},
+		{
+			name: "negative tool calls",
+			mutate: func(s *SessionRecord) {
+				s.ToolCallCount = -1
+				s.ErrorCount = 0
+				s.ErrorRate = 0
+			},
+			durationOK:     true,
+			toolCallCountOK: false,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+			reasonContains: []string{"tool_calls"},
+		},
+		{
+			name: "NaN duration",
+			mutate: func(s *SessionRecord) {
+				s.DurationMinutes = math.NaN()
+			},
+			durationOK:     false,
+			toolCallCountOK: true,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+			reasonContains: []string{"duration"},
+		},
+		{
+			name: "Inf duration",
+			mutate: func(s *SessionRecord) {
+				s.DurationMinutes = math.Inf(1)
+			},
+			durationOK:     false,
+			toolCallCountOK: true,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+			reasonContains: []string{"duration"},
+		},
+		{
+			name: "NaN error rate",
+			mutate: func(s *SessionRecord) {
+				s.ErrorRate = math.NaN()
+			},
+			durationOK:     true,
+			toolCallCountOK: true,
+			errorRateOK:    false,
+			hasSuccessExec: true,
+			reasonContains: []string{"error_rate"},
+		},
+		{
+			name: "zero config values",
+			cfg: &config.ExtractionConfig{
+				MinDurationMinutes: 0,
+				MaxDurationMinutes: 0,
+				MinToolCalls:       0,
+				MaxErrorRate:       0,
+			},
+			mutate: func(s *SessionRecord) {
+				s.DurationMinutes = 0
+				s.ToolCallCount = 0
+				s.ErrorCount = 0
+				s.ErrorRate = 0
+			},
+			passed:         true,
+			durationOK:     true,
+			toolCallCountOK: true,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+		},
+		{
+			name: "inverted min/max duration config",
+			cfg: &config.ExtractionConfig{
+				MinDurationMinutes: 100,
+				MaxDurationMinutes: 10,
+				MinToolCalls:       3,
+				MaxErrorRate:       0.7,
+			},
+			durationOK:     false,
+			toolCallCountOK: true,
+			errorRateOK:    true,
+			hasSuccessExec: true,
+			reasonContains: []string{"duration"},
+		},
 	}
-	if !r.DurationOK || !r.ToolCallCountOK || !r.ErrorRateOK || !r.HasSuccessExec {
-		t.Fatal("expected all checks true")
-	}
-	if r.Reason != "" {
-		t.Fatalf("expected empty reason, got: %s", r.Reason)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := defaultTestConfig()
+			if tt.cfg != nil {
+				cfg = *tt.cfg
+			}
+			f := NewStage1Filter(cfg, slog.New(slog.NewTextHandler(devNull{}, nil)))
+
+			s := passingSession()
+			if tt.mutate != nil {
+				tt.mutate(&s)
+			}
+
+			r := f.Filter(s)
+
+			if r.DurationOK != tt.durationOK {
+				t.Errorf("DurationOK = %v, want %v", r.DurationOK, tt.durationOK)
+			}
+			if r.ToolCallCountOK != tt.toolCallCountOK {
+				t.Errorf("ToolCallCountOK = %v, want %v", r.ToolCallCountOK, tt.toolCallCountOK)
+			}
+			if r.ErrorRateOK != tt.errorRateOK {
+				t.Errorf("ErrorRateOK = %v, want %v", r.ErrorRateOK, tt.errorRateOK)
+			}
+			if r.HasSuccessExec != tt.hasSuccessExec {
+				t.Errorf("HasSuccessExec = %v, want %v", r.HasSuccessExec, tt.hasSuccessExec)
+			}
+
+			wantPassed := tt.passed
+			if !tt.passed {
+				// If passed not explicitly set to true, derive it
+				wantPassed = tt.durationOK && tt.toolCallCountOK && tt.errorRateOK && tt.hasSuccessExec
+			}
+			if r.Passed != wantPassed {
+				t.Errorf("Passed = %v, want %v (reason: %s)", r.Passed, wantPassed, r.Reason)
+			}
+
+			for _, substr := range tt.reasonContains {
+				if !strings.Contains(r.Reason, substr) {
+					t.Errorf("reason %q missing substring %q", r.Reason, substr)
+				}
+			}
+
+			if r.Passed && r.Reason != "" {
+				t.Errorf("passed but has reason: %s", r.Reason)
+			}
+		})
 	}
 }
 
-func TestStage1Filter_DurationTooShort(t *testing.T) {
-	f := NewStage1Filter(DefaultStage1Config())
-	s := validSession()
-	s.DurationMinutes = 1
-	r := f.Filter(s)
-	if r.Passed {
-		t.Fatal("expected reject")
-	}
-	if r.DurationOK {
-		t.Fatal("expected DurationOK false")
-	}
-}
+// devNull implements io.Writer for discarding log output in tests.
+type devNull struct{}
 
-func TestStage1Filter_DurationTooLong(t *testing.T) {
-	f := NewStage1Filter(DefaultStage1Config())
-	s := validSession()
-	s.DurationMinutes = 200
-	r := f.Filter(s)
-	if r.Passed {
-		t.Fatal("expected reject")
-	}
-	if r.DurationOK {
-		t.Fatal("expected DurationOK false")
-	}
-}
-
-func TestStage1Filter_TooFewToolCalls(t *testing.T) {
-	f := NewStage1Filter(DefaultStage1Config())
-	s := validSession()
-	s.ToolCallCount = 2
-	r := f.Filter(s)
-	if r.Passed {
-		t.Fatal("expected reject")
-	}
-	if r.ToolCallCountOK {
-		t.Fatal("expected ToolCallCountOK false")
-	}
-}
-
-func TestStage1Filter_ErrorRateTooHigh(t *testing.T) {
-	f := NewStage1Filter(DefaultStage1Config())
-	s := validSession()
-	s.ErrorRate = 0.8
-	r := f.Filter(s)
-	if r.Passed {
-		t.Fatal("expected reject")
-	}
-	if r.ErrorRateOK {
-		t.Fatal("expected ErrorRateOK false")
-	}
-}
-
-func TestStage1Filter_NoSuccessfulExec(t *testing.T) {
-	f := NewStage1Filter(DefaultStage1Config())
-	s := validSession()
-	s.HasSuccessfulExec = false
-	r := f.Filter(s)
-	if r.Passed {
-		t.Fatal("expected reject")
-	}
-	if r.HasSuccessExec {
-		t.Fatal("expected HasSuccessExec false")
-	}
-}
-
-func TestStage1Filter_BoundaryMinDuration(t *testing.T) {
-	f := NewStage1Filter(DefaultStage1Config())
-	s := validSession()
-	s.DurationMinutes = 2 // exactly at threshold
-	r := f.Filter(s)
-	if !r.DurationOK {
-		t.Fatal("exactly at min duration should pass")
-	}
-}
-
-func TestStage1Filter_BoundaryMaxDuration(t *testing.T) {
-	f := NewStage1Filter(DefaultStage1Config())
-	s := validSession()
-	s.DurationMinutes = 180 // exactly at threshold
-	r := f.Filter(s)
-	if !r.DurationOK {
-		t.Fatal("exactly at max duration should pass")
-	}
-}
-
-func TestStage1Filter_BoundaryMinToolCalls(t *testing.T) {
-	f := NewStage1Filter(DefaultStage1Config())
-	s := validSession()
-	s.ToolCallCount = 3 // exactly at threshold
-	r := f.Filter(s)
-	if !r.ToolCallCountOK {
-		t.Fatal("exactly at min tool calls should pass")
-	}
-}
-
-func TestStage1Filter_BoundaryMaxErrorRate(t *testing.T) {
-	f := NewStage1Filter(DefaultStage1Config())
-	s := validSession()
-	s.ErrorRate = 0.7 // exactly at threshold
-	r := f.Filter(s)
-	if !r.ErrorRateOK {
-		t.Fatal("exactly at max error rate should pass")
-	}
-}
-
-func TestStage1Filter_ZeroToolCalls(t *testing.T) {
-	f := NewStage1Filter(DefaultStage1Config())
-	s := validSession()
-	s.ToolCallCount = 0
-	s.ErrorRate = 0 // spec: 0 if no tool calls
-	r := f.Filter(s)
-	// ErrorRateOK should be true (0 <= 0.7), but ToolCallCountOK should be false
-	if !r.ErrorRateOK {
-		t.Fatal("zero tool calls should have OK error rate")
-	}
-	if r.ToolCallCountOK {
-		t.Fatal("zero tool calls should fail min tool calls check")
-	}
-	if r.Passed {
-		t.Fatal("should not pass overall")
-	}
-}
-
-func TestStage1Filter_MultipleFailures(t *testing.T) {
-	f := NewStage1Filter(DefaultStage1Config())
-	s := SessionRecord{
-		ID:                "multi-fail",
-		DurationMinutes:   0.5,
-		ToolCallCount:     1,
-		ErrorRate:         0.9,
-		HasSuccessfulExec: false,
-	}
-	r := f.Filter(s)
-	if r.Passed {
-		t.Fatal("expected reject")
-	}
-	// All four checks should fail
-	if r.DurationOK || r.ToolCallCountOK || r.ErrorRateOK || r.HasSuccessExec {
-		t.Fatal("expected all checks false")
-	}
-}
-
-func TestStage1Filter_CustomConfig(t *testing.T) {
-	cfg := Stage1Config{
-		MinDurationMinutes: 5,
-		MaxDurationMinutes: 60,
-		MinToolCalls:       10,
-		MaxErrorRate:       0.3,
-	}
-	f := NewStage1Filter(cfg)
-	s := validSession() // duration=10, tools=5, errorRate=0.2
-	r := f.Filter(s)
-	// Should fail on tool calls (5 < 10)
-	if r.Passed {
-		t.Fatal("expected reject with custom config")
-	}
-	if r.ToolCallCountOK {
-		t.Fatal("5 tool calls should fail min 10")
-	}
-}
+func (devNull) Write(p []byte) (int, error) { return len(p), nil }

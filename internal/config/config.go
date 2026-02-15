@@ -47,6 +47,12 @@ type ExtractionConfig struct {
 	AutoExtract       bool    `yaml:"auto_extract"`
 	MinConfidence     float64 `yaml:"min_confidence"`
 	RequireValidation bool    `yaml:"require_validation"`
+
+	// Stage 1 thresholds (Appendix A)
+	MinDurationMinutes float64 `yaml:"min_duration_minutes"`
+	MaxDurationMinutes float64 `yaml:"max_duration_minutes"`
+	MinToolCalls       int     `yaml:"min_tool_calls"`
+	MaxErrorRate       float64 `yaml:"max_error_rate"`
 }
 
 // HooksConfig contains pre-commit hook configuration
@@ -95,6 +101,11 @@ func DefaultConfig() *Config {
 			AutoExtract:       true,
 			MinConfidence:     0.5,
 			RequireValidation: true,
+
+			MinDurationMinutes: 2,
+			MaxDurationMinutes: 180,
+			MinToolCalls:       3,
+			MaxErrorRate:       0.7,
 		},
 		Hooks: HooksConfig{
 			CredentialScan:   true,
