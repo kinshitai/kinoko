@@ -1,12 +1,8 @@
-# SKILL.md Format Specification
+# SKILL.md Format
 
-This document defines the structure and validation rules for SKILL.md files in the Mycelium knowledge sharing system.
+Skills are structured knowledge stored as Markdown files with YAML front matter. Each skill lives in a subdirectory of a skills repository (e.g., `~/.mycelium/skills/my-skill/SKILL.md`).
 
-## Overview
-
-A SKILL.md file contains practical knowledge extracted from AI agent sessions. Each skill follows a standardized format with YAML front matter and Markdown body.
-
-## File Structure
+## Structure
 
 ```markdown
 ---
@@ -23,105 +19,79 @@ dependencies: []
 # Skill Title
 
 ## When to Use
-[Description of when this skill applies]
+[When this skill applies]
 
 ## Solution
-[The actual knowledge — concrete steps, patterns, code]
+[The actual knowledge — steps, patterns, code]
 
 ## Gotchas
-[Edge cases, pitfalls, things that surprised us]
+[Edge cases and pitfalls]
 
 ## See Also
 - [[related-skill-name]]
 ```
 
-## Front Matter Fields
+## Front Matter
 
 ### Required Fields
 
-- **`name`** (string): Unique identifier for the skill in kebab-case format
-  - Must match pattern: `^[a-z0-9]+(-[a-z0-9]+)*$`
-  - Examples: `debug-golang-race-conditions`, `aws-lambda-cold-start-optimization`
-
-- **`version`** (integer): Schema version for the skill format
-  - Currently must be `1`
-
-- **`author`** (string): Identifier for the contributor
-  - Can be username, email, or agent identifier
-  - Examples: `john.doe`, `agent:claude-3.5`, `hal@mycelium.dev`
-
-- **`confidence`** (float): Confidence score for the skill's reliability
-  - Range: `0.0` to `1.0` (inclusive)
-  - Higher values indicate more reliable/tested knowledge
-  - Examples: `0.95` (well-tested), `0.7` (probably works), `0.4` (experimental)
-
-- **`created`** (string): Creation date in `YYYY-MM-DD` format
-  - Must be valid ISO 8601 date
-  - Example: `2026-02-14`
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Kebab-case identifier. Must match `^[a-z0-9]+(-[a-z0-9]+)*$` |
+| `version` | int | Schema version. Must be `1`. |
+| `author` | string | Contributor ID (email, username, or `agent:name`) |
+| `confidence` | float | Reliability score, 0.0–1.0 |
+| `created` | string | Creation date, `YYYY-MM-DD` format |
 
 ### Optional Fields
 
-- **`tags`** (array of strings): Categorization labels
-  - Each tag should be lowercase, kebab-case
-  - Examples: `["debugging", "golang", "performance"]`, `["aws", "serverless"]`
-  - Default: empty array `[]`
-
-- **`updated`** (string): Last modification date in `YYYY-MM-DD` format
-  - Must be valid ISO 8601 date
-  - Should be >= `created` date
-  - If omitted, defaults to `created` value
-
-- **`dependencies`** (array of strings): Other skills this one depends on
-  - Each dependency should be a valid skill name
-  - Examples: `["setup-golang-project", "install-docker"]`
-  - Default: empty array `[]`
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `tags` | string[] | `[]` | Categorization labels |
+| `updated` | string | — | Last modified date, `YYYY-MM-DD`. Must be ≥ `created`. |
+| `dependencies` | string[] | `[]` | Names of skills this one depends on (kebab-case) |
 
 ## Body Sections
 
-The Markdown body should follow this structure:
+### Required
 
-### Required Sections
+- **`# Title`** — at least one H1 heading
+- **`## When to Use`** — when this skill applies (case-insensitive match)
+- **`## Solution`** — the actual knowledge (case-insensitive match)
 
-- **`# Skill Title`**: Human-readable title for the skill
-- **`## When to Use`**: Clear description of when this skill applies
-- **`## Solution`**: The actual knowledge content
+### Optional
 
-### Optional Sections
-
-- **`## Gotchas`**: Edge cases, pitfalls, and surprises
-- **`## See Also`**: Links to related skills using `[[skill-name]]` syntax
+- **`## Gotchas`** — edge cases, pitfalls
+- **`## See Also`** — links to related skills
 
 ## Validation Rules
 
-### Front Matter Validation
+1. Front matter must be wrapped in `---` delimiters
+2. `name` must be kebab-case
+3. `version` must be `1`
+4. `confidence` must be 0.0–1.0
+5. `created` must be valid `YYYY-MM-DD`
+6. `updated` (if present) must be ≥ `created`
+7. Dependency names must be kebab-case
+8. Body must contain title, "When to Use", and "Solution" sections
+9. Body cannot be empty
 
-1. All required fields must be present
-2. `name` must match kebab-case pattern
-3. `version` must equal `1`
-4. `confidence` must be between 0.0 and 1.0 (inclusive)
-5. `created` must be valid YYYY-MM-DD format
-6. `updated` (if present) must be valid YYYY-MM-DD format and >= `created`
-7. All dependency names must match kebab-case pattern
+## Confidence Guidelines
 
-### Body Validation
-
-1. Must contain at least a title section (`# ...`)
-2. Must contain "When to Use" and "Solution" sections
-3. Content should not be empty (excluding whitespace)
-
-### Security Validation
-
-1. No credential patterns (API keys, passwords, tokens)
-2. No prompt injection attempts
-3. No executable code that could be harmful
+| Range | Meaning |
+|-------|---------|
+| 0.9–1.0 | Well-tested, high reliability |
+| 0.7–0.9 | Good solution, some edge cases |
+| 0.5–0.7 | Works but needs validation |
+| < 0.5 | Experimental |
 
 ## Examples
 
-### Minimal Valid Skill
+### Minimal
 
 ```markdown
 ---
-name: simple-debugging-tip
+name: simple-tip
 version: 1
 author: alice@example.com
 confidence: 0.8
@@ -131,13 +101,13 @@ created: 2026-02-14
 # Simple Debugging Tip
 
 ## When to Use
-When you need to quickly inspect variable values during development.
+When you need to inspect variable values in Go.
 
 ## Solution
-Add `fmt.Printf("DEBUG: %+v\n", variable)` to see the full structure.
+Use `fmt.Printf("DEBUG: %+v\n", variable)` to see the full structure.
 ```
 
-### Complete Skill
+### Complete
 
 ```markdown
 ---
@@ -154,19 +124,19 @@ dependencies: [setup-golang-project]
 # Debugging Go Race Conditions
 
 ## When to Use
-When you suspect race conditions in Go concurrent code but can't reproduce them consistently.
+When you suspect race conditions in concurrent Go code.
 
 ## Solution
 1. Build with race detector: `go build -race`
-2. Run tests with race detection: `go test -race ./...`
-3. For production-like load testing:
+2. Run tests: `go test -race ./...`
+3. For thorough testing:
    ```bash
    go test -race -count=100 ./...
    ```
 
 ## Gotchas
-- Race detector adds significant overhead (~2-20x slower)
-- May not catch all races in light testing
+- Race detector adds 2–20x overhead
+- Light testing may miss some races
 - Some races only appear under heavy load
 
 ## See Also
@@ -174,20 +144,17 @@ When you suspect race conditions in Go concurrent code but can't reproduce them 
 - [[concurrent-testing-strategies]]
 ```
 
-## File Naming
+## File Layout
 
-- Files must be named exactly `SKILL.md` (uppercase)
-- Each skill lives in its own git repository
-- Repository name should match the skill's `name` field
+Skills are stored as `SKILL.md` inside named subdirectories:
 
-## Version Evolution
+```
+~/.mycelium/skills/
+├── simple-tip/
+│   └── SKILL.md
+├── golang-race-condition-debugging/
+│   └── SKILL.md
+└── ...
+```
 
-When the format changes:
-1. Increment the version number in this spec
-2. Update parsers to handle both old and new versions
-3. Provide migration tools for existing skills
-4. Maintain backward compatibility for at least one version
-
----
-
-*This specification is living documentation. Update it as the format evolves.*
+The directory name should match the skill's `name` field.

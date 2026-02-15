@@ -90,3 +90,22 @@ Explored post-session extraction signals - the insight that the strongest indica
 
 ### Meta-Insight
 The retrospective approach solves the "everyone starts from zero" problem by identifying the 1% of sessions that have already proven their value through real-world usage patterns. Time reveals quality—we just need infrastructure to wait for the revelation.
+
+## 2026-02-15 — Engineering Spec (COMPLETED)
+
+Wrote `/home/claw/.openclaw/workspace/mycelium/docs/specs/extraction-system-spec.md`
+
+Jazz asked for no analogies, pure engineering. Delivered:
+- **Data Model**: Full Go structs for SkillRecord, SessionRecord, ExtractionResult, QualityScores + SQL DDL with constraints and indexes
+- **API Boundaries**: Go interfaces for Extractor, SkillStore, Injector, DecayRunner, Embedder — all with method signatures and input/output types
+- **Evaluation Framework**: Stage-level metrics with targets, A/B test design (90/10 split), human review sampling (1% stratified), success attribution formula
+- **Cost Model**: ~$4.58 per 1000 sessions, Stage 3 LLM critic dominates at 98% of cost
+- **Error Handling**: Circuit breakers, retry policies, degradation matrix showing what works when each component fails
+- **Config Extensions**: RetryConfig, CircuitBreakerConfig, DecayConfig, EmbeddingConfig — all extending existing config.Config
+- **Problem Pattern Taxonomy**: 20 initial patterns across BUILD/FIX/OPTIMIZE/INTEGRATE/CONFIGURE/LEARN
+
+Key design decisions:
+- Append-only versioning via parent_id linked list
+- Embedding similarity > 0.85 triggers new version vs. new skill
+- Injection fallback to pattern-only matching when embedding service is down
+- DB is primary, git is backup — DB can be rebuilt from SKILL.md files
