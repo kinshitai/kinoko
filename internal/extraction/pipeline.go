@@ -258,6 +258,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 		SourceSessionID: session.ID,
 		ExtractedBy:     p.extractor,
 		FilePath:        fmt.Sprintf("skills/%s/v1/SKILL.md", skillName),
+		DecayScore:      1.0, // New skills start fully active; 0.0 would hide them from injection queries.
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
