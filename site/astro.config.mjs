@@ -6,9 +6,9 @@ export default defineConfig({
     starlight({
       title: '🍄 Kinoko',
       customCss: ['./src/styles/custom.css'],
-      social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/kinoko-dev/kinoko' },
-      ],
+      social: {
+        github: 'https://github.com/kinoko-dev/kinoko',
+      },
       sidebar: [
         {
           label: 'Getting Started',
