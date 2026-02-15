@@ -24,3 +24,4 @@ site/dist/
 site/.astro/
 docs/reference/soft-serve-reference.md
 kinoko
+coverage.out
