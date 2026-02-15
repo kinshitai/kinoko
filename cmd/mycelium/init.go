@@ -6,10 +6,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/spf13/cobra"
 )
 
+var initCmd = &cobra.Command{
+	Use:   "init",
+	Short: "Initialize Mycelium workspace",
+	Long: `Initialize a new Mycelium workspace in ~/.mycelium/.
+
+This creates the necessary directories, configuration file, and git repository
+for managing your local skills.`,
+	RunE: initCommand,
+}
+
 // initCommand implements the 'mycelium init' command
-func initCommand() error {
+func initCommand(cmd *cobra.Command, args []string) error {
 	slog.Info("Initializing Mycelium workspace...")
 
 	homeDir, err := os.UserHomeDir()
@@ -75,8 +87,8 @@ libraries:
 # Server configuration (for 'mycelium serve')
 server:
   host: "127.0.0.1"
-  port: 3000
-  git_port: 23231
+  port: 23231
+  dataDir: ~/.mycelium/data
 
 # Extraction settings
 extraction:
