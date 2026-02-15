@@ -1,17 +1,11 @@
 package main
 
 import (
-	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
-	"regexp"
-	"strings"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"github.com/mycelium-dev/mycelium/internal/config"
@@ -58,7 +52,7 @@ func runExtract(cmd *cobra.Command, args []string) error {
 		libraryID = cfg.Libraries[0].Name
 	}
 
-	session := parseSessionFromLog(content, libraryID)
+	session := extraction.ParseSessionFromLog(content, libraryID)
 	session.LogPath = logPath
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -91,7 +85,7 @@ func runExtract(cmd *cobra.Command, args []string) error {
 
 	// Build pipeline stages
 	stage1 := extraction.NewStage1Filter(cfg.Extraction, logger)
-	stage2 := extraction.NewStage2Scorer(embedder, &storeQuerier{store: store}, llmClient, cfg.Extraction, logger)
+	stage2 := extraction.NewStage2Scorer(embedder, storage.NewSkillQuerier(store), llmClient, cfg.Extraction, logger)
 	stage3 := extraction.NewStage3Critic(llmClient, cfg.Extraction, logger)
 
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
@@ -140,118 +134,4 @@ type exitError struct {
 
 func (e *exitError) Error() string { return e.msg }
 func (e *exitError) ExitCode() int { return e.code }
-
-// parseSessionFromLog extracts metadata from a session log file.
-// Looks for common patterns: timestamps, tool calls, errors, model info.
-func parseSessionFromLog(content []byte, libraryID string) model.SessionRecord {
-	lines := strings.Split(string(content), "\n")
-
-	session := model.SessionRecord{
-		ID:        uuid.Must(uuid.NewV7()).String(),
-		LibraryID: libraryID,
-	}
-
-	var timestamps []time.Time
-	toolCalls := 0
-	errorCount := 0
-	msgCount := len(lines)
-	hasExec := false
-
-	// Patterns for common log formats
-	tsPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})`),
-	}
-	toolPattern := regexp.MustCompile(`(tool_call|function_call|<tool_use>|<invoke|"type"\s*:\s*"function")`)
-	errorPattern := regexp.MustCompile(`((?:^|\s)error[:\s=]|(?:^|\s)ERROR[:\s=]|traceback \(most recent|panic:|fatal:|FAILED|exit status [1-9])`)
-	execPattern := regexp.MustCompile(`(tool_call.*exec|<exec|command_output|shell_exec|"name"\s*:\s*"exec")`)
-	modelPattern := regexp.MustCompile(`(?i)model[=: ]+([a-zA-Z0-9._-]+)`)
-
-	scanner := bufio.NewScanner(strings.NewReader(string(content)))
-	buf := make([]byte, 1024*1024)
-	scanner.Buffer(buf, len(buf))
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		for _, pat := range tsPatterns {
-			if m := pat.FindString(line); m != "" {
-				for _, layout := range []string{
-					"2006-01-02T15:04:05",
-					"2006-01-02 15:04:05",
-				} {
-					if t, err := time.Parse(layout, m); err == nil {
-						timestamps = append(timestamps, t)
-						break
-					}
-				}
-			}
-		}
-
-		if toolPattern.MatchString(line) {
-			toolCalls++
-		}
-		if errorPattern.MatchString(line) {
-			errorCount++
-		}
-		if execPattern.MatchString(line) {
-			hasExec = true
-		}
-		if m := modelPattern.FindStringSubmatch(line); len(m) > 1 && session.AgentModel == "" {
-			session.AgentModel = m[1]
-		}
-	}
-
-	now := time.Now()
-	if len(timestamps) >= 2 {
-		session.StartedAt = timestamps[0]
-		session.EndedAt = timestamps[len(timestamps)-1]
-	} else {
-		session.StartedAt = now.Add(-10 * time.Minute)
-		session.EndedAt = now
-	}
-
-	session.DurationMinutes = session.EndedAt.Sub(session.StartedAt).Minutes()
-	if session.DurationMinutes < 0 {
-		session.DurationMinutes = 0
-	}
-
-	session.ToolCallCount = toolCalls
-	session.ErrorCount = errorCount
-	session.MessageCount = msgCount
-	session.HasSuccessfulExec = hasExec
-
-	if session.ToolCallCount > 0 {
-		session.ErrorRate = float64(session.ErrorCount) / float64(session.ToolCallCount)
-	}
-
-	session.TokensUsed = estimateTokens(content)
-
-	return session
-}
-
-func estimateTokens(content []byte) int {
-	// Rough estimate: ~4 chars per token
-	return len(content) / 4
-}
-
-// storeQuerier adapts storage.SQLiteStore to extraction.SkillQuerier.
-type storeQuerier struct {
-	store *storage.SQLiteStore
-}
-
-func (sq *storeQuerier) QueryNearest(ctx context.Context, emb []float32, libraryID string) (*extraction.SkillQueryResult, error) {
-	results, err := sq.store.Query(ctx, storage.SkillQuery{
-		Embedding:  emb,
-		LibraryIDs: []string{libraryID},
-		Limit:      1,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if len(results) == 0 {
-		return nil, nil
-	}
-	return &extraction.SkillQueryResult{CosineSim: results[0].CosineSim}, nil
-}
-
 

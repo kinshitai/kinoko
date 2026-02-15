@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/storage"
 )
 
 // Tests for parseSessionFromLog edge cases — R9 area.
 // Must exist BEFORE moving to internal/extraction/logparser.go.
 
 func TestParseSessionFromLog_Empty(t *testing.T) {
-	s := parseSessionFromLog([]byte(""), "lib-1")
+	s := extraction.ParseSessionFromLog([]byte(""), "lib-1")
 	if s.LibraryID != "lib-1" {
 		t.Errorf("LibraryID = %q", s.LibraryID)
 	}
@@ -26,7 +27,7 @@ func TestParseSessionFromLog_Empty(t *testing.T) {
 
 func TestParseSessionFromLog_NoTimestamps(t *testing.T) {
 	content := []byte("Some log without timestamps\ntool_call: exec ls\nerror: oops")
-	s := parseSessionFromLog(content, "lib-2")
+	s := extraction.ParseSessionFromLog(content, "lib-2")
 	if s.ToolCallCount != 1 {
 		t.Errorf("ToolCallCount = %d, want 1", s.ToolCallCount)
 	}
@@ -41,7 +42,7 @@ func TestParseSessionFromLog_NoTimestamps(t *testing.T) {
 
 func TestParseSessionFromLog_MultipleFormats(t *testing.T) {
 	content := []byte("2025-06-01 09:00:00 start\n2025-06-01T09:30:00 end")
-	s := parseSessionFromLog(content, "lib-3")
+	s := extraction.ParseSessionFromLog(content, "lib-3")
 	if s.DurationMinutes < 29 || s.DurationMinutes > 31 {
 		t.Errorf("DurationMinutes = %f, want ~30", s.DurationMinutes)
 	}
@@ -49,7 +50,7 @@ func TestParseSessionFromLog_MultipleFormats(t *testing.T) {
 
 func TestParseSessionFromLog_OnlyOneTimestamp(t *testing.T) {
 	content := []byte("2025-06-01T09:00:00 something happened")
-	s := parseSessionFromLog(content, "lib-4")
+	s := extraction.ParseSessionFromLog(content, "lib-4")
 	// With only one timestamp, should fallback to defaults (10min)
 	if s.DurationMinutes < 9 || s.DurationMinutes > 11 {
 		t.Errorf("DurationMinutes = %f, want ~10 (fallback)", s.DurationMinutes)
@@ -62,7 +63,7 @@ function_call: more
 <tool_use>action</tool_use>
 "type": "function"
 <invoke name="test">`)
-	s := parseSessionFromLog(content, "lib-5")
+	s := extraction.ParseSessionFromLog(content, "lib-5")
 	if s.ToolCallCount < 4 {
 		t.Errorf("ToolCallCount = %d, want >= 4", s.ToolCallCount)
 	}
@@ -76,7 +77,7 @@ traceback (most recent call last):
 panic: runtime error
 FAILED test
 exit status 1`)
-	s := parseSessionFromLog(content, "lib-6")
+	s := extraction.ParseSessionFromLog(content, "lib-6")
 	if s.ErrorCount < 5 {
 		t.Errorf("ErrorCount = %d, want >= 5", s.ErrorCount)
 	}
@@ -96,7 +97,7 @@ func TestParseSessionFromLog_ExecDetection(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := parseSessionFromLog([]byte(tt.content), "lib")
+			s := extraction.ParseSessionFromLog([]byte(tt.content), "lib")
 			if s.HasSuccessfulExec != tt.want {
 				t.Errorf("HasSuccessfulExec = %v, want %v", s.HasSuccessfulExec, tt.want)
 			}
@@ -106,7 +107,7 @@ func TestParseSessionFromLog_ExecDetection(t *testing.T) {
 
 func TestParseSessionFromLog_ModelDetection(t *testing.T) {
 	content := []byte("Starting session model=gpt-4-turbo\nDoing stuff")
-	s := parseSessionFromLog(content, "lib")
+	s := extraction.ParseSessionFromLog(content, "lib")
 	if s.AgentModel != "gpt-4-turbo" {
 		t.Errorf("AgentModel = %q, want gpt-4-turbo", s.AgentModel)
 	}
@@ -117,7 +118,7 @@ func TestParseSessionFromLog_TokenEstimate(t *testing.T) {
 	for i := range content {
 		content[i] = 'a'
 	}
-	s := parseSessionFromLog(content, "lib")
+	s := extraction.ParseSessionFromLog(content, "lib")
 	if s.TokensUsed != 100 {
 		t.Errorf("TokensUsed = %d, want 100", s.TokensUsed)
 	}
@@ -126,7 +127,7 @@ func TestParseSessionFromLog_TokenEstimate(t *testing.T) {
 func TestParseSessionFromLog_NegativeDuration(t *testing.T) {
 	// If timestamps are in wrong order, duration should be clamped to 0
 	content := []byte("2025-06-01T10:00:00 end\n2025-06-01T09:00:00 start")
-	s := parseSessionFromLog(content, "lib")
+	s := extraction.ParseSessionFromLog(content, "lib")
 	if s.DurationMinutes < 0 {
 		t.Errorf("DurationMinutes = %f, should not be negative", s.DurationMinutes)
 	}
@@ -134,7 +135,7 @@ func TestParseSessionFromLog_NegativeDuration(t *testing.T) {
 
 func TestParseSessionFromLog_ErrorRate(t *testing.T) {
 	content := []byte("tool_call: exec a\ntool_call: exec b\nerror: boom\ntool_call: exec c\nerror: crash")
-	s := parseSessionFromLog(content, "lib")
+	s := extraction.ParseSessionFromLog(content, "lib")
 	if s.ToolCallCount == 0 {
 		t.Fatal("no tool calls detected")
 	}
@@ -146,7 +147,7 @@ func TestParseSessionFromLog_ErrorRate(t *testing.T) {
 
 func TestParseSessionFromLog_ZeroToolCalls(t *testing.T) {
 	content := []byte("just some text\nno tools here")
-	s := parseSessionFromLog(content, "lib")
+	s := extraction.ParseSessionFromLog(content, "lib")
 	if s.ToolCallCount != 0 {
 		t.Errorf("ToolCallCount = %d, want 0", s.ToolCallCount)
 	}
@@ -156,8 +157,8 @@ func TestParseSessionFromLog_ZeroToolCalls(t *testing.T) {
 }
 
 func TestParseSessionFromLog_UUID(t *testing.T) {
-	s1 := parseSessionFromLog([]byte("a"), "lib")
-	s2 := parseSessionFromLog([]byte("b"), "lib")
+	s1 := extraction.ParseSessionFromLog([]byte("a"), "lib")
+	s2 := extraction.ParseSessionFromLog([]byte("b"), "lib")
 	if s1.ID == s2.ID {
 		t.Error("expected unique IDs")
 	}
@@ -167,21 +168,17 @@ func TestParseSessionFromLog_UUID(t *testing.T) {
 }
 
 func TestEstimateTokens(t *testing.T) {
-	if got := estimateTokens([]byte("1234")); got != 1 {
-		t.Errorf("estimateTokens(4 bytes) = %d, want 1", got)
+	if got := extraction.EstimateTokens([]byte("1234")); got != 1 {
+		t.Errorf("extraction.EstimateTokens(4 bytes) = %d, want 1", got)
 	}
-	if got := estimateTokens([]byte("")); got != 0 {
-		t.Errorf("estimateTokens(empty) = %d, want 0", got)
+	if got := extraction.EstimateTokens([]byte("")); got != 0 {
+		t.Errorf("extraction.EstimateTokens(empty) = %d, want 0", got)
 	}
 }
 
 func TestStoreQuerier_NilResult(t *testing.T) {
-	// Verify the storeQuerier interface method signature
-	var _ extraction.SkillQuerier = (*storeQuerier)(nil)
-
-	// The actual QueryNearest behavior is integration-tested,
-	// but we verify the adapter struct compiles correctly.
-	_ = &storeQuerier{}
+	// Verify that storage.NewSkillQuerier returns extraction.SkillQuerier.
+	var _ extraction.SkillQuerier = storage.NewSkillQuerier(nil)
 }
 
 func TestExitError(t *testing.T) {
@@ -202,7 +199,7 @@ func TestParseSessionFromLog_LargeInput(t *testing.T) {
 	for i := 0; i < 20000; i++ {
 		lines = append(lines, []byte(ts+" tool_call: exec something\n")...)
 	}
-	s := parseSessionFromLog(lines, "lib")
+	s := extraction.ParseSessionFromLog(lines, "lib")
 	if s.ToolCallCount < 10000 {
 		t.Errorf("ToolCallCount = %d, expected many", s.ToolCallCount)
 	}

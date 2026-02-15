@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/mycelium-dev/mycelium/internal/config"
+	"github.com/mycelium-dev/mycelium/internal/extraction"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 	"github.com/mycelium-dev/mycelium/internal/worker"
 )
@@ -111,7 +112,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		session := parseSessionFromLog(content, libraryID)
+		session := extraction.ParseSessionFromLog(content, libraryID)
 		if err := queue.Enqueue(cmd.Context(), session, content); err != nil {
 			fmt.Fprintf(os.Stderr, "enqueue %s: %v\n", p, err)
 			errCount++

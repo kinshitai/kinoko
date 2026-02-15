@@ -137,7 +137,7 @@ func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, logger *slog.
 
 	llmClient := llm.NewOpenAIClient(llmAPIKey, "gpt-4o-mini")
 	stage1 := extraction.NewStage1Filter(cfg.Extraction, logger)
-	stage2 := extraction.NewStage2Scorer(embedder, &storeQuerier{store: store}, llmClient, cfg.Extraction, logger)
+	stage2 := extraction.NewStage2Scorer(embedder, storage.NewSkillQuerier(store), llmClient, cfg.Extraction, logger)
 	stage3 := extraction.NewStage3Critic(llmClient, cfg.Extraction, logger)
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
 		Stage1:    stage1,

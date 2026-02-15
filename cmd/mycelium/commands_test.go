@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/storage"
 )
 
 func TestExtractCmdArgs(t *testing.T) {
@@ -62,7 +63,7 @@ error: build failed
 tool_call: exec go build ./...
 2025-01-15T10:15:00 Session end`)
 
-	session := parseSessionFromLog(log, "test-lib")
+	session := extraction.ParseSessionFromLog(log, "test-lib")
 
 	if session.LibraryID != "test-lib" {
 		t.Errorf("LibraryID = %q, want test-lib", session.LibraryID)
@@ -163,6 +164,6 @@ func TestQueueRetryRequiresArg(t *testing.T) {
 }
 
 func TestStoreQuerierInterface(t *testing.T) {
-	// Compile-time check that storeQuerier implements SkillQuerier
-	var _ extraction.SkillQuerier = (*storeQuerier)(nil)
+	// Compile-time check that storage.NewSkillQuerier returns SkillQuerier.
+	var _ extraction.SkillQuerier = storage.NewSkillQuerier(nil)
 }
