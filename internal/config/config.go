@@ -57,6 +57,9 @@ type ExtractionConfig struct {
 	// Stage 2 thresholds
 	NoveltyMinDistance float64 `yaml:"novelty_min_distance"`
 	NoveltyMaxDistance float64 `yaml:"novelty_max_distance"`
+
+	// Version similarity threshold (Appendix A) — used in Phase 5+ for skill versioning.
+	VersionSimilarityThreshold float64 `yaml:"version_similarity_threshold"`
 }
 
 // HooksConfig contains pre-commit hook configuration
@@ -111,8 +114,9 @@ func DefaultConfig() *Config {
 			MinToolCalls:       3,
 			MaxErrorRate:       0.7,
 
-			NoveltyMinDistance: 0.15,
-			NoveltyMaxDistance: 0.95,
+			NoveltyMinDistance:         0.15,
+			NoveltyMaxDistance:         0.95,
+			VersionSimilarityThreshold: 0.85,
 		},
 		Hooks: HooksConfig{
 			CredentialScan:   true,
@@ -342,6 +346,10 @@ func (c *Config) Validate() error {
 
 	if c.Extraction.NoveltyMaxDistance < 0 || c.Extraction.NoveltyMaxDistance > 1 {
 		return fmt.Errorf("extraction novelty_max_distance must be between 0.0 and 1.0, got %f", c.Extraction.NoveltyMaxDistance)
+	}
+
+	if c.Extraction.VersionSimilarityThreshold < 0 || c.Extraction.VersionSimilarityThreshold > 1 {
+		return fmt.Errorf("extraction version_similarity_threshold must be between 0.0 and 1.0, got %f", c.Extraction.VersionSimilarityThreshold)
 	}
 
 	if c.Extraction.NoveltyMinDistance > c.Extraction.NoveltyMaxDistance {

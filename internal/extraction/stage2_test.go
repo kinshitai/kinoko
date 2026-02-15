@@ -287,6 +287,193 @@ func TestStage2Scorer(t *testing.T) {
 			llm:      okLLM(goodRubricJSON()),
 			wantPassed: true,
 		},
+		{
+			name:     "P1.1: out-of-range rubric scores rejected",
+			embedder: okEmbedder(),
+			querier:  querierWithSimilarity(0.50),
+			llm: okLLM(`{
+				"scores": {
+					"problem_specificity": 47,
+					"solution_completeness": 4,
+					"context_portability": 3,
+					"reasoning_transparency": 3,
+					"technical_accuracy": 4,
+					"verification_evidence": 3,
+					"innovation_level": 3
+				},
+				"category": "tactical",
+				"patterns": ["FIX/Backend/DatabaseConnection"]
+			}`),
+			wantErr: true,
+		},
+		{
+			name:     "P1.1: zero score rejected",
+			embedder: okEmbedder(),
+			querier:  querierWithSimilarity(0.50),
+			llm: okLLM(`{
+				"scores": {
+					"problem_specificity": 0,
+					"solution_completeness": 4,
+					"context_portability": 3,
+					"reasoning_transparency": 3,
+					"technical_accuracy": 4,
+					"verification_evidence": 3,
+					"innovation_level": 3
+				},
+				"category": "tactical",
+				"patterns": ["FIX/Backend/DatabaseConnection"]
+			}`),
+			wantErr: true,
+		},
+		{
+			name:     "P1.1: negative score rejected",
+			embedder: okEmbedder(),
+			querier:  querierWithSimilarity(0.50),
+			llm: okLLM(`{
+				"scores": {
+					"problem_specificity": 4,
+					"solution_completeness": -3,
+					"context_portability": 3,
+					"reasoning_transparency": 3,
+					"technical_accuracy": 4,
+					"verification_evidence": 3,
+					"innovation_level": 3
+				},
+				"category": "tactical",
+				"patterns": ["FIX/Backend/DatabaseConnection"]
+			}`),
+			wantErr: true,
+		},
+		{
+			name:     "P1.2: invalid category defaults to tactical",
+			embedder: okEmbedder(),
+			querier:  querierWithSimilarity(0.50),
+			llm: okLLM(`{
+				"scores": {
+					"problem_specificity": 4,
+					"solution_completeness": 4,
+					"context_portability": 3,
+					"reasoning_transparency": 3,
+					"technical_accuracy": 4,
+					"verification_evidence": 3,
+					"innovation_level": 3
+				},
+				"category": "strategic",
+				"patterns": ["FIX/Backend/DatabaseConnection"]
+			}`),
+			wantPassed: true,
+			checkResult: func(t *testing.T, r *Stage2Result) {
+				if r.ClassifiedCategory != CategoryTactical {
+					t.Errorf("expected tactical (default), got %s", r.ClassifiedCategory)
+				}
+			},
+		},
+		{
+			name:     "P1.3: invalid patterns stripped",
+			embedder: okEmbedder(),
+			querier:  querierWithSimilarity(0.50),
+			llm: okLLM(`{
+				"scores": {
+					"problem_specificity": 4,
+					"solution_completeness": 4,
+					"context_portability": 3,
+					"reasoning_transparency": 3,
+					"technical_accuracy": 4,
+					"verification_evidence": 3,
+					"innovation_level": 3
+				},
+				"category": "tactical",
+				"patterns": ["YOLO/Backend/Everything", "FIX/Backend/DatabaseConnection", "MADE_UP"]
+			}`),
+			wantPassed: true,
+			checkResult: func(t *testing.T, r *Stage2Result) {
+				if len(r.ClassifiedPatterns) != 1 || r.ClassifiedPatterns[0] != "FIX/Backend/DatabaseConnection" {
+					t.Errorf("expected only valid pattern, got %v", r.ClassifiedPatterns)
+				}
+			},
+		},
+		{
+			name:     "P1.3: all patterns invalid yields empty list",
+			embedder: okEmbedder(),
+			querier:  querierWithSimilarity(0.50),
+			llm: okLLM(`{
+				"scores": {
+					"problem_specificity": 4,
+					"solution_completeness": 4,
+					"context_portability": 3,
+					"reasoning_transparency": 3,
+					"technical_accuracy": 4,
+					"verification_evidence": 3,
+					"innovation_level": 3
+				},
+				"category": "tactical",
+				"patterns": ["FAKE/Pattern/One"]
+			}`),
+			wantPassed: true,
+			checkResult: func(t *testing.T, r *Stage2Result) {
+				if len(r.ClassifiedPatterns) != 0 {
+					t.Errorf("expected empty patterns, got %v", r.ClassifiedPatterns)
+				}
+			},
+		},
+		{
+			name:     "P2.1: JSON with preamble containing braces",
+			embedder: okEmbedder(),
+			querier:  querierWithSimilarity(0.50),
+			llm: okLLM(fmt.Sprintf("Here's my analysis:\n```json\n%s\n```", goodRubricJSON())),
+			wantPassed: true,
+		},
+		{
+			name:     "P2.2: novelty score at boundary is nonzero",
+			embedder: okEmbedder(),
+			querier:  querierWithSimilarity(0.85), // distance = 0.15 = minDist
+			llm:      okLLM(goodRubricJSON()),
+			wantPassed: true,
+			checkResult: func(t *testing.T, r *Stage2Result) {
+				if r.NoveltyScore < 0.05 {
+					t.Errorf("expected novelty score >= 0.05 at boundary, got %f", r.NoveltyScore)
+				}
+			},
+		},
+		{
+			name:     "P2.2: novelty score at midpoint is 1.0",
+			embedder: okEmbedder(),
+			querier:  querierWithSimilarity(0.45), // distance = 0.55 ≈ midpoint of [0.15, 0.95]
+			llm:      okLLM(goodRubricJSON()),
+			wantPassed: true,
+			checkResult: func(t *testing.T, r *Stage2Result) {
+				if r.NoveltyScore < 0.95 {
+					t.Errorf("expected novelty score near 1.0 at midpoint, got %f", r.NoveltyScore)
+				}
+			},
+		},
+		{
+			name:     "P2.3: composite score is weighted not flat average",
+			embedder: okEmbedder(),
+			querier:  querierWithSimilarity(0.50),
+			llm: okLLM(`{
+				"scores": {
+					"problem_specificity": 5,
+					"solution_completeness": 5,
+					"context_portability": 1,
+					"reasoning_transparency": 1,
+					"technical_accuracy": 5,
+					"verification_evidence": 1,
+					"innovation_level": 1
+				},
+				"category": "tactical",
+				"patterns": ["BUILD/Backend/APIDesign"]
+			}`),
+			wantPassed: true,
+			checkResult: func(t *testing.T, r *Stage2Result) {
+				// Weighted: 5*0.15 + 5*0.20 + 1*0.15 + 1*0.10 + 5*0.20 + 1*0.10 + 1*0.10 = 3.20
+				// Flat avg: 19/7 ≈ 2.714
+				expected := 3.20
+				if diff := r.RubricScores.CompositeScore - expected; diff < -0.01 || diff > 0.01 {
+					t.Errorf("expected weighted composite %.2f, got %.2f", expected, r.RubricScores.CompositeScore)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {

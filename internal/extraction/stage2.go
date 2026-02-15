@@ -5,11 +5,36 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
 
 	"github.com/mycelium-dev/mycelium/internal/config"
 	"github.com/mycelium-dev/mycelium/internal/embedding"
 )
+
+// validPatterns is the curated taxonomy from the spec (Appendix B).
+var validPatterns = map[string]bool{
+	"BUILD/Frontend/ComponentDesign":     true,
+	"BUILD/Frontend/StateManagement":     true,
+	"BUILD/Backend/APIDesign":            true,
+	"BUILD/Backend/DataModeling":         true,
+	"BUILD/DevOps/CIPipeline":            true,
+	"BUILD/DevOps/ContainerSetup":        true,
+	"FIX/Frontend/RenderingBug":          true,
+	"FIX/Backend/DatabaseConnection":     true,
+	"FIX/Backend/AuthFlow":               true,
+	"FIX/DevOps/DeploymentFailure":       true,
+	"FIX/Performance/MemoryLeak":         true,
+	"FIX/Performance/SlowQuery":          true,
+	"OPTIMIZE/Performance/Caching":       true,
+	"OPTIMIZE/Performance/BundleSize":    true,
+	"OPTIMIZE/Backend/QueryOptimization": true,
+	"INTEGRATE/Backend/ThirdPartyAPI":    true,
+	"INTEGRATE/DevOps/CloudService":      true,
+	"CONFIGURE/DevOps/InfraAsCode":       true,
+	"CONFIGURE/Security/AccessControl":   true,
+	"LEARN/Data/DataPipeline":            true,
+}
 
 // LLMClient is a lightweight LLM interface for rubric scoring.
 type LLMClient interface {
@@ -96,11 +121,18 @@ func (s *stage2Scorer) Score(ctx context.Context, session SessionRecord, content
 		return result, nil
 	}
 
-	// Normalize novelty into [0,1] within the valid range.
+	// Normalize novelty into [0,1] within the valid range using a linear ramp
+	// from boundaries to midpoint (triangle function). Boundaries get a small
+	// epsilon floor so that edge-of-range sessions still carry a nonzero score.
 	mid := (s.minDist + s.maxDist) / 2
 	halfRange := (s.maxDist - s.minDist) / 2
 	if halfRange > 0 {
-		result.NoveltyScore = 1.0 - abs(distance-mid)/halfRange
+		raw := 1.0 - math.Abs(distance-mid)/halfRange
+		// Floor at 0.05 so boundary distances are not zero.
+		if raw < 0.05 {
+			raw = 0.05
+		}
+		result.NoveltyScore = raw
 	} else {
 		result.NoveltyScore = 1.0
 	}
@@ -118,6 +150,17 @@ func (s *stage2Scorer) Score(ctx context.Context, session SessionRecord, content
 	if err := parseRubricResponse(resp, &rubric); err != nil {
 		return nil, fmt.Errorf("stage2: parse rubric response: %w", err)
 	}
+
+	// Validate rubric scores are in [1,5].
+	if err := rubric.Scores.validate(); err != nil {
+		return nil, fmt.Errorf("stage2: invalid rubric scores: %w", err)
+	}
+
+	// Validate category; default to tactical if invalid.
+	rubric.Category = validateCategory(rubric.Category)
+
+	// Strip patterns not in the taxonomy.
+	rubric.Patterns = validatePatterns(rubric.Patterns)
 
 	result.RubricScores = rubric.Scores.toQualityScores()
 	result.RubricScores.CompositeScore = compositeScore(result.RubricScores)
@@ -165,34 +208,96 @@ type rubricResponse struct {
 	Patterns []string         `json:"patterns"`
 }
 
+// Weighted composite score per spec §1.1 QualityScores.
+// Weights: problem_specificity=0.15, solution_completeness=0.20, context_portability=0.15,
+// reasoning_transparency=0.10, technical_accuracy=0.20, verification_evidence=0.10, innovation_level=0.10.
 func compositeScore(q QualityScores) float64 {
-	sum := q.ProblemSpecificity + q.SolutionCompleteness + q.ContextPortability +
-		q.ReasoningTransparency + q.TechnicalAccuracy + q.VerificationEvidence +
-		q.InnovationLevel
-	return float64(sum) / 7.0
-}
-
-func abs(x float64) float64 {
-	if x < 0 {
-		return -x
-	}
-	return x
+	return float64(q.ProblemSpecificity)*0.15 +
+		float64(q.SolutionCompleteness)*0.20 +
+		float64(q.ContextPortability)*0.15 +
+		float64(q.ReasoningTransparency)*0.10 +
+		float64(q.TechnicalAccuracy)*0.20 +
+		float64(q.VerificationEvidence)*0.10 +
+		float64(q.InnovationLevel)*0.10
 }
 
 func parseRubricResponse(resp string, out *rubricResponse) error {
-	// Try to extract JSON from the response (LLM may wrap in markdown code blocks).
-	cleaned := resp
-	if idx := strings.Index(cleaned, "{"); idx >= 0 {
-		cleaned = cleaned[idx:]
-	}
-	if idx := strings.LastIndex(cleaned, "}"); idx >= 0 {
-		cleaned = cleaned[:idx+1]
+	// Try raw parse first.
+	if err := json.Unmarshal([]byte(resp), out); err == nil {
+		return nil
 	}
 
-	if err := json.Unmarshal([]byte(cleaned), out); err != nil {
-		return fmt.Errorf("invalid JSON in LLM response: %w", err)
+	// Try extracting from ```json ... ``` blocks.
+	if start := strings.Index(resp, "```json"); start >= 0 {
+		inner := resp[start+7:]
+		if end := strings.Index(inner, "```"); end >= 0 {
+			if err := json.Unmarshal([]byte(strings.TrimSpace(inner[:end])), out); err == nil {
+				return nil
+			}
+		}
+	}
+
+	// Try generic ``` blocks.
+	if start := strings.Index(resp, "```"); start >= 0 {
+		inner := resp[start+3:]
+		if end := strings.Index(inner, "```"); end >= 0 {
+			candidate := strings.TrimSpace(inner[:end])
+			if err := json.Unmarshal([]byte(candidate), out); err == nil {
+				return nil
+			}
+		}
+	}
+
+	// Fallback: find first { and last }.
+	first := strings.Index(resp, "{")
+	last := strings.LastIndex(resp, "}")
+	if first >= 0 && last > first {
+		if err := json.Unmarshal([]byte(resp[first:last+1]), out); err == nil {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("invalid JSON in LLM response: could not extract valid JSON")
+}
+
+// validate checks all 7 rubric scores are in [1,5].
+func (r rubricScoresJSON) validate() error {
+	scores := map[string]int{
+		"problem_specificity":    r.ProblemSpecificity,
+		"solution_completeness":  r.SolutionCompleteness,
+		"context_portability":    r.ContextPortability,
+		"reasoning_transparency": r.ReasoningTransparency,
+		"technical_accuracy":     r.TechnicalAccuracy,
+		"verification_evidence":  r.VerificationEvidence,
+		"innovation_level":       r.InnovationLevel,
+	}
+	for name, v := range scores {
+		if v < 1 || v > 5 {
+			return fmt.Errorf("%s score %d out of range [1,5]", name, v)
+		}
 	}
 	return nil
+}
+
+// validateCategory returns the category if valid, or CategoryTactical as default.
+func validateCategory(c SkillCategory) SkillCategory {
+	switch c {
+	case CategoryFoundational, CategoryTactical, CategoryContextual:
+		return c
+	default:
+		return CategoryTactical
+	}
+}
+
+// validatePatterns strips patterns not in the taxonomy.
+func validatePatterns(patterns []string) []string {
+	var valid []string
+	for _, p := range patterns {
+		if validPatterns[p] {
+			valid = append(valid, p)
+		}
+	}
+	return valid
 }
 
 func buildRubricPrompt(content []byte) string {
