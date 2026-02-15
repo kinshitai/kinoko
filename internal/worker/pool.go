@@ -158,19 +158,22 @@ func (p *workerPool) process(ctx context.Context, workerID string, entry *QueueE
 		return
 	}
 
-	// Load full session record.
+	// Load full session record. Failures are transient (DB/network may recover).
 	session, err := p.getSession(ctx, entry.SessionID)
 	if err != nil {
 		p.log.Error("get session failed", "worker_id", workerID, "session_id", entry.SessionID, "error", err)
-		if failErr := p.queue.FailPermanent(ctx, entry.SessionID, fmt.Errorf("get session: %w", err)); failErr != nil {
-			p.log.Error("fail permanent error", "worker_id", workerID, "session_id", entry.SessionID, "error", failErr)
+		if failErr := p.queue.Fail(ctx, entry.SessionID, fmt.Errorf("get session: %w", err)); failErr != nil {
+			p.log.Error("fail error", "worker_id", workerID, "session_id", entry.SessionID, "error", failErr)
 		}
-		p.failed.Add(1)
+		p.errors.Add(1)
 		return
 	}
 
-	// Run extraction pipeline.
-	result, err := p.extractor.Extract(ctx, *session, content)
+	// Run extraction pipeline with a detached context so that pool
+	// cancellation does not abort in-flight extractions.
+	extractCtx, extractCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer extractCancel()
+	result, err := p.extractor.Extract(extractCtx, *session, content)
 	if err != nil {
 		p.log.Error("extraction failed", "worker_id", workerID, "session_id", entry.SessionID, "error", err)
 		if entry.RetryCount+1 >= p.cfg.MaxRetries {

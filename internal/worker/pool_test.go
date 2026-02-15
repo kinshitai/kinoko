@@ -362,10 +362,12 @@ func TestPool_GracefulShutdown_InFlightCompletes(t *testing.T) {
 
 	ext := &mockExtractor{fn: func(ctx context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
 		close(extractStarted)
-		select {
-		case <-extractContinue:
-		case <-ctx.Done():
-			// Context cancelled but we still complete.
+		// Extract receives a detached context, so ctx.Done() should NOT fire
+		// when the pool is stopped. We wait on extractContinue only.
+		<-extractContinue
+		// Verify the extract context is still valid (not cancelled by pool shutdown).
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("extract context should not be cancelled: %w", ctx.Err())
 		}
 		return &extraction.ExtractionResult{Status: extraction.StatusExtracted}, nil
 	}}
@@ -440,6 +442,60 @@ func TestPool_StatsCountRejected(t *testing.T) {
 	stats := p.Stats()
 	if stats.TotalRejected != 1 {
 		t.Errorf("expected 1 rejected, got %d", stats.TotalRejected)
+	}
+}
+
+func TestPool_GetSessionFailureIsTransient(t *testing.T) {
+	dir := t.TempDir()
+	q := newMockQueue()
+	path := writeLogFile(t, dir, "s1", "log")
+	q.addEntry("s1", path, 0)
+
+	ext := &mockExtractor{fn: func(_ context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+		t.Error("extractor should not be called when getSession fails")
+		return nil, nil
+	}}
+
+	failingSessionGetter := func(_ context.Context, _ string) (*extraction.SessionRecord, error) {
+		return nil, errors.New("db connection refused")
+	}
+
+	cfg := testConfig()
+	cfg.Concurrency = 1
+	p := NewPool(q, ext, failingSessionGetter, cfg, testLogger())
+
+	ctx := context.Background()
+	p.Start(ctx)
+
+	deadline := time.After(2 * time.Second)
+	for {
+		if p.Stats().TotalProcessed >= 1 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("timeout")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	stopCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	p.Stop(stopCtx)
+
+	q.mu.Lock()
+	f, ok := q.failures["s1"]
+	q.mu.Unlock()
+	if !ok {
+		t.Fatal("expected failure for s1")
+	}
+	if f.permanent {
+		t.Error("getSession failure should be transient (non-permanent)")
+	}
+
+	stats := p.Stats()
+	if stats.TotalErrors != 1 {
+		t.Errorf("expected 1 error, got %d", stats.TotalErrors)
 	}
 }
 
