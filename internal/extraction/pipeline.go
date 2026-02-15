@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
-	"regexp"
 	"strings"
 	"time"
-	"unicode"
+
+	"github.com/google/uuid"
 )
 
 // SkillWriter persists a skill record and its SKILL.md body.

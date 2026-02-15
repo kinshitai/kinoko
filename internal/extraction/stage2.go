@@ -289,6 +289,11 @@ func validateCategory(c SkillCategory) SkillCategory {
 	}
 }
 
+// ValidPattern reports whether p is in the taxonomy.
+func ValidPattern(p string) bool {
+	return validPatterns[p]
+}
+
 // validatePatterns strips patterns not in the taxonomy.
 func validatePatterns(patterns []string) []string {
 	var valid []string
