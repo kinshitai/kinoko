@@ -2,7 +2,11 @@ package storage
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -11,7 +15,7 @@ import (
 
 func testStore(t *testing.T) *SQLiteStore {
 	t.Helper()
-	s, err := NewSQLiteStore(":memory:")
+	s, err := NewSQLiteStore(":memory:", "test-model")
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
@@ -78,8 +82,8 @@ func TestPutAndGet(t *testing.T) {
 func TestGetNotFound(t *testing.T) {
 	s := testStore(t)
 	_, err := s.Get(context.Background(), "nonexistent")
-	if err == nil {
-		t.Fatal("expected error for nonexistent skill")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
@@ -115,8 +119,8 @@ func TestGetLatestByName(t *testing.T) {
 func TestGetLatestByNameNotFound(t *testing.T) {
 	s := testStore(t)
 	_, err := s.GetLatestByName(context.Background(), "nope", "default")
-	if err == nil {
-		t.Fatal("expected error")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 
@@ -170,7 +174,6 @@ func TestQueryCosineSimilarity(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("results = %d, want 1", len(results))
 	}
-	// Identical vectors → cosine sim = 1.0
 	if math.Abs(results[0].CosineSim-1.0) > 0.001 {
 		t.Errorf("cosine sim = %f, want 1.0", results[0].CosineSim)
 	}
@@ -226,7 +229,6 @@ func TestQueryCompositeScoreOrdering(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 
-	// Skill A: high pattern match, no embedding
 	a := testSkill("id-a", "skill-a", "default")
 	a.Patterns = []string{"FIX/Backend/DatabaseConnection"}
 	a.Embedding = nil
@@ -235,7 +237,6 @@ func TestQueryCompositeScoreOrdering(t *testing.T) {
 		t.Fatalf("put a: %v", err)
 	}
 
-	// Skill B: no pattern match, high embedding sim
 	b := testSkill("id-b", "skill-b", "default")
 	b.Patterns = []string{"BUILD/Frontend/ComponentDesign"}
 	b.Embedding = []float32{1, 0, 0}
@@ -256,7 +257,6 @@ func TestQueryCompositeScoreOrdering(t *testing.T) {
 	if len(results) != 2 {
 		t.Fatalf("results = %d, want 2", len(results))
 	}
-	// Results should be ordered by composite score descending
 	if results[0].CompositeScore < results[1].CompositeScore {
 		t.Error("results not sorted by composite score descending")
 	}
@@ -267,7 +267,7 @@ func TestQueryLimit(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
-		sk := testSkill("id-"+string(rune('a'+i)), "skill-"+string(rune('a'+i)), "default")
+		sk := testSkill(fmt.Sprintf("id-%d", i), fmt.Sprintf("skill-%d", i), "default")
 		if err := s.Put(ctx, sk, nil); err != nil {
 			t.Fatalf("put %d: %v", i, err)
 		}
@@ -356,7 +356,6 @@ func TestListByDecay(t *testing.T) {
 	if len(results) != 3 {
 		t.Fatalf("results = %d, want 3", len(results))
 	}
-	// Should be ascending: 0.1, 0.5, 0.9
 	if results[0].DecayScore > results[1].DecayScore || results[1].DecayScore > results[2].DecayScore {
 		t.Errorf("not sorted ascending: %f, %f, %f", results[0].DecayScore, results[1].DecayScore, results[2].DecayScore)
 	}
@@ -367,7 +366,7 @@ func TestListByDecayLimit(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
-		sk := testSkill("id-"+string(rune('a'+i)), "skill-"+string(rune('a'+i)), "default")
+		sk := testSkill(fmt.Sprintf("id-%d", i), fmt.Sprintf("skill-%d", i), "default")
 		sk.DecayScore = float64(i) * 0.2
 		if err := s.Put(ctx, sk, nil); err != nil {
 			t.Fatalf("put %d: %v", i, err)
@@ -402,15 +401,12 @@ func TestListByDecayLibraryFilter(t *testing.T) {
 }
 
 func TestCosineSimilarity(t *testing.T) {
-	// Identical vectors
 	if v := cosineSimilarity([]float32{1, 0, 0}, []float32{1, 0, 0}); math.Abs(v-1.0) > 0.001 {
 		t.Errorf("identical = %f", v)
 	}
-	// Orthogonal
 	if v := cosineSimilarity([]float32{1, 0, 0}, []float32{0, 1, 0}); math.Abs(v) > 0.001 {
 		t.Errorf("orthogonal = %f", v)
 	}
-	// Empty
 	if v := cosineSimilarity(nil, nil); v != 0 {
 		t.Errorf("empty = %f", v)
 	}
@@ -466,9 +462,83 @@ func TestUniqueConstraint(t *testing.T) {
 		t.Fatalf("put: %v", err)
 	}
 
-	// Same name+version+library should fail
 	sk2 := testSkill("id-2", "fix-db-conn", "default")
-	if err := s.Put(ctx, sk2, nil); err == nil {
-		t.Fatal("expected unique constraint error")
+	err := s.Put(ctx, sk2, nil)
+	if !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("expected ErrDuplicate, got %v", err)
+	}
+}
+
+func TestPutWritesBodyToDisk(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	dir := t.TempDir()
+	sk := testSkill("id-1", "fix-db-conn", "default")
+	sk.FilePath = filepath.Join(dir, "skills", "fix-db-conn", "SKILL.md")
+	body := []byte("# Fix DB Connection\n\nRestart the pool.")
+
+	if err := s.Put(ctx, sk, body); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+
+	got, err := os.ReadFile(sk.FilePath)
+	if err != nil {
+		t.Fatalf("read body file: %v", err)
+	}
+	if string(got) != string(body) {
+		t.Errorf("body = %q, want %q", got, body)
+	}
+}
+
+func TestEmbeddingModelConfigurable(t *testing.T) {
+	s, err := NewSQLiteStore(":memory:", "custom-embed-v2")
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer s.Close()
+
+	if s.embeddingModel != "custom-embed-v2" {
+		t.Errorf("embedding model = %q, want custom-embed-v2", s.embeddingModel)
+	}
+}
+
+func TestEmbeddingModelDefault(t *testing.T) {
+	s, err := NewSQLiteStore(":memory:", "")
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer s.Close()
+
+	if s.embeddingModel != "text-embedding-3-small" {
+		t.Errorf("embedding model = %q, want text-embedding-3-small", s.embeddingModel)
+	}
+}
+
+func TestSentinelErrors(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	// ErrNotFound from Get
+	_, err := s.Get(ctx, "nonexistent")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("Get: expected ErrNotFound, got %v", err)
+	}
+
+	// ErrNotFound from GetLatestByName
+	_, err = s.GetLatestByName(ctx, "nope", "default")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetLatestByName: expected ErrNotFound, got %v", err)
+	}
+
+	// ErrDuplicate from Put
+	sk := testSkill("id-1", "fix-db-conn", "default")
+	if err := s.Put(ctx, sk, nil); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	sk2 := testSkill("id-2", "fix-db-conn", "default")
+	err = s.Put(ctx, sk2, nil)
+	if !errors.Is(err, ErrDuplicate) {
+		t.Errorf("Put duplicate: expected ErrDuplicate, got %v", err)
 	}
 }

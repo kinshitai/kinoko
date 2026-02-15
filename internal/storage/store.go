@@ -5,9 +5,13 @@ import (
 	"database/sql"
 	_ "embed"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,6 +21,20 @@ import (
 
 //go:embed schema.sql
 var schemaDDL string
+
+// Sentinel errors for callers to check with errors.Is.
+var (
+	ErrNotFound  = errors.New("skill not found")
+	ErrDuplicate = errors.New("duplicate skill")
+)
+
+// skillColumns is the canonical column list for the skills table.
+const skillColumns = `id, name, version, parent_id, library_id, category,
+	q_problem_specificity, q_solution_completeness, q_context_portability,
+	q_reasoning_transparency, q_technical_accuracy, q_verification_evidence,
+	q_innovation_level, q_composite_score, q_critic_confidence,
+	injection_count, last_injected_at, success_correlation, decay_score,
+	source_session_id, extracted_by, file_path, created_at, updated_at`
 
 // SkillStore persists and retrieves skills.
 type SkillStore interface {
@@ -50,11 +68,13 @@ type ScoredSkill struct {
 
 // SQLiteStore implements SkillStore with SQLite.
 type SQLiteStore struct {
-	db *sql.DB
+	db             *sql.DB
+	embeddingModel string
 }
 
 // NewSQLiteStore opens (or creates) a SQLite database and runs migrations.
-func NewSQLiteStore(dsn string) (*SQLiteStore, error) {
+// embeddingModel specifies the model name stored with embeddings (e.g. "text-embedding-3-small").
+func NewSQLiteStore(dsn string, embeddingModel string) (*SQLiteStore, error) {
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -91,7 +111,11 @@ func NewSQLiteStore(dsn string) (*SQLiteStore, error) {
 	}
 	slog.Info("sqlite schema applied")
 
-	return &SQLiteStore{db: db}, nil
+	if embeddingModel == "" {
+		embeddingModel = "text-embedding-3-small"
+	}
+
+	return &SQLiteStore{db: db, embeddingModel: embeddingModel}, nil
 }
 
 // Close closes the database.
@@ -129,7 +153,21 @@ func (s *SQLiteStore) Put(ctx context.Context, skill *extraction.SkillRecord, bo
 		nullString(skill.SourceSessionID), skill.ExtractedBy, skill.FilePath, skill.CreatedAt, skill.UpdatedAt,
 	)
 	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint") {
+			return fmt.Errorf("%w: %s v%d in %s", ErrDuplicate, skill.Name, skill.Version, skill.LibraryID)
+		}
 		return fmt.Errorf("insert skill: %w", err)
+	}
+
+	// Write SKILL.md body to disk at FilePath (git server not wired yet).
+	if len(body) > 0 && skill.FilePath != "" {
+		dir := filepath.Dir(skill.FilePath)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create skill dir: %w", err)
+		}
+		if err := os.WriteFile(skill.FilePath, body, 0o644); err != nil {
+			return fmt.Errorf("write skill body: %w", err)
+		}
 	}
 
 	// Insert patterns
@@ -142,9 +180,8 @@ func (s *SQLiteStore) Put(ctx context.Context, skill *extraction.SkillRecord, bo
 	// Insert embedding if present
 	if len(skill.Embedding) > 0 {
 		blob := float32sToBytes(skill.Embedding)
-		// Spec says model is stored; default to a sensible value since SkillRecord doesn't carry model info.
 		if _, err := tx.ExecContext(ctx, `INSERT INTO skill_embeddings (skill_id, embedding, model, created_at) VALUES (?, ?, ?, ?)`,
-			skill.ID, blob, "text-embedding-3-small", now); err != nil {
+			skill.ID, blob, s.embeddingModel, now); err != nil {
 			return fmt.Errorf("insert embedding: %w", err)
 		}
 	}
@@ -153,8 +190,8 @@ func (s *SQLiteStore) Put(ctx context.Context, skill *extraction.SkillRecord, bo
 }
 
 func (s *SQLiteStore) Get(ctx context.Context, id string) (*extraction.SkillRecord, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT * FROM skills WHERE id = ?`, id)
-	skill, err := scanSkill(row)
+	row := s.db.QueryRowContext(ctx, `SELECT `+skillColumns+` FROM skills WHERE id = ?`, id)
+	skill, err := scanSkillFrom(row)
 	if err != nil {
 		return nil, err
 	}
@@ -174,9 +211,9 @@ func (s *SQLiteStore) Get(ctx context.Context, id string) (*extraction.SkillReco
 
 func (s *SQLiteStore) GetLatestByName(ctx context.Context, name string, libraryID string) (*extraction.SkillRecord, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT * FROM skills WHERE name = ? AND library_id = ? ORDER BY version DESC LIMIT 1`,
+		`SELECT `+skillColumns+` FROM skills WHERE name = ? AND library_id = ? ORDER BY version DESC LIMIT 1`,
 		name, libraryID)
-	skill, err := scanSkill(row)
+	skill, err := scanSkillFrom(row)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +253,7 @@ func (s *SQLiteStore) Query(ctx context.Context, q SkillQuery) ([]ScoredSkill, e
 		args = append(args, q.MinDecay)
 	}
 
-	query := `SELECT * FROM skills WHERE ` + strings.Join(where, " AND ")
+	query := `SELECT ` + skillColumns + ` FROM skills WHERE ` + strings.Join(where, " AND ")
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query skills: %w", err)
@@ -224,36 +261,51 @@ func (s *SQLiteStore) Query(ctx context.Context, q SkillQuery) ([]ScoredSkill, e
 	defer rows.Close()
 
 	var candidates []extraction.SkillRecord
+	var candidateIDs []string
 	for rows.Next() {
-		skill, err := scanSkillRows(rows)
+		skill, err := scanSkillFrom(rows)
 		if err != nil {
 			return nil, err
 		}
 		candidates = append(candidates, *skill)
+		candidateIDs = append(candidateIDs, skill.ID)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	// Load patterns and embeddings, compute scores
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+
+	// Bulk-load patterns for all candidates (fix N+1)
+	patternMap, err := s.loadPatternsMulti(ctx, candidateIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Bulk-load embeddings for all candidates (fix N+1)
+	embeddingMap, err := s.loadEmbeddingsMulti(ctx, candidateIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	queryPatternSet := make(map[string]struct{}, len(q.Patterns))
 	for _, p := range q.Patterns {
 		queryPatternSet[p] = struct{}{}
 	}
 
 	var results []ScoredSkill
-	for _, skill := range candidates {
-		patterns, err := s.loadPatterns(ctx, skill.ID)
-		if err != nil {
-			return nil, err
-		}
-		skill.Patterns = patterns
+	for i := range candidates {
+		skill := &candidates[i]
+		skill.Patterns = patternMap[skill.ID]
+		skill.Embedding = embeddingMap[skill.ID]
 
 		// Pattern overlap: fraction of query patterns matched
 		var patternOverlap float64
 		if len(q.Patterns) > 0 {
 			matched := 0
-			for _, p := range patterns {
+			for _, p := range skill.Patterns {
 				if _, ok := queryPatternSet[p]; ok {
 					matched++
 				}
@@ -263,15 +315,8 @@ func (s *SQLiteStore) Query(ctx context.Context, q SkillQuery) ([]ScoredSkill, e
 
 		// Cosine similarity
 		var cosineSim float64
-		if len(q.Embedding) > 0 {
-			emb, err := s.loadEmbedding(ctx, skill.ID)
-			if err != nil {
-				return nil, err
-			}
-			skill.Embedding = emb
-			if len(emb) > 0 {
-				cosineSim = cosineSimilarity(q.Embedding, emb)
-			}
+		if len(q.Embedding) > 0 && len(skill.Embedding) > 0 {
+			cosineSim = cosineSimilarity(q.Embedding, skill.Embedding)
 		}
 
 		// Historical rate: success_correlation normalized to 0-1 range
@@ -280,7 +325,7 @@ func (s *SQLiteStore) Query(ctx context.Context, q SkillQuery) ([]ScoredSkill, e
 		composite := 0.5*patternOverlap + 0.3*cosineSim + 0.2*historicalRate
 
 		results = append(results, ScoredSkill{
-			Skill:          skill,
+			Skill:          *skill,
 			PatternOverlap: patternOverlap,
 			CosineSim:      cosineSim,
 			HistoricalRate: historicalRate,
@@ -289,7 +334,15 @@ func (s *SQLiteStore) Query(ctx context.Context, q SkillQuery) ([]ScoredSkill, e
 	}
 
 	// Sort descending by composite score
-	sortScoredSkills(results)
+	slices.SortFunc(results, func(a, b ScoredSkill) int {
+		if a.CompositeScore > b.CompositeScore {
+			return -1
+		}
+		if a.CompositeScore < b.CompositeScore {
+			return 1
+		}
+		return 0
+	})
 
 	if q.Limit > 0 && len(results) > q.Limit {
 		results = results[:q.Limit]
@@ -310,7 +363,9 @@ func (s *SQLiteStore) UpdateUsage(ctx context.Context, id string, outcome string
 		return fmt.Errorf("update usage: %w", err)
 	}
 
-	// Recompute success_correlation from injection_events
+	// Recompute success_correlation from injection_events.
+	// NOTE: injection_events rows are inserted by the injection pipeline (Phase 6).
+	// Until that phase is implemented, this subquery returns 0.0 (COALESCE default).
 	if outcome == "success" || outcome == "failure" {
 		_, err = s.db.ExecContext(ctx, `
 			UPDATE skills SET success_correlation = (
@@ -340,7 +395,7 @@ func (s *SQLiteStore) UpdateDecay(ctx context.Context, id string, decayScore flo
 
 func (s *SQLiteStore) ListByDecay(ctx context.Context, libraryID string, limit int) ([]extraction.SkillRecord, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT * FROM skills WHERE library_id = ? ORDER BY decay_score ASC LIMIT ?`,
+		`SELECT `+skillColumns+` FROM skills WHERE library_id = ? ORDER BY decay_score ASC LIMIT ?`,
 		libraryID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list by decay: %w", err)
@@ -349,7 +404,7 @@ func (s *SQLiteStore) ListByDecay(ctx context.Context, libraryID string, limit i
 
 	var skills []extraction.SkillRecord
 	for rows.Next() {
-		skill, err := scanSkillRows(rows)
+		skill, err := scanSkillFrom(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -360,41 +415,17 @@ func (s *SQLiteStore) ListByDecay(ctx context.Context, libraryID string, limit i
 
 // --- helpers ---
 
-func scanSkill(row *sql.Row) (*extraction.SkillRecord, error) {
-	var s extraction.SkillRecord
-	var parentID, sourceSessionID sql.NullString
-	var lastInjected sql.NullTime
-	err := row.Scan(
-		&s.ID, &s.Name, &s.Version, &parentID, &s.LibraryID, &s.Category,
-		&s.Quality.ProblemSpecificity, &s.Quality.SolutionCompleteness, &s.Quality.ContextPortability,
-		&s.Quality.ReasoningTransparency, &s.Quality.TechnicalAccuracy, &s.Quality.VerificationEvidence,
-		&s.Quality.InnovationLevel, &s.Quality.CompositeScore, &s.Quality.CriticConfidence,
-		&s.InjectionCount, &lastInjected, &s.SuccessCorrelation, &s.DecayScore,
-		&sourceSessionID, &s.ExtractedBy, &s.FilePath, &s.CreatedAt, &s.UpdatedAt,
-	)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("skill not found")
-		}
-		return nil, fmt.Errorf("scan skill: %w", err)
-	}
-	if parentID.Valid {
-		s.ParentID = parentID.String
-	}
-	if sourceSessionID.Valid {
-		s.SourceSessionID = sourceSessionID.String
-	}
-	if lastInjected.Valid {
-		s.LastInjectedAt = lastInjected.Time
-	}
-	return &s, nil
+// scanner is satisfied by both *sql.Row and *sql.Rows.
+type scanner interface {
+	Scan(dest ...any) error
 }
 
-func scanSkillRows(rows *sql.Rows) (*extraction.SkillRecord, error) {
+// scanSkillFrom scans a skill from any scanner (Row or Rows).
+func scanSkillFrom(sc scanner) (*extraction.SkillRecord, error) {
 	var s extraction.SkillRecord
 	var parentID, sourceSessionID sql.NullString
 	var lastInjected sql.NullTime
-	err := rows.Scan(
+	err := sc.Scan(
 		&s.ID, &s.Name, &s.Version, &parentID, &s.LibraryID, &s.Category,
 		&s.Quality.ProblemSpecificity, &s.Quality.SolutionCompleteness, &s.Quality.ContextPortability,
 		&s.Quality.ReasoningTransparency, &s.Quality.TechnicalAccuracy, &s.Quality.VerificationEvidence,
@@ -403,7 +434,10 @@ func scanSkillRows(rows *sql.Rows) (*extraction.SkillRecord, error) {
 		&sourceSessionID, &s.ExtractedBy, &s.FilePath, &s.CreatedAt, &s.UpdatedAt,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("scan skill row: %w", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("scan skill: %w", err)
 	}
 	if parentID.Valid {
 		s.ParentID = parentID.String
@@ -434,11 +468,70 @@ func (s *SQLiteStore) loadPatterns(ctx context.Context, skillID string) ([]strin
 	return patterns, rows.Err()
 }
 
+// loadPatternsMulti loads patterns for multiple skill IDs in a single query.
+func (s *SQLiteStore) loadPatternsMulti(ctx context.Context, skillIDs []string) (map[string][]string, error) {
+	if len(skillIDs) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(skillIDs))
+	args := make([]any, len(skillIDs))
+	for i, id := range skillIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT skill_id, pattern FROM skill_patterns WHERE skill_id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("load patterns multi: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string][]string, len(skillIDs))
+	for rows.Next() {
+		var skillID, pattern string
+		if err := rows.Scan(&skillID, &pattern); err != nil {
+			return nil, err
+		}
+		result[skillID] = append(result[skillID], pattern)
+	}
+	return result, rows.Err()
+}
+
+// loadEmbeddingsMulti loads embeddings for multiple skill IDs in a single query.
+func (s *SQLiteStore) loadEmbeddingsMulti(ctx context.Context, skillIDs []string) (map[string][]float32, error) {
+	if len(skillIDs) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(skillIDs))
+	args := make([]any, len(skillIDs))
+	for i, id := range skillIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT skill_id, embedding FROM skill_embeddings WHERE skill_id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("load embeddings multi: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string][]float32, len(skillIDs))
+	for rows.Next() {
+		var skillID string
+		var blob []byte
+		if err := rows.Scan(&skillID, &blob); err != nil {
+			return nil, err
+		}
+		result[skillID] = bytesToFloat32s(blob)
+	}
+	return result, rows.Err()
+}
+
 func (s *SQLiteStore) loadEmbedding(ctx context.Context, skillID string) ([]float32, error) {
 	var blob []byte
 	err := s.db.QueryRowContext(ctx, `SELECT embedding FROM skill_embeddings WHERE skill_id = ?`, skillID).Scan(&blob)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("load embedding: %w", err)
@@ -492,13 +585,4 @@ func cosineSimilarity(a, b []float32) float64 {
 		return 0
 	}
 	return dot / denom
-}
-
-func sortScoredSkills(s []ScoredSkill) {
-	// Simple insertion sort — result sets are small (bounded by limit, typically <100)
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j].CompositeScore > s[j-1].CompositeScore; j-- {
-			s[j], s[j-1] = s[j-1], s[j]
-		}
-	}
 }

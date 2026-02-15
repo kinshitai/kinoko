@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     duration_minutes     REAL NOT NULL,
     tool_call_count      INTEGER NOT NULL,
     error_count          INTEGER NOT NULL,
-    total_calls          INTEGER NOT NULL,
+    message_count        INTEGER NOT NULL,
     error_rate           REAL NOT NULL,
     has_successful_exec  BOOLEAN NOT NULL,
     tokens_used          INTEGER NOT NULL DEFAULT 0,

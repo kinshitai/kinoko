@@ -8,3 +8,6 @@
 - Skill parser: pkg/skill/skill.go — YAML front matter + markdown body, case-insensitive section matching
 - Version: var injection via ldflags, not hardcoded
 - Logging: slog throughout
+- Storage: internal/storage/ — SQLiteStore implementing SkillStore interface, uses modernc.org/sqlite (pure Go)
+- Extraction types: internal/extraction/types.go — SkillRecord, QualityScores, SkillCategory
+- Schema: internal/storage/schema.sql — embedded DDL, 6 tables, run on startup with CREATE IF NOT EXISTS
