@@ -191,8 +191,8 @@ func TestRescueLogic(t *testing.T) {
 			lastInjected: now.AddDate(0, 0, -5),
 			successCorr:  0.8,
 			wantRescued:  1,
-			// decay: 0.6 * 0.5^(90/90) = 0.3, rescue: 0.3 + 0.3 = 0.6
-			wantScore: 0.6,
+			// decay uses LastInjectedAt (5 days ago): 0.6 * 0.5^(5/90) ≈ 0.577, + 0.3 = 0.877
+			wantScore: 0.6 * math.Pow(0.5, 5.0/90.0) + 0.3,
 		},
 		{
 			name:         "old_injection_no_rescue",
@@ -292,9 +292,9 @@ func TestCustomRescueBoost(t *testing.T) {
 	if res.Rescued != 1 {
 		t.Fatalf("rescued=%d, want 1", res.Rescued)
 	}
-	// 0.6 * 0.5^(90/90) = 0.3, + 0.5 = 0.8
-	if len(w.updates) > 0 && !almostEqual(w.updates[0].score, 0.8, 0.05) {
-		t.Errorf("score=%.4f, want ~0.8 with boost=0.5", w.updates[0].score)
+	// decay uses LastInjectedAt (5 days): 0.6 * 0.5^(5/90) ≈ 0.577, + 0.5 = 1.077 → capped at 1.0
+	if len(w.updates) > 0 && !almostEqual(w.updates[0].score, 1.0, 0.01) {
+		t.Errorf("score=%.4f, want 1.0 (capped) with boost=0.5", w.updates[0].score)
 	}
 }
 
