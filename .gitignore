@@ -21,4 +21,5 @@ Thumbs.db
 /dist/
 site/node_modules/
 site/dist/
+site/.astro/
 docs/reference/soft-serve-reference.md
