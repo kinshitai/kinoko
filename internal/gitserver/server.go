@@ -1,25 +1,26 @@
 package gitserver
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
+	"os/exec"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
 
 	"github.com/mycelium-dev/mycelium/internal/config"
 )
 
 // Server wraps the Soft Serve git server with Mycelium-specific functionality
 type Server struct {
-	config    *config.Config
-	dataDir   string
-	ctx       context.Context
-	cancel    context.CancelFunc
-	logger    *slog.Logger
-	
-	// TODO: Will be replaced with actual Soft Serve server once we add the dependency
-	// softServeServer *server.Server
+	config       *config.Config
+	dataDir      string
+	cmd          *exec.Cmd
+	logger       *slog.Logger
+	softBinary   string
+	adminKeyPath string
 }
 
 // NewServer creates a new git server instance
@@ -28,114 +29,225 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
 
+	// Check if soft binary is available
+	softBinary, err := CheckSoftBinary()
+	if err != nil {
+		return nil, err
+	}
+
 	// Ensure data directory exists
 	dataDir := cfg.Server.DataDir
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create data directory %s: %w", dataDir, err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	return &Server{
-		config:  cfg,
-		dataDir: dataDir,
-		ctx:     ctx,
-		cancel:  cancel,
-		logger:  slog.Default(),
+		config:     cfg,
+		dataDir:    dataDir,
+		logger:     slog.Default(),
+		softBinary: softBinary,
 	}, nil
 }
 
 // Start starts the git server
 func (s *Server) Start() error {
-	s.logger.Info("Starting Mycelium git server",
+	s.logger.Info("Starting Mycelium git server with Soft Serve",
 		"host", s.config.Server.Host,
 		"port", s.config.Server.Port,
 		"dataDir", s.dataDir)
 
-	// TODO: Implement actual Soft Serve integration
-	// For now, this is a placeholder that demonstrates the interface
-	
-	// Setup would include:
-	// 1. Configure Soft Serve with our settings
-	// 2. Set up SSH keys
-	// 3. Initialize database
-	// 4. Start the server
-	
+	// Generate admin SSH keys if they don't exist
+	adminKeyPath, err := s.ensureAdminKeys()
+	if err != nil {
+		return fmt.Errorf("failed to setup admin SSH keys: %w", err)
+	}
+	s.adminKeyPath = adminKeyPath
+
+	// Get admin public key for SOFT_SERVE_INITIAL_ADMIN_KEYS
+	adminPublicKey, err := s.getAdminPublicKey()
+	if err != nil {
+		return fmt.Errorf("failed to read admin public key: %w", err)
+	}
+
+	// Setup environment variables for Soft Serve
+	env := os.Environ()
+	env = append(env,
+		fmt.Sprintf("SOFT_SERVE_DATA_PATH=%s", s.dataDir),
+		fmt.Sprintf("SOFT_SERVE_INITIAL_ADMIN_KEYS=%s", adminPublicKey),
+		fmt.Sprintf("SOFT_SERVE_SSH_LISTEN_ADDR=:%d", s.config.Server.Port),
+		fmt.Sprintf("SOFT_SERVE_HTTP_LISTEN_ADDR=:%d", s.config.Server.Port+1),
+	)
+
+	// Create command to start Soft Serve
+	s.cmd = exec.Command(s.softBinary, "serve")
+	s.cmd.Env = env
+	s.cmd.Dir = s.dataDir
+
+	// Start the server
+	if err := s.cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start soft serve: %w", err)
+	}
+
+	s.logger.Info("Soft Serve process started", "pid", s.cmd.Process.Pid)
+
+	// Wait for the server to be ready
+	if err := s.waitForReady(); err != nil {
+		// Kill the process if it's still running
+		if s.cmd.Process != nil {
+			s.cmd.Process.Kill()
+		}
+		return fmt.Errorf("soft serve failed to start properly: %w", err)
+	}
+
 	s.logger.Info("Git server started successfully",
-		"ssh_url", fmt.Sprintf("ssh://%s:%d", s.config.Server.Host, s.config.Server.Port))
-	
-	// This will be replaced with: return s.softServeServer.Start()
+		"ssh_url", fmt.Sprintf("ssh://%s:%d", s.config.Server.Host, s.config.Server.Port),
+		"http_url", fmt.Sprintf("http://%s:%d", s.config.Server.Host, s.config.Server.Port+1))
+
 	return nil
+}
+
+// waitForReady waits for Soft Serve to be ready by attempting SSH connections
+func (s *Server) waitForReady() error {
+	timeout := 30 * time.Second
+	deadline := time.Now().Add(timeout)
+	
+	for time.Now().Before(deadline) {
+		// Try to connect via SSH to test if server is ready
+		testCmd := exec.Command("ssh", 
+			"-p", strconv.Itoa(s.config.Server.Port),
+			"-i", s.adminKeyPath,
+			"-o", "StrictHostKeyChecking=no",
+			"-o", "ConnectTimeout=5",
+			s.config.Server.Host,
+			"repo", "list")
+		
+		if err := testCmd.Run(); err == nil {
+			return nil // Server is ready
+		}
+		
+		// Check if the process is still running
+		if s.cmd.ProcessState != nil && s.cmd.ProcessState.Exited() {
+			return fmt.Errorf("soft serve process exited unexpectedly")
+		}
+		
+		time.Sleep(1 * time.Second)
+	}
+	
+	return fmt.Errorf("timeout waiting for server to be ready")
 }
 
 // Stop gracefully shuts down the git server
 func (s *Server) Stop() error {
 	s.logger.Info("Stopping Mycelium git server")
-	
-	// Cancel context to signal shutdown
-	s.cancel()
-	
-	// TODO: Implement actual Soft Serve shutdown
-	// This will be replaced with: return s.softServeServer.Shutdown(ctx)
-	
-	s.logger.Info("Git server stopped")
+
+	if s.cmd == nil || s.cmd.Process == nil {
+		s.logger.Info("Git server was not running")
+		return nil
+	}
+
+	// Send SIGTERM for graceful shutdown
+	if err := s.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		s.logger.Warn("Failed to send SIGTERM", "error", err)
+	}
+
+	// Wait for graceful shutdown with timeout
+	done := make(chan error, 1)
+	go func() {
+		done <- s.cmd.Wait()
+	}()
+
+	select {
+	case <-done:
+		s.logger.Info("Git server stopped gracefully")
+	case <-time.After(10 * time.Second):
+		s.logger.Warn("Graceful shutdown timed out, sending SIGKILL")
+		if err := s.cmd.Process.Kill(); err != nil {
+			s.logger.Error("Failed to kill process", "error", err)
+			return err
+		}
+		<-done // Wait for the process to actually exit
+		s.logger.Info("Git server stopped forcefully")
+	}
+
 	return nil
 }
 
+// runSSHCommand executes an SSH command against the Soft Serve server
+func (s *Server) runSSHCommand(args ...string) (string, error) {
+	if s.adminKeyPath == "" {
+		return "", fmt.Errorf("admin key path not set")
+	}
+
+	cmdArgs := []string{
+		"-p", strconv.Itoa(s.config.Server.Port),
+		"-i", s.adminKeyPath,
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "GlobalKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+		s.config.Server.Host,
+	}
+	cmdArgs = append(cmdArgs, args...)
+
+	cmd := exec.Command("ssh", cmdArgs...)
+	output, err := cmd.CombinedOutput()
+	return string(output), err
+}
+
 // CreateRepo creates a new repository programmatically
-// This will be used by the background worker to create repos for extracted skills
 func (s *Server) CreateRepo(name, description string) error {
 	if name == "" {
 		return fmt.Errorf("repository name cannot be empty")
 	}
 
 	s.logger.Info("Creating repository", "name", name, "description", description)
-	
-	// TODO: Implement repository creation via Soft Serve API
-	// This would typically involve:
-	// 1. Validate repository name
-	// 2. Create bare git repository
-	// 3. Set up repository metadata
-	// 4. Configure access permissions
-	
-	// For now, create a placeholder directory structure
-	repoPath := filepath.Join(s.dataDir, "repos", name+".git")
-	if err := os.MkdirAll(repoPath, 0755); err != nil {
-		return fmt.Errorf("failed to create repository directory: %w", err)
+
+	// Create the repository via SSH
+	output, err := s.runSSHCommand("repo", "create", name)
+	if err != nil {
+		return fmt.Errorf("failed to create repository %s: %w\nOutput: %s", name, err, output)
 	}
-	
-	s.logger.Info("Repository created successfully", "name", name, "path", repoPath)
+
+	// Set description if provided
+	if description != "" {
+		descOutput, descErr := s.runSSHCommand("repo", "description", name, description)
+		if descErr != nil {
+			s.logger.Warn("Failed to set repository description", "name", name, "error", descErr, "output", descOutput)
+			// Don't fail the entire operation if description setting fails
+		}
+	}
+
+	s.logger.Info("Repository created successfully", "name", name)
 	return nil
 }
 
 // ListRepos returns a list of all repositories
 func (s *Server) ListRepos() ([]string, error) {
 	s.logger.Debug("Listing repositories")
-	
-	// TODO: Implement actual repository listing via Soft Serve API
-	
-	reposDir := filepath.Join(s.dataDir, "repos")
-	if _, err := os.Stat(reposDir); os.IsNotExist(err) {
-		return []string{}, nil
-	}
-	
-	entries, err := os.ReadDir(reposDir)
+
+	output, err := s.runSSHCommand("repo", "list")
 	if err != nil {
-		return nil, fmt.Errorf("failed to read repositories directory: %w", err)
+		return nil, fmt.Errorf("failed to list repositories: %w\nOutput: %s", err, output)
 	}
-	
+
+	// Parse the output to extract repository names
+	lines := strings.Split(strings.TrimSpace(output), "\n")
 	var repos []string
-	for _, entry := range entries {
-		if entry.IsDir() && entry.Name() != ".git" {
-			// Remove .git suffix if present
-			name := entry.Name()
-			if len(name) > 4 && name[len(name)-4:] == ".git" {
-				name = name[:len(name)-4]
-			}
-			repos = append(repos, name)
+	
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		
+		// The output format may vary, but typically repo names are the first word
+		// We'll split by whitespace and take the first part
+		parts := strings.Fields(line)
+		if len(parts) > 0 {
+			repos = append(repos, parts[0])
 		}
 	}
-	
+
 	s.logger.Debug("Found repositories", "count", len(repos), "repos", repos)
 	return repos, nil
 }
@@ -145,32 +257,43 @@ func (s *Server) DeleteRepo(name string) error {
 	if name == "" {
 		return fmt.Errorf("repository name cannot be empty")
 	}
-	
+
 	s.logger.Info("Deleting repository", "name", name)
-	
-	// TODO: Implement actual repository deletion via Soft Serve API
-	
-	repoPath := filepath.Join(s.dataDir, "repos", name+".git")
-	if err := os.RemoveAll(repoPath); err != nil {
-		return fmt.Errorf("failed to delete repository: %w", err)
+
+	output, err := s.runSSHCommand("repo", "delete", name)
+	if err != nil {
+		return fmt.Errorf("failed to delete repository %s: %w\nOutput: %s", name, err, output)
 	}
-	
+
 	s.logger.Info("Repository deleted successfully", "name", name)
 	return nil
+}
+
+// GetCloneURL returns the SSH clone URL for a repository
+func (s *Server) GetCloneURL(name string) string {
+	return fmt.Sprintf("ssh://%s:%d/%s", s.config.Server.Host, s.config.Server.Port, name)
 }
 
 // GetConnectionInfo returns the SSH connection information for clients
 func (s *Server) GetConnectionInfo() ConnectionInfo {
 	return ConnectionInfo{
-		SSHHost: s.config.Server.Host,
-		SSHPort: s.config.Server.Port,
-		SSHUrl:  fmt.Sprintf("ssh://%s:%d", s.config.Server.Host, s.config.Server.Port),
+		SSHHost:  s.config.Server.Host,
+		SSHPort:  s.config.Server.Port,
+		SSHUrl:   fmt.Sprintf("ssh://%s:%d", s.config.Server.Host, s.config.Server.Port),
+		HTTPUrl:  fmt.Sprintf("http://%s:%d", s.config.Server.Host, s.config.Server.Port+1),
+		CloneSSH: func(repo string) string { return s.GetCloneURL(repo) },
+		CloneHTTP: func(repo string) string {
+			return fmt.Sprintf("http://%s:%d/%s", s.config.Server.Host, s.config.Server.Port+1, repo)
+		},
 	}
 }
 
 // ConnectionInfo contains information needed to connect to the git server
 type ConnectionInfo struct {
-	SSHHost string `json:"ssh_host"`
-	SSHPort int    `json:"ssh_port"`  
-	SSHUrl  string `json:"ssh_url"`
+	SSHHost   string                    `json:"ssh_host"`
+	SSHPort   int                       `json:"ssh_port"`
+	SSHUrl    string                    `json:"ssh_url"`
+	HTTPUrl   string                    `json:"http_url"`
+	CloneSSH  func(string) string       `json:"-"`
+	CloneHTTP func(string) string       `json:"-"`
 }
