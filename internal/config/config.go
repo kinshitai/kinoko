@@ -53,6 +53,10 @@ type ExtractionConfig struct {
 	MaxDurationMinutes float64 `yaml:"max_duration_minutes"`
 	MinToolCalls       int     `yaml:"min_tool_calls"`
 	MaxErrorRate       float64 `yaml:"max_error_rate"`
+
+	// Stage 2 thresholds
+	NoveltyMinDistance float64 `yaml:"novelty_min_distance"`
+	NoveltyMaxDistance float64 `yaml:"novelty_max_distance"`
 }
 
 // HooksConfig contains pre-commit hook configuration
@@ -106,6 +110,9 @@ func DefaultConfig() *Config {
 			MaxDurationMinutes: 180,
 			MinToolCalls:       3,
 			MaxErrorRate:       0.7,
+
+			NoveltyMinDistance: 0.15,
+			NoveltyMaxDistance: 0.95,
 		},
 		Hooks: HooksConfig{
 			CredentialScan:   true,
@@ -307,6 +314,38 @@ func (c *Config) Validate() error {
 	// Validate extraction config
 	if c.Extraction.MinConfidence < 0.0 || c.Extraction.MinConfidence > 1.0 {
 		return fmt.Errorf("extraction min_confidence must be between 0.0 and 1.0, got %f", c.Extraction.MinConfidence)
+	}
+
+	if c.Extraction.MinDurationMinutes < 0 {
+		return fmt.Errorf("extraction min_duration_minutes cannot be negative, got %f", c.Extraction.MinDurationMinutes)
+	}
+
+	if c.Extraction.MaxDurationMinutes < 0 {
+		return fmt.Errorf("extraction max_duration_minutes cannot be negative, got %f", c.Extraction.MaxDurationMinutes)
+	}
+
+	if c.Extraction.MinDurationMinutes > c.Extraction.MaxDurationMinutes {
+		return fmt.Errorf("extraction min_duration_minutes (%f) > max_duration_minutes (%f)", c.Extraction.MinDurationMinutes, c.Extraction.MaxDurationMinutes)
+	}
+
+	if c.Extraction.MinToolCalls < 0 {
+		return fmt.Errorf("extraction min_tool_calls cannot be negative, got %d", c.Extraction.MinToolCalls)
+	}
+
+	if c.Extraction.MaxErrorRate < 0 || c.Extraction.MaxErrorRate > 1 {
+		return fmt.Errorf("extraction max_error_rate must be between 0.0 and 1.0, got %f", c.Extraction.MaxErrorRate)
+	}
+
+	if c.Extraction.NoveltyMinDistance < 0 || c.Extraction.NoveltyMinDistance > 1 {
+		return fmt.Errorf("extraction novelty_min_distance must be between 0.0 and 1.0, got %f", c.Extraction.NoveltyMinDistance)
+	}
+
+	if c.Extraction.NoveltyMaxDistance < 0 || c.Extraction.NoveltyMaxDistance > 1 {
+		return fmt.Errorf("extraction novelty_max_distance must be between 0.0 and 1.0, got %f", c.Extraction.NoveltyMaxDistance)
+	}
+
+	if c.Extraction.NoveltyMinDistance > c.Extraction.NoveltyMaxDistance {
+		return fmt.Errorf("extraction novelty_min_distance (%f) > novelty_max_distance (%f)", c.Extraction.NoveltyMinDistance, c.Extraction.NoveltyMaxDistance)
 	}
 
 	// Validate defaults config
