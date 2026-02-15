@@ -334,7 +334,7 @@ created: 2026-02-14
 
 ## Solution
 Test`,
-			errorMsg: "body must contain '## When to Use' section",
+			errorMsg: "body must contain '## When to Use' section (case-insensitive)",
 		},
 		{
 			name: "missing solution",
@@ -350,7 +350,7 @@ created: 2026-02-14
 
 ## When to Use
 Test`,
-			errorMsg: "body must contain '## Solution' section",
+			errorMsg: "body must contain '## Solution' section (case-insensitive)",
 		},
 	}
 
@@ -363,6 +363,96 @@ Test`,
 			}
 			if !strings.Contains(err.Error(), tt.errorMsg) {
 				t.Errorf("Expected error containing '%s', got '%s'", tt.errorMsg, err.Error())
+			}
+		})
+	}
+}
+
+func TestCaseInsensitiveSections(t *testing.T) {
+	// Test that section names are case-insensitive
+	tests := []struct {
+		name        string
+		content     string
+		shouldPass  bool
+	}{
+		{
+			name: "standard case",
+			content: `---
+name: test-skill
+version: 1
+author: test-author
+confidence: 0.7
+created: 2026-02-14
+---
+
+# Test
+## When to Use
+Test
+## Solution
+Test`,
+			shouldPass: true,
+		},
+		{
+			name: "different case - when to use",
+			content: `---
+name: test-skill
+version: 1
+author: test-author
+confidence: 0.7
+created: 2026-02-14
+---
+
+# Test
+## When To Use
+Test
+## Solution
+Test`,
+			shouldPass: true,
+		},
+		{
+			name: "lowercase sections",
+			content: `---
+name: test-skill
+version: 1
+author: test-author
+confidence: 0.7
+created: 2026-02-14
+---
+
+# Test
+## when to use
+Test
+## solution
+Test`,
+			shouldPass: true,
+		},
+		{
+			name: "mixed case sections",
+			content: `---
+name: test-skill
+version: 1
+author: test-author
+confidence: 0.7
+created: 2026-02-14
+---
+
+# Test
+## WHEN TO USE
+Test
+## SoLuTiOn
+Test`,
+			shouldPass: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse(strings.NewReader(tt.content))
+			if tt.shouldPass && err != nil {
+				t.Errorf("Expected parsing to succeed for %s, got error: %v", tt.name, err)
+			}
+			if !tt.shouldPass && err == nil {
+				t.Errorf("Expected parsing to fail for %s, got no error", tt.name)
 			}
 		})
 	}

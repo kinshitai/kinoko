@@ -213,16 +213,17 @@ func (s *Skill) validateBody() error {
 		return fmt.Errorf("body must contain a title section (# ...)")
 	}
 
-	// Check for required sections
-	hasWhenToUse := strings.Contains(body, "## When to Use")
-	hasSolution := strings.Contains(body, "## Solution")
+	// Check for required sections (case-insensitive)
+	bodyLower := strings.ToLower(body)
+	hasWhenToUse := strings.Contains(bodyLower, "## when to use")
+	hasSolution := strings.Contains(bodyLower, "## solution")
 
 	if !hasWhenToUse {
-		return fmt.Errorf("body must contain '## When to Use' section")
+		return fmt.Errorf("body must contain '## When to Use' section (case-insensitive)")
 	}
 
 	if !hasSolution {
-		return fmt.Errorf("body must contain '## Solution' section")
+		return fmt.Errorf("body must contain '## Solution' section (case-insensitive)")
 	}
 
 	return nil

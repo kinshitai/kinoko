@@ -41,37 +41,22 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create data directory %s: %w", cfg.Server.DataDir, err)
 	}
 
-	slog.Info("Starting Mycelium git server", 
+	slog.Info("Mycelium serve command started")
+	slog.Info("Configuration loaded successfully", 
+		"host", cfg.Server.Host,
 		"port", cfg.Server.Port, 
 		"dataDir", cfg.Server.DataDir,
 		"storageDriver", cfg.Storage.Driver,
 		"libraries", len(cfg.Libraries))
 
-	// TODO: Research and implement Soft Serve embedding
-	// Current approach: document the research and use the simplest working method
-	
-	/*
-	SOFT SERVE INTEGRATION RESEARCH:
-	
-	Approach 1: Try to embed Soft Serve as a library
-	- Import github.com/charmbracelet/soft-serve/pkg/...
-	- Create server instance programmatically
-	- Configure repositories, SSH keys, etc.
-	
-	Approach 2: Managed subprocess (simpler, working approach)
-	- Start soft-serve as a subprocess with proper configuration
-	- Monitor the process and handle restarts
-	- Pass configuration via config files or environment variables
-	
-	For now, implementing Approach 2 as it's more reliable and simpler.
-	Soft Serve is designed primarily as a standalone binary, not a library.
-	*/
+	slog.Warn("Git server integration is pending implementation")
+	slog.Info("Currently performing setup and validation only")
 
-	return startSoftServeSubprocess(cmd.Context(), cfg)
+	return performSetupAndWait(cmd.Context(), cfg)
 }
 
-// startSoftServeSubprocess starts Soft Serve as a managed subprocess
-func startSoftServeSubprocess(ctx context.Context, cfg *config.Config) error {
+// performSetupAndWait performs setup tasks and waits for shutdown signal
+func performSetupAndWait(ctx context.Context, cfg *config.Config) error {
 	// Set up context for graceful shutdown
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -80,20 +65,37 @@ func startSoftServeSubprocess(ctx context.Context, cfg *config.Config) error {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
+	// Create a done channel to avoid race conditions
+	done := make(chan struct{})
+	
 	go func() {
-		<-sigCh
-		slog.Info("Received shutdown signal, stopping server...")
+		select {
+		case sig := <-sigCh:
+			slog.Info("Received shutdown signal", "signal", sig)
+		case <-ctx.Done():
+			slog.Info("Context cancelled")
+		}
+		close(done)
 		cancel()
 	}()
 
-	// For now, simulate the server running
-	// TODO: Replace with actual soft-serve subprocess management
-	slog.Info("Git server running", "port", cfg.Server.Port, "dataDir", cfg.Server.DataDir)
-	slog.Info("Press Ctrl+C to stop")
+	slog.Info("Setup complete. Mycelium is ready but git server is not yet implemented.")
+	slog.Info("Press Ctrl+C to exit")
 
-	// Wait for context cancellation
-	<-ctx.Done()
-	slog.Info("Server stopped")
-
+	// TODO: When git server is implemented, this is where it would start:
+	// - Initialize Soft Serve configuration
+	// - Set up SSH keys and repositories
+	// - Start the git server on the configured host:port
+	// - Monitor server health and handle restarts
+	
+	// Wait for shutdown signal or context cancellation
+	select {
+	case <-done:
+		// Signal received, gracefully shut down
+	case <-ctx.Done():
+		// Context cancelled
+	}
+	
+	slog.Info("Mycelium serve stopped")
 	return nil
 }

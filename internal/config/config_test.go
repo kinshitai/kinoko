@@ -10,6 +10,10 @@ func TestDefaultConfig(t *testing.T) {
 	config := DefaultConfig()
 
 	// Test that defaults are set correctly
+	if config.Server.Host != "127.0.0.1" {
+		t.Errorf("expected default host '127.0.0.1', got '%s'", config.Server.Host)
+	}
+
 	if config.Server.Port != 23231 {
 		t.Errorf("expected default port 23231, got %d", config.Server.Port)
 	}
@@ -37,6 +41,25 @@ func TestDefaultConfig(t *testing.T) {
 	if config.Libraries[0].Priority != 100 {
 		t.Errorf("expected first library priority 100, got %d", config.Libraries[0].Priority)
 	}
+
+	// Test extraction defaults
+	if !config.Extraction.AutoExtract {
+		t.Error("expected default auto_extract to be true")
+	}
+
+	if config.Extraction.MinConfidence != 0.5 {
+		t.Errorf("expected default min_confidence 0.5, got %f", config.Extraction.MinConfidence)
+	}
+
+	// Test hooks defaults
+	if !config.Hooks.CredentialScan {
+		t.Error("expected default credential_scan to be true")
+	}
+
+	// Test defaults section
+	if config.Defaults.Confidence != 0.7 {
+		t.Errorf("expected default confidence 0.7, got %f", config.Defaults.Confidence)
+	}
 }
 
 func TestConfigValidation(t *testing.T) {
@@ -51,9 +74,20 @@ func TestConfigValidation(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name: "empty host",
+			config: &Config{
+				Server: ServerConfig{Host: "", Port: 8080, DataDir: "/tmp"},
+				Storage: StorageConfig{Driver: "sqlite", DSN: "/tmp/test.db"},
+				Libraries: []LibraryConfig{
+					{Name: "test", Path: "/tmp", Priority: 1},
+				},
+			},
+			expectError: true,
+		},
+		{
 			name: "invalid port - too low",
 			config: &Config{
-				Server: ServerConfig{Port: 0, DataDir: "/tmp"},
+				Server: ServerConfig{Host: "127.0.0.1", Port: 0, DataDir: "/tmp"},
 				Storage: StorageConfig{Driver: "sqlite", DSN: "/tmp/test.db"},
 				Libraries: []LibraryConfig{
 					{Name: "test", Path: "/tmp", Priority: 1},
@@ -64,7 +98,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "invalid port - too high",
 			config: &Config{
-				Server: ServerConfig{Port: 99999, DataDir: "/tmp"},
+				Server: ServerConfig{Host: "127.0.0.1", Port: 99999, DataDir: "/tmp"},
 				Storage: StorageConfig{Driver: "sqlite", DSN: "/tmp/test.db"},
 				Libraries: []LibraryConfig{
 					{Name: "test", Path: "/tmp", Priority: 1},
@@ -75,7 +109,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "empty data dir",
 			config: &Config{
-				Server: ServerConfig{Port: 8080, DataDir: ""},
+				Server: ServerConfig{Host: "127.0.0.1", Port: 8080, DataDir: ""},
 				Storage: StorageConfig{Driver: "sqlite", DSN: "/tmp/test.db"},
 				Libraries: []LibraryConfig{
 					{Name: "test", Path: "/tmp", Priority: 1},
@@ -86,7 +120,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "invalid storage driver",
 			config: &Config{
-				Server: ServerConfig{Port: 8080, DataDir: "/tmp"},
+				Server: ServerConfig{Host: "127.0.0.1", Port: 8080, DataDir: "/tmp"},
 				Storage: StorageConfig{Driver: "redis", DSN: "/tmp/test.db"},
 				Libraries: []LibraryConfig{
 					{Name: "test", Path: "/tmp", Priority: 1},
@@ -97,7 +131,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "empty library name",
 			config: &Config{
-				Server: ServerConfig{Port: 8080, DataDir: "/tmp"},
+				Server: ServerConfig{Host: "127.0.0.1", Port: 8080, DataDir: "/tmp"},
 				Storage: StorageConfig{Driver: "sqlite", DSN: "/tmp/test.db"},
 				Libraries: []LibraryConfig{
 					{Name: "", Path: "/tmp", Priority: 1},
@@ -108,7 +142,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "library with both path and URL",
 			config: &Config{
-				Server: ServerConfig{Port: 8080, DataDir: "/tmp"},
+				Server: ServerConfig{Host: "127.0.0.1", Port: 8080, DataDir: "/tmp"},
 				Storage: StorageConfig{Driver: "sqlite", DSN: "/tmp/test.db"},
 				Libraries: []LibraryConfig{
 					{Name: "test", Path: "/tmp", URL: "https://example.com", Priority: 1},
@@ -119,7 +153,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "library with neither path nor URL",
 			config: &Config{
-				Server: ServerConfig{Port: 8080, DataDir: "/tmp"},
+				Server: ServerConfig{Host: "127.0.0.1", Port: 8080, DataDir: "/tmp"},
 				Storage: StorageConfig{Driver: "sqlite", DSN: "/tmp/test.db"},
 				Libraries: []LibraryConfig{
 					{Name: "test", Priority: 1},
@@ -212,5 +246,64 @@ func TestConfigLoadInvalidYAML(t *testing.T) {
 	_, err = Load(configPath)
 	if err == nil {
 		t.Error("expected error when loading invalid YAML, got none")
+	}
+}
+
+func TestTildeExpansion(t *testing.T) {
+	// Create temporary directory for test
+	tempDir, err := os.MkdirTemp("", "mycelium-config-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	configPath := filepath.Join(tempDir, "config.yaml")
+
+	// Create config with tilde paths
+	configContent := `storage:
+  driver: sqlite
+  dsn: ~/mycelium.db
+
+server:
+  host: 127.0.0.1
+  port: 8080
+  dataDir: ~/data
+
+libraries:
+  - name: test
+    path: ~/skills
+    priority: 100
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	// Load config and test tilde expansion
+	config, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	// Check that tildes were expanded
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("failed to get home dir: %v", err)
+	}
+
+	expectedDSN := filepath.Join(homeDir, "mycelium.db")
+	expectedDataDir := filepath.Join(homeDir, "data")
+	expectedLibPath := filepath.Join(homeDir, "skills")
+
+	if config.Storage.DSN != expectedDSN {
+		t.Errorf("expected DSN '%s', got '%s'", expectedDSN, config.Storage.DSN)
+	}
+
+	if config.Server.DataDir != expectedDataDir {
+		t.Errorf("expected DataDir '%s', got '%s'", expectedDataDir, config.Server.DataDir)
+	}
+
+	if config.Libraries[0].Path != expectedLibPath {
+		t.Errorf("expected library path '%s', got '%s'", expectedLibPath, config.Libraries[0].Path)
 	}
 }
