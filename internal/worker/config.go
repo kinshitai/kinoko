@@ -34,6 +34,7 @@ type SchedulerConfig struct {
 	RetrySweepInterval time.Duration `yaml:"retry_sweep_interval"`
 	StatsInterval      time.Duration `yaml:"stats_interval"`
 	StaleSweepInterval time.Duration `yaml:"stale_sweep_interval"`
+	StaleClaimTimeout  time.Duration `yaml:"stale_claim_timeout"`
 }
 
 // DefaultSchedulerConfig returns SchedulerConfig with spec defaults.
@@ -43,5 +44,6 @@ func DefaultSchedulerConfig() SchedulerConfig {
 		RetrySweepInterval: 5 * time.Minute,
 		StatsInterval:      1 * time.Hour,
 		StaleSweepInterval: 2 * time.Minute,
+		StaleClaimTimeout:  DefaultConfig().StaleClaimTimeout,
 	}
 }

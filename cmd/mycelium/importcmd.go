@@ -88,9 +88,22 @@ func runImport(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	const maxFileSize int64 = 50 * 1024 * 1024 // 50 MB
+
 	enqueued := 0
 	errCount := 0
 	for _, p := range paths {
+		fi, err := os.Stat(p)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "skip %s: %v\n", p, err)
+			errCount++
+			continue
+		}
+		if fi.Size() > maxFileSize {
+			fmt.Fprintf(os.Stderr, "skip %s: file too large (%d bytes, limit %d)\n", p, fi.Size(), maxFileSize)
+			errCount++
+			continue
+		}
 		content, err := os.ReadFile(p)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "skip %s: %v\n", p, err)
@@ -110,6 +123,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Enqueued: %d\n", enqueued)
 	if errCount > 0 {
 		fmt.Printf("Errors:   %d\n", errCount)
+		return fmt.Errorf("%d file(s) failed to import", errCount)
 	}
 	return nil
 }

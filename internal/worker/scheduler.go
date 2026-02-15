@@ -151,7 +151,7 @@ func (s *scheduler) runStaleSweep(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			n, err := s.queue.RequeueStale(ctx, DefaultConfig().StaleClaimTimeout)
+			n, err := s.queue.RequeueStale(ctx, s.cfg.StaleClaimTimeout)
 			if err != nil {
 				s.log.Error("stale sweep failed", "error", err)
 				continue

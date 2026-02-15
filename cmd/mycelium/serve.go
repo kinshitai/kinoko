@@ -173,6 +173,7 @@ func startWorkerSystem(
 ) (queue *worker.SQLiteQueue, pool worker.Pool, sched worker.Scheduler, err error) {
 	workerCfg := worker.DefaultConfig()
 	schedCfg := worker.DefaultSchedulerConfig()
+	schedCfg.StaleClaimTimeout = workerCfg.StaleClaimTimeout
 
 	queue = worker.NewSQLiteQueue(store, cfg.Server.DataDir, workerCfg, logger)
 
@@ -252,7 +253,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Start worker system (queue + pool + scheduler).
 	queue, pool, sched, err := startWorkerSystem(cmd.Context(), cfg, store, logger)
 	if err != nil {
-		logger.Warn("worker system not started, extraction will be disabled", "error", err)
+		return fmt.Errorf("start worker system: %w", err)
 	}
 
 	// Replace synchronous extraction hook with async enqueue.

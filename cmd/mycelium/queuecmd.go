@@ -1,9 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
-	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/mycelium-dev/mycelium/internal/config"
@@ -34,13 +35,25 @@ var queueRetryCmd = &cobra.Command{
 	RunE:  runQueueRetry,
 }
 
-var queueConfigPath string
+var queueFlushCmd = &cobra.Command{
+	Use:   "flush",
+	Short: "Delete all queued sessions from the queue",
+	Long:  `Removes all sessions with extraction_status = 'queued'. Use --force to skip confirmation.`,
+	RunE:  runQueueFlush,
+}
+
+var (
+	queueConfigPath string
+	queueFlushForce bool
+)
 
 func init() {
 	queueCmd.PersistentFlags().StringVar(&queueConfigPath, "config", "", "Config file path")
+	queueFlushCmd.Flags().BoolVar(&queueFlushForce, "force", false, "Skip confirmation prompt")
 	queueCmd.AddCommand(queueStatsCmd)
 	queueCmd.AddCommand(queueListCmd)
 	queueCmd.AddCommand(queueRetryCmd)
+	queueCmd.AddCommand(queueFlushCmd)
 }
 
 func openStoreForQueue() (*storage.SQLiteStore, error) {
@@ -131,9 +144,6 @@ func runQueueRetry(cmd *cobra.Command, args []string) error {
 	}
 	defer store.Close()
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	_ = logger
-
 	db := store.DB()
 	result, err := db.ExecContext(cmd.Context(), `
 		UPDATE sessions SET
@@ -153,5 +163,44 @@ func runQueueRetry(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("session %s not found or not in error/failed state", sessionID)
 	}
 	fmt.Printf("Requeued session %s\n", sessionID)
+	return nil
+}
+
+func runQueueFlush(cmd *cobra.Command, args []string) error {
+	store, err := openStoreForQueue()
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	db := store.DB()
+
+	// Count queued sessions first.
+	var count int
+	if err := db.QueryRowContext(cmd.Context(), `SELECT COUNT(*) FROM sessions WHERE extraction_status = 'queued'`).Scan(&count); err != nil {
+		return fmt.Errorf("count queued: %w", err)
+	}
+	if count == 0 {
+		fmt.Println("No queued sessions to flush.")
+		return nil
+	}
+
+	if !queueFlushForce {
+		fmt.Printf("This will delete %d queued session(s). Continue? [y/N] ", count)
+		reader := bufio.NewReader(os.Stdin)
+		answer, _ := reader.ReadString('\n')
+		answer = strings.TrimSpace(strings.ToLower(answer))
+		if answer != "y" && answer != "yes" {
+			fmt.Println("Aborted.")
+			return nil
+		}
+	}
+
+	result, err := db.ExecContext(cmd.Context(), `DELETE FROM sessions WHERE extraction_status = 'queued'`)
+	if err != nil {
+		return fmt.Errorf("flush: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	fmt.Printf("Flushed %d queued session(s).\n", n)
 	return nil
 }

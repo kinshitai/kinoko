@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"context"
+	"reflect"
 
 	"github.com/spf13/cobra"
 	"github.com/mycelium-dev/mycelium/internal/config"
@@ -71,18 +72,26 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
-	_ = ignoreNil(sched, func(s worker.Scheduler) error { return s.Stop(shutdownCtx) })
-	_ = ignoreNil(pool, func(p worker.Pool) error { return p.Stop(shutdownCtx) })
+	if err := ignoreNil(sched, func(s worker.Scheduler) error { return s.Stop(shutdownCtx) }); err != nil {
+		logger.Error("error stopping scheduler", "error", err)
+	}
+	if err := ignoreNil(pool, func(p worker.Pool) error { return p.Stop(shutdownCtx) }); err != nil {
+		logger.Error("error stopping worker pool", "error", err)
+	}
 
 	logger.Info("Worker stopped")
 	return nil
 }
 
-// ignoreNil calls fn only if v is non-nil.
+// ignoreNil calls fn only if v is non-nil. Handles both typed nils and
+// nil interface values (e.g. an interface wrapping a nil pointer).
 func ignoreNil[T any](v T, fn func(T) error) error {
-	// Use interface check since T might be an interface.
-	if any(v) == nil {
-		return nil
+	rv := reflect.ValueOf(&v).Elem()
+	switch rv.Kind() {
+	case reflect.Ptr, reflect.Interface, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func:
+		if rv.IsNil() {
+			return nil
+		}
 	}
 	return fn(v)
 }
