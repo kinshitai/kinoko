@@ -2,6 +2,8 @@ package extraction
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +15,30 @@ import (
 
 	"github.com/mycelium-dev/mycelium/internal/config"
 )
+
+// LLMError is a structured error carrying an HTTP status code from an LLM call.
+type LLMError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *LLMError) Error() string {
+	return fmt.Sprintf("llm error (status %d): %s", e.StatusCode, e.Message)
+}
+
+// LLMCompleteResult is the return value from LLMClientV2.CompleteV2.
+type LLMCompleteResult struct {
+	Content   string
+	TokensIn  int
+	TokensOut int
+}
+
+// LLMClientV2 extends LLMClient with token usage and timeout control.
+// Implementations should respect the context deadline/timeout.
+type LLMClientV2 interface {
+	LLMClient
+	CompleteWithTimeout(ctx context.Context, prompt string, timeout time.Duration) (*LLMCompleteResult, error)
+}
 
 // maxContentBytes is the truncation limit for session content sent to the LLM.
 const maxContentBytes = 100 * 1024
@@ -32,9 +58,10 @@ type clockFunc func() time.Time
 type sleepFunc func(d time.Duration)
 
 type stage3Critic struct {
-	llm LLMClient
-	cfg config.ExtractionConfig
-	log *slog.Logger
+	llm   LLMClient
+	llmV2 LLMClientV2 // optional, for token usage + timeout control
+	cfg   config.ExtractionConfig
+	log   *slog.Logger
 
 	// Circuit breaker state
 	mu              sync.Mutex
@@ -54,7 +81,7 @@ func NewStage3Critic(
 	cfg config.ExtractionConfig,
 	log *slog.Logger,
 ) Stage3Critic {
-	return &stage3Critic{
+	c := &stage3Critic{
 		llm:          llm,
 		cfg:          cfg,
 		log:          log,
@@ -62,6 +89,10 @@ func NewStage3Critic(
 		clock:        time.Now,
 		sleep:        time.Sleep,
 	}
+	if v2, ok := llm.(LLMClientV2); ok {
+		c.llmV2 = v2
+	}
+	return c
 }
 
 func (c *stage3Critic) Evaluate(ctx context.Context, session SessionRecord, content []byte, stage2 *Stage2Result) (*Stage3Result, error) {
@@ -101,7 +132,7 @@ func (c *stage3Critic) Evaluate(ctx context.Context, session SessionRecord, cont
 	prompt := buildCriticPrompt(truncated, stage2)
 
 	// Call LLM with retry
-	resp, err := c.callWithRetry(ctx, prompt, session.ID)
+	retryResult, err := c.callWithRetry(ctx, prompt, session.ID)
 	if err != nil {
 		c.recordFailure()
 		elapsed := c.clock().Sub(start).Milliseconds()
@@ -112,18 +143,20 @@ func (c *stage3Critic) Evaluate(ctx context.Context, session SessionRecord, cont
 	c.recordSuccess()
 
 	// Parse response
-	result, err := c.parseAndValidate(resp)
+	result, err := c.parseAndValidate(retryResult.content)
 	if err != nil {
 		elapsed := c.clock().Sub(start).Milliseconds()
 		c.log.Warn("stage3 parse error, treating as rejection", "session_id", session.ID, "error", err)
 		return &Stage3Result{
-			Passed:        false,
-			CriticVerdict: "reject",
+			Passed:          false,
+			CriticVerdict:   "reject",
 			CriticReasoning: fmt.Sprintf("critic_parse_error: %v", err),
-			LatencyMs:     elapsed,
+			LatencyMs:       elapsed,
+			TokensUsed:      retryResult.tokensUsed,
 		}, nil
 	}
 
+	result.TokensUsed = retryResult.tokensUsed
 	result.LatencyMs = c.clock().Sub(start).Milliseconds()
 
 	c.log.Info("stage3 verdict", "session_id", session.ID,
@@ -177,10 +210,16 @@ func (c *stage3Critic) parseAndValidate(resp string) (*Stage3Result, error) {
 	scores.CompositeScore = compositeScore(scores)
 	scores.CriticConfidence = conf
 
-	// Contradiction detection: extract but all scores are 1
-	if verdict == "extract" && allScoresAre(scores, 1) {
-		c.log.Warn("stage3 contradiction: verdict=extract but all scores=1, overriding to reject")
+	// Contradiction detection.
+	// Case 1: extract but all/nearly-all scores are very low → override to reject.
+	if verdict == "extract" && averageScore(scores) < 1.5 {
+		c.log.Warn("stage3 contradiction: verdict=extract but scores extremely low, overriding to reject")
 		verdict = "reject"
+	}
+	// Case 2: reject but all scores are very high → override to extract.
+	if verdict == "reject" && allScoresAbove(scores, 4) {
+		c.log.Warn("stage3 contradiction: verdict=reject but all scores>=5, overriding to extract")
+		verdict = "extract"
 	}
 
 	passed := verdict == "extract"
@@ -204,6 +243,24 @@ func allScoresAre(q QualityScores, val int) bool {
 		q.TechnicalAccuracy == val &&
 		q.VerificationEvidence == val &&
 		q.InnovationLevel == val
+}
+
+// averageScore returns the mean of all 7 rubric scores.
+func averageScore(q QualityScores) float64 {
+	sum := q.ProblemSpecificity + q.SolutionCompleteness + q.ContextPortability +
+		q.ReasoningTransparency + q.TechnicalAccuracy + q.VerificationEvidence + q.InnovationLevel
+	return float64(sum) / 7.0
+}
+
+// allScoresAbove returns true if every score is >= threshold.
+func allScoresAbove(q QualityScores, threshold int) bool {
+	return q.ProblemSpecificity >= threshold &&
+		q.SolutionCompleteness >= threshold &&
+		q.ContextPortability >= threshold &&
+		q.ReasoningTransparency >= threshold &&
+		q.TechnicalAccuracy >= threshold &&
+		q.VerificationEvidence >= threshold &&
+		q.InnovationLevel >= threshold
 }
 
 func parseCriticResponse(resp string, out *criticResponse) error {
@@ -254,30 +311,61 @@ func isRetryable(err error) bool {
 	if err == nil {
 		return false
 	}
+	// Check for structured LLMError with status code.
+	var llmErr *LLMError
+	if errors.As(err, &llmErr) {
+		return llmErr.StatusCode == 429 ||
+			(llmErr.StatusCode >= 500 && llmErr.StatusCode <= 599)
+	}
+	// Check for timeout errors.
+	if isTimeout(err) {
+		return true
+	}
+	// Fallback: check for known retryable strings (e.g., from non-HTTP transports).
+	msg := err.Error()
+	return strings.Contains(msg, "unavailable")
+}
+
+// isTimeout checks if an error represents a timeout.
+func isTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
 	msg := err.Error()
 	return strings.Contains(msg, "timeout") ||
-		strings.Contains(msg, "5") || // 5xx
-		strings.Contains(msg, "429") ||
-		strings.Contains(msg, "rate limit") ||
-		strings.Contains(msg, "unavailable")
+		strings.Contains(msg, "Timeout")
 }
 
 func isRateLimit(err error) bool {
 	if err == nil {
 		return false
 	}
+	var llmErr *LLMError
+	if errors.As(err, &llmErr) {
+		return llmErr.StatusCode == 429
+	}
 	msg := err.Error()
-	return strings.Contains(msg, "429") || strings.Contains(msg, "rate limit")
+	return strings.Contains(msg, "rate limit")
 }
 
-func (c *stage3Critic) callWithRetry(ctx context.Context, prompt string, sessionID string) (string, error) {
-	maxRetries := 3
+// retryCallResult holds the result of callWithRetry.
+type retryCallResult struct {
+	content    string
+	tokensUsed int
+}
+
+func (c *stage3Critic) callWithRetry(ctx context.Context, prompt string, sessionID string) (*retryCallResult, error) {
+	maxRetries := maxRetriesFor(nil) // default 3
 	var lastErr error
+	totalTokens := 0
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
 			if err := ctx.Err(); err != nil {
-				return "", err
+				return nil, err
 			}
 			backoff := time.Second * time.Duration(1<<(attempt-1)) // 1s, 2s, 4s
 			if backoff > 30*time.Second {
@@ -287,24 +375,62 @@ func (c *stage3Critic) callWithRetry(ctx context.Context, prompt string, session
 			c.sleep(backoff)
 		}
 
-		resp, err := c.llm.Complete(ctx, prompt)
+		// Determine timeout: 30s normally, 60s on retry after timeout (spec §5.1).
+		timeout := 30 * time.Second
+		if attempt > 0 && lastErr != nil && isTimeout(lastErr) {
+			timeout = 60 * time.Second
+		}
+
+		resp, tokens, err := c.callLLM(ctx, prompt, timeout)
+		totalTokens += tokens
 		if err == nil {
-			return resp, nil
+			return &retryCallResult{content: resp, tokensUsed: totalTokens}, nil
 		}
 
 		lastErr = err
 
-		// Rate limit: allow up to 5 retries
-		if isRateLimit(err) && attempt == maxRetries && maxRetries < 5 {
+		// Update max retries for rate limits.
+		if isRateLimit(err) && maxRetries < 5 {
 			maxRetries = 5
 		}
 
 		if !isRetryable(err) {
-			return "", err
+			return nil, err
 		}
 	}
 
-	return "", lastErr
+	return nil, lastErr
+}
+
+// maxRetriesFor returns the base max retry count.
+func maxRetriesFor(_ error) int {
+	return 3
+}
+
+// callLLM calls the LLM with the given timeout. Returns response, token count, error.
+func (c *stage3Critic) callLLM(ctx context.Context, prompt string, timeout time.Duration) (string, int, error) {
+	if c.llmV2 != nil {
+		result, err := c.llmV2.CompleteWithTimeout(ctx, prompt, timeout)
+		if err != nil {
+			return "", 0, err
+		}
+		return result.Content, result.TokensIn + result.TokensOut, nil
+	}
+	// Fallback: use basic LLMClient with context timeout.
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	resp, err := c.llm.Complete(callCtx, prompt)
+	if err != nil {
+		return "", 0, err
+	}
+	// Estimate tokens from content length when no V2 interface.
+	tokens := estimateTokens(prompt, resp)
+	return resp, tokens, nil
+}
+
+// estimateTokens provides a rough token estimate (~4 chars per token).
+func estimateTokens(prompt, response string) int {
+	return (len(prompt) + len(response)) / 4
 }
 
 // Circuit breaker methods
@@ -354,16 +480,45 @@ func truncateContent(content []byte, maxBytes int) []byte {
 	if len(content) <= maxBytes {
 		return content
 	}
-	// Don't cut mid-rune
+	// Don't cut mid-rune — back off incomplete trailing bytes (at most 3).
 	truncated := content[:maxBytes]
-	for len(truncated) > 0 && !utf8.Valid(truncated) {
+	for i := 0; i < 3 && len(truncated) > 0; i++ {
+		r, _ := utf8.DecodeLastRune(truncated)
+		if r != utf8.RuneError {
+			break
+		}
 		truncated = truncated[:len(truncated)-1]
 	}
 	return truncated
 }
 
+// generateNonce returns a short random hex string for delimiter uniqueness.
+func generateNonce() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// sanitizeDelimiters replaces any occurrence of the delimiter markers in content.
+func sanitizeDelimiters(content []byte, beginDelim, endDelim string) []byte {
+	s := string(content)
+	s = strings.ReplaceAll(s, beginDelim, "[SANITIZED_DELIMITER]")
+	s = strings.ReplaceAll(s, endDelim, "[SANITIZED_DELIMITER]")
+	return []byte(s)
+}
+
 func buildCriticPrompt(content []byte, stage2 *Stage2Result) string {
-	stage2JSON, _ := json.Marshal(stage2)
+	nonce := generateNonce()
+	beginDelim := fmt.Sprintf("---BEGIN SESSION %s---", nonce)
+	endDelim := fmt.Sprintf("---END SESSION %s---", nonce)
+
+	stage2JSON, err := json.Marshal(stage2)
+	if err != nil {
+		stage2JSON = []byte("{}")
+	}
+
+	sanitized := sanitizeDelimiters(content, beginDelim, endDelim)
+
 	return fmt.Sprintf(`You are a critical evaluator for an AI skill extraction system. Your job is to decide whether this session should be extracted as a reusable skill.
 
 Review the session content and the Stage 2 scoring results, then provide your independent verdict.
@@ -390,7 +545,7 @@ Respond with ONLY a JSON object (no markdown, no explanation outside JSON):
 Stage 2 results:
 %s
 
----BEGIN SESSION---
 %s
----END SESSION---`, string(stage2JSON), string(content))
+%s
+%s`, string(stage2JSON), beginDelim, string(sanitized), endDelim)
 }
