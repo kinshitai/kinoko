@@ -70,9 +70,24 @@ func buildSessionHooks(cfg *config.Config, store *storage.SQLiteStore, logger *s
 		if llmAPIKey != "" {
 			llmClient = &openAILLMClient{apiKey: llmAPIKey, model: "gpt-4o-mini"}
 		}
-		injector := injection.New(embedder, store, llmClient, store, logger)
+
+		// When A/B testing is enabled, ABInjector writes events (with group info).
+		// Base injector gets nil eventWriter to prevent double-writing.
+		abCfg := injection.ABConfig{
+			Enabled:       cfg.Extraction.ABTest.Enabled,
+			ControlRatio:  cfg.Extraction.ABTest.ControlRatio,
+			MinSampleSize: cfg.Extraction.ABTest.MinSampleSize,
+		}
+		var inj injection.Injector
+		if abCfg.Enabled {
+			baseInj := injection.New(embedder, store, llmClient, nil, logger)
+			inj = injection.NewABInjector(baseInj, store, abCfg, logger)
+		} else {
+			inj = injection.New(embedder, store, llmClient, store, logger)
+		}
+
 		hooks.OnSessionStart = func(ctx context.Context, req extraction.InjectionRequest) (*extraction.InjectionResponse, error) {
-			resp, err := injector.Inject(ctx, req)
+			resp, err := inj.Inject(ctx, req)
 			if err != nil {
 				logger.Error("injection failed", "error", err)
 				return nil, err
@@ -99,6 +114,9 @@ func buildSessionHooks(cfg *config.Config, store *storage.SQLiteStore, logger *s
 			Stage2:    stage2,
 			Stage3:    stage3,
 			Writer:    store,
+			Sessions:  store,
+			Embedder:  embedder,
+			Reviewer:  store,
 			Log:       logger,
 			Extractor: "serve-auto-v1",
 		})
@@ -158,13 +176,15 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("build session hooks: %w", err)
 	}
-	_ = hooks // hooks are invoked by the session lifecycle (git push / session API)
 
 	// Create and start the git server
 	server, err := gitserver.NewServer(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create git server: %w", err)
 	}
+
+	// Register hooks with the git server for session lifecycle events.
+	server.SetSessionHooks(hooks.OnSessionStart, hooks.OnSessionEnd)
 
 	if err := server.Start(); err != nil {
 		return fmt.Errorf("failed to start git server: %w", err)

@@ -54,7 +54,7 @@ func runDecay(cmd *cobra.Command, args []string) error {
 	}
 	defer store.Close()
 
-	decayCfg := decay.DefaultConfig()
+	decayCfg := decayConfigFromYAML(cfg.Decay)
 
 	if decayDryRun {
 		return runDecayDryRun(cmd.Context(), store, decayCfg, libraryID, logger)
@@ -97,6 +97,31 @@ func runDecayDryRun(ctx context.Context, store *storage.SQLiteStore, cfg decay.C
 	fmt.Printf("  Would rescue:    %d\n", result.Rescued)
 
 	return nil
+}
+
+// decayConfigFromYAML converts config.DecayConfig to decay.Config,
+// falling back to defaults for zero values.
+func decayConfigFromYAML(cfg config.DecayConfig) decay.Config {
+	d := decay.DefaultConfig()
+	if cfg.FoundationalHalfLifeDays > 0 {
+		d.FoundationalHalfLifeDays = cfg.FoundationalHalfLifeDays
+	}
+	if cfg.TacticalHalfLifeDays > 0 {
+		d.TacticalHalfLifeDays = cfg.TacticalHalfLifeDays
+	}
+	if cfg.ContextualHalfLifeDays > 0 {
+		d.ContextualHalfLifeDays = cfg.ContextualHalfLifeDays
+	}
+	if cfg.DeprecationThreshold > 0 {
+		d.DeprecationThreshold = cfg.DeprecationThreshold
+	}
+	if cfg.RescueBoost > 0 {
+		d.RescueBoost = cfg.RescueBoost
+	}
+	if cfg.RescueWindowDays > 0 {
+		d.RescueWindowDays = cfg.RescueWindowDays
+	}
+	return d
 }
 
 // Compile-time interface check.

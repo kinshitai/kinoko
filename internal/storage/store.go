@@ -36,6 +36,12 @@ const skillColumns = `id, name, version, parent_id, library_id, category,
 	injection_count, last_injected_at, success_correlation, decay_score,
 	source_session_id, extracted_by, file_path, created_at, updated_at`
 
+// SessionStore persists and updates session records.
+type SessionStore interface {
+	InsertSession(ctx context.Context, session *extraction.SessionRecord) error
+	UpdateSessionResult(ctx context.Context, session *extraction.SessionRecord) error
+}
+
 // SkillStore persists and retrieves skills.
 type SkillStore interface {
 	Put(ctx context.Context, skill *extraction.SkillRecord, body []byte) error
@@ -415,6 +421,63 @@ type InjectionEventRecord struct {
 	InjectedAt     time.Time
 	ABGroup        string // "treatment", "control", or "" (no A/B test)
 	Delivered      bool   // false for control group sessions
+}
+
+// InsertSession inserts a session record into the sessions table.
+func (s *SQLiteStore) InsertSession(ctx context.Context, session *extraction.SessionRecord) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO sessions (
+			id, started_at, ended_at, duration_minutes, tool_call_count, error_count,
+			message_count, error_rate, has_successful_exec, tokens_used, agent_model,
+			user_id, library_id, extraction_status, rejected_at_stage, rejection_reason,
+			extracted_skill_id
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		session.ID, session.StartedAt, session.EndedAt, session.DurationMinutes,
+		session.ToolCallCount, session.ErrorCount, session.MessageCount, session.ErrorRate,
+		session.HasSuccessfulExec, session.TokensUsed, session.AgentModel,
+		session.UserID, session.LibraryID, string(session.ExtractionStatus),
+		session.RejectedAtStage, session.RejectionReason,
+		nullString(session.ExtractedSkillID),
+	)
+	if err != nil {
+		return fmt.Errorf("insert session: %w", err)
+	}
+	return nil
+}
+
+// UpdateSessionResult updates extraction results on an existing session row.
+func (s *SQLiteStore) UpdateSessionResult(ctx context.Context, session *extraction.SessionRecord) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE sessions SET
+			extraction_status = ?,
+			rejected_at_stage = ?,
+			rejection_reason = ?,
+			extracted_skill_id = ?
+		WHERE id = ?`,
+		string(session.ExtractionStatus),
+		session.RejectedAtStage,
+		session.RejectionReason,
+		nullString(session.ExtractedSkillID),
+		session.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update session result: %w", err)
+	}
+	return nil
+}
+
+// InsertReviewSample inserts a row into the human_review_samples table.
+func (s *SQLiteStore) InsertReviewSample(ctx context.Context, sessionID string, resultJSON []byte) error {
+	id := fmt.Sprintf("hrs-%s-%d", sessionID, time.Now().UnixNano())
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO human_review_samples (id, session_id, extraction_result, sampled_at)
+		VALUES (?, ?, ?, ?)`,
+		id, sessionID, string(resultJSON), time.Now().UTC(),
+	)
+	if err != nil {
+		return fmt.Errorf("insert review sample: %w", err)
+	}
+	return nil
 }
 
 func (s *SQLiteStore) UpdateDecay(ctx context.Context, id string, decayScore float64) error {

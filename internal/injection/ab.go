@@ -49,7 +49,9 @@ type ABInjector struct {
 }
 
 // NewABInjector wraps inner with A/B testing. If config is not enabled, Inject
-// delegates directly to inner with treatment logging.
+// delegates directly to inner (which writes its own events).
+// When enabled, ABInjector writes events with A/B group info — ensure the inner
+// injector was constructed without an eventWriter to avoid double-writing.
 func NewABInjector(inner Injector, eventWriter InjectionEventWriter, config ABConfig, log *slog.Logger) *ABInjector {
 	if log == nil {
 		log = slog.Default()

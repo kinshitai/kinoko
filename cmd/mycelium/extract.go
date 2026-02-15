@@ -97,7 +97,11 @@ func runExtract(cmd *cobra.Command, args []string) error {
 		Stage2:    stage2,
 		Stage3:    stage3,
 		Writer:    store,
+		Sessions:  store,
+		Embedder:  embedder,
+		Reviewer:  store,
 		Log:       logger,
+		SampleRate: 0.01, // 1% sampling per spec
 		Extractor: "cli-extract-v1",
 	})
 	if err != nil {

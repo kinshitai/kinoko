@@ -172,6 +172,11 @@ func (r *Runner) RunCycle(ctx context.Context, libraryID string) (*DecayCycleRes
 	return result, nil
 }
 
+// SetNow overrides the clock function for testing.
+func (r *Runner) SetNow(fn func() time.Time) {
+	r.now = fn
+}
+
 func (r *Runner) halfLifeDays(cat extraction.SkillCategory) int {
 	switch cat {
 	case extraction.CategoryFoundational:

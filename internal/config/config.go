@@ -16,8 +16,19 @@ type Config struct {
 	Storage    StorageConfig    `yaml:"storage"`
 	Libraries  []LibraryConfig  `yaml:"libraries"`
 	Extraction ExtractionConfig `yaml:"extraction,omitempty"`
+	Decay      DecayConfig      `yaml:"decay,omitempty"`
 	Hooks      HooksConfig      `yaml:"hooks,omitempty"`
 	Defaults   DefaultsConfig   `yaml:"defaults,omitempty"`
+}
+
+// DecayConfig mirrors decay.Config for YAML config loading.
+type DecayConfig struct {
+	FoundationalHalfLifeDays int     `yaml:"foundational_half_life_days"`
+	TacticalHalfLifeDays     int     `yaml:"tactical_half_life_days"`
+	ContextualHalfLifeDays   int     `yaml:"contextual_half_life_days"`
+	DeprecationThreshold     float64 `yaml:"deprecation_threshold"`
+	RescueBoost              float64 `yaml:"rescue_boost"`
+	RescueWindowDays         int     `yaml:"rescue_window_days"`
 }
 
 // ServerConfig contains server-related configuration

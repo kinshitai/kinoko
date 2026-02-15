@@ -15,12 +15,23 @@ import (
 
 // Server wraps the Soft Serve git server with Mycelium-specific functionality
 type Server struct {
-	config       *config.Config
-	dataDir      string
-	cmd          *exec.Cmd
-	logger       *slog.Logger
-	softBinary   string
-	adminKeyPath string
+	config         *config.Config
+	dataDir        string
+	cmd            *exec.Cmd
+	logger         *slog.Logger
+	softBinary     string
+	adminKeyPath   string
+	onSessionStart any
+	onSessionEnd   any
+}
+
+// SetSessionHooks registers session lifecycle callbacks.
+// The hooks are called during git push events to trigger injection (pre-session)
+// and extraction (post-session) pipelines.
+func (s *Server) SetSessionHooks(onStart, onEnd any) {
+	s.onSessionStart = onStart
+	s.onSessionEnd = onEnd
+	s.logger.Info("session hooks registered")
 }
 
 // NewServer creates a new git server instance

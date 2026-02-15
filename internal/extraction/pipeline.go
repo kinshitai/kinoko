@@ -21,9 +21,20 @@ type SkillWriter interface {
 	Put(ctx context.Context, skill *SkillRecord, body []byte) error
 }
 
+// SessionWriter persists and updates session records.
+type SessionWriter interface {
+	InsertSession(ctx context.Context, session *SessionRecord) error
+	UpdateSessionResult(ctx context.Context, session *SessionRecord) error
+}
+
 // HumanReviewWriter writes extraction results selected for human review.
 type HumanReviewWriter interface {
 	InsertReviewSample(ctx context.Context, sessionID string, resultJSON []byte) error
+}
+
+// SkillEmbedder computes an embedding for skill content.
+type SkillEmbedder interface {
+	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
 // RandIntn returns a random int in [0, n). Injectable for testing.
@@ -35,6 +46,8 @@ type Pipeline struct {
 	stage2     Stage2Scorer
 	stage3     Stage3Critic
 	writer     SkillWriter
+	sessions   SessionWriter
+	embedder   SkillEmbedder
 	reviewer   HumanReviewWriter
 	log        *slog.Logger
 	sampleRate float64 // 0.0–1.0, e.g. 0.01 for 1%
@@ -52,6 +65,8 @@ type PipelineConfig struct {
 	Stage2     Stage2Scorer
 	Stage3     Stage3Critic
 	Writer     SkillWriter
+	Sessions   SessionWriter
+	Embedder   SkillEmbedder
 	Reviewer   HumanReviewWriter
 	Log        *slog.Logger
 	SampleRate float64
@@ -90,6 +105,8 @@ func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 		stage2:     cfg.Stage2,
 		stage3:     cfg.Stage3,
 		writer:     cfg.Writer,
+		sessions:   cfg.Sessions,
+		embedder:   cfg.Embedder,
 		reviewer:   cfg.Reviewer,
 		log:        cfg.Log,
 		sampleRate: cfg.SampleRate,
@@ -117,6 +134,15 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 
 	p.log.Info("pipeline start", "session_id", session.ID)
 
+	// Persist session before extraction begins.
+	if p.sessions != nil {
+		session.ExtractionStatus = StatusPending
+		if err := p.sessions.InsertSession(ctx, &session); err != nil {
+			p.log.Error("failed to insert session", "session_id", session.ID, "error", err)
+			// Non-fatal: continue extraction even if session persistence fails.
+		}
+	}
+
 	// Stage 1
 	p.log.Info("stage1 entry", "session_id", session.ID)
 	s1Start := time.Now()
@@ -134,6 +160,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 			"stage1_ms", s1Ms,
 			"total_ms", result.DurationMs,
 		)
+		p.updateSessionStatus(ctx, &session, result)
 		p.maybeSample(ctx, session.ID, result)
 		return result, nil
 	}
@@ -155,6 +182,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 			"stage2_ms", s2Ms,
 			"total_ms", result.DurationMs,
 		)
+		p.updateSessionStatus(ctx, &session, result)
 		p.maybeSample(ctx, session.ID, result)
 		return result, nil
 	}
@@ -170,6 +198,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 			"stage2_ms", s2Ms,
 			"total_ms", result.DurationMs,
 		)
+		p.updateSessionStatus(ctx, &session, result)
 		p.maybeSample(ctx, session.ID, result)
 		return result, nil
 	}
@@ -191,6 +220,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 			"stage3_ms", s3Ms,
 			"total_ms", result.DurationMs,
 		)
+		p.updateSessionStatus(ctx, &session, result)
 		p.maybeSample(ctx, session.ID, result)
 		return result, nil
 	}
@@ -206,6 +236,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 			"stage3_ms", s3Ms,
 			"total_ms", result.DurationMs,
 		)
+		p.updateSessionStatus(ctx, &session, result)
 		p.maybeSample(ctx, session.ID, result)
 		return result, nil
 	}
@@ -231,6 +262,16 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 		UpdatedAt:       now,
 	}
 
+	// Compute embedding for the skill content so injection can use cosine similarity.
+	if p.embedder != nil {
+		emb, embErr := p.embedder.Embed(ctx, string(content))
+		if embErr != nil {
+			p.log.Warn("failed to compute skill embedding, storing without", "session_id", session.ID, "error", embErr)
+		} else {
+			skill.Embedding = emb
+		}
+	}
+
 	body := buildSkillMD(skill, s3, content)
 
 	storeStart := time.Now()
@@ -245,6 +286,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 			"store_ms", time.Since(storeStart).Milliseconds(),
 			"total_ms", result.DurationMs,
 		)
+		p.updateSessionStatus(ctx, &session, result)
 		p.maybeSample(ctx, session.ID, result)
 		return result, nil
 	}
@@ -262,8 +304,43 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 		"total_ms", result.DurationMs,
 	)
 
+	// Update session with extraction result.
+	if p.sessions != nil {
+		session.ExtractionStatus = StatusExtracted
+		session.ExtractedSkillID = skillID
+		if err := p.sessions.UpdateSessionResult(ctx, &session); err != nil {
+			p.log.Error("failed to update session result", "session_id", session.ID, "error", err)
+		}
+	}
+
 	p.maybeSample(ctx, session.ID, result)
 	return result, nil
+}
+
+// updateSessionStatus updates the session record with rejection/error info if sessions are being tracked.
+func (p *Pipeline) updateSessionStatus(ctx context.Context, session *SessionRecord, result *ExtractionResult) {
+	if p.sessions == nil {
+		return
+	}
+	session.ExtractionStatus = result.Status
+	if result.Status == StatusRejected {
+		if result.Stage1 != nil && !result.Stage1.Passed {
+			session.RejectedAtStage = 1
+			session.RejectionReason = result.Stage1.Reason
+		} else if result.Stage2 != nil && !result.Stage2.Passed {
+			session.RejectedAtStage = 2
+			session.RejectionReason = result.Stage2.Reason
+		} else if result.Stage3 != nil && !result.Stage3.Passed {
+			session.RejectedAtStage = 3
+			session.RejectionReason = result.Stage3.CriticReasoning
+		}
+	}
+	if result.Status == StatusError {
+		session.RejectionReason = result.Error
+	}
+	if err := p.sessions.UpdateSessionResult(ctx, session); err != nil {
+		p.log.Error("failed to update session result", "session_id", session.ID, "error", err)
+	}
 }
 
 // maybeSample writes to human_review_samples with stratified sampling per §3.4.
