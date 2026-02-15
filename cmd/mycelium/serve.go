@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/mycelium-dev/mycelium/internal/config"
+	"github.com/mycelium-dev/mycelium/internal/gitserver"
 )
 
 var serveCmd = &cobra.Command{
@@ -49,14 +50,28 @@ func runServe(cmd *cobra.Command, args []string) error {
 		"storageDriver", cfg.Storage.Driver,
 		"libraries", len(cfg.Libraries))
 
-	slog.Warn("Git server integration is pending implementation")
-	slog.Info("Currently performing setup and validation only")
+	// Create and start the git server
+	server, err := gitserver.NewServer(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create git server: %w", err)
+	}
 
-	return performSetupAndWait(cmd.Context(), cfg)
+	if err := server.Start(); err != nil {
+		return fmt.Errorf("failed to start git server: %w", err)
+	}
+
+	// Get connection info for logging
+	connInfo := server.GetConnectionInfo()
+	slog.Info("Mycelium git server is ready",
+		"ssh_url", connInfo.SSHUrl,
+		"host", connInfo.SSHHost,
+		"port", connInfo.SSHPort)
+
+	return waitForShutdown(cmd.Context(), server)
 }
 
-// performSetupAndWait performs setup tasks and waits for shutdown signal
-func performSetupAndWait(ctx context.Context, cfg *config.Config) error {
+// waitForShutdown waits for shutdown signal and gracefully stops the server
+func waitForShutdown(ctx context.Context, server *gitserver.Server) error {
 	// Set up context for graceful shutdown
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -79,14 +94,8 @@ func performSetupAndWait(ctx context.Context, cfg *config.Config) error {
 		cancel()
 	}()
 
-	slog.Info("Setup complete. Mycelium is ready but git server is not yet implemented.")
-	slog.Info("Press Ctrl+C to exit")
-
-	// TODO: When git server is implemented, this is where it would start:
-	// - Initialize Soft Serve configuration
-	// - Set up SSH keys and repositories
-	// - Start the git server on the configured host:port
-	// - Monitor server health and handle restarts
+	slog.Info("Mycelium is ready. Use Ctrl+C to shutdown gracefully.")
+	slog.Info("Agents can now git clone, push, and pull over SSH")
 	
 	// Wait for shutdown signal or context cancellation
 	select {
@@ -96,6 +105,12 @@ func performSetupAndWait(ctx context.Context, cfg *config.Config) error {
 		// Context cancelled
 	}
 	
-	slog.Info("Mycelium serve stopped")
+	slog.Info("Shutting down git server...")
+	if err := server.Stop(); err != nil {
+		slog.Error("Error stopping git server", "error", err)
+		return err
+	}
+	
+	slog.Info("Mycelium serve stopped successfully")
 	return nil
 }

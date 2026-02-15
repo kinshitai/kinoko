@@ -1,0 +1,7 @@
+time=2026-02-15T13:27:48.955Z level=INFO msg="Mycelium serve command started"
+time=2026-02-15T13:27:48.955Z level=INFO msg="Configuration loaded successfully" host=127.0.0.1 port=23231 dataDir=/home/claw/.mycelium/data storageDriver=sqlite libraries=1
+time=2026-02-15T13:27:48.955Z level=INFO msg="Starting Mycelium git server" host=127.0.0.1 port=23231 dataDir=/home/claw/.mycelium/data
+time=2026-02-15T13:27:48.955Z level=INFO msg="Git server started successfully" ssh_url=ssh://127.0.0.1:23231
+time=2026-02-15T13:27:48.955Z level=INFO msg="Mycelium git server is ready" ssh_url=ssh://127.0.0.1:23231 host=127.0.0.1 port=23231
+time=2026-02-15T13:27:48.955Z level=INFO msg="Mycelium is ready. Use Ctrl+C to shutdown gracefully."
+time=2026-02-15T13:27:48.955Z level=INFO msg="Agents can now git clone, push, and pull over SSH"
