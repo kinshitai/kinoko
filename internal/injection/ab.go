@@ -2,11 +2,12 @@ package injection
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mycelium-dev/mycelium/internal/extraction"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 )
@@ -42,7 +43,8 @@ type ABInjector struct {
 	inner       Injector
 	eventWriter InjectionEventWriter
 	config      ABConfig
-	randFunc    func() float64 // for testing
+	mu          sync.Mutex     // protects randFunc
+	randFunc    func() float64 // for testing; guarded by mu
 	log         *slog.Logger
 }
 
@@ -85,11 +87,13 @@ func (ab *ABInjector) Inject(ctx context.Context, req extraction.InjectionReques
 	delivered := group == ABGroupTreatment
 
 	// Log A/B events for each skill candidate.
+	// NOTE: injection_events are per-skill-per-session (one row per candidate skill).
+	// session_outcome is per-session, propagated identically to all events in that session.
 	if ab.eventWriter != nil && req.SessionID != "" {
 		now := time.Now().UTC()
-		for i, sk := range resp.Skills {
+		for _, sk := range resp.Skills {
 			ev := storage.InjectionEventRecord{
-				ID:             fmt.Sprintf("%s-%s-%d-ab", req.SessionID, sk.SkillID, i),
+				ID:             uuid.Must(uuid.NewV7()).String(),
 				SessionID:      req.SessionID,
 				SkillID:        sk.SkillID,
 				RankPosition:   sk.RankPosition,
@@ -119,8 +123,18 @@ func (ab *ABInjector) Inject(ctx context.Context, req extraction.InjectionReques
 }
 
 func (ab *ABInjector) assignGroup() ABGroup {
-	if ab.randFunc() < ab.config.ControlRatio {
+	ab.mu.Lock()
+	r := ab.randFunc()
+	ab.mu.Unlock()
+	if r < ab.config.ControlRatio {
 		return ABGroupControl
 	}
 	return ABGroupTreatment
+}
+
+// SetRandFunc sets the random function (for testing only). Thread-safe.
+func (ab *ABInjector) SetRandFunc(f func() float64) {
+	ab.mu.Lock()
+	ab.randFunc = f
+	ab.mu.Unlock()
 }

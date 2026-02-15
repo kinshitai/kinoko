@@ -65,16 +65,34 @@ type ABTestResult struct {
 	ZScore            float64
 	PValue            float64
 	Significant       bool // p < 0.05
+	SufficientData    bool // true when both groups >= MinSampleSize
 }
 
 // Collector computes pipeline metrics from the database.
 type Collector struct {
-	db *sql.DB
+	db             *sql.DB
+	minSampleSize  int // minimum sessions per A/B group before computing z-test
 }
 
-// NewCollector creates a Collector.
-func NewCollector(db *sql.DB) *Collector {
-	return &Collector{db: db}
+// NewCollector creates a Collector. Options: WithMinSampleSize.
+func NewCollector(db *sql.DB, opts ...CollectorOption) *Collector {
+	c := &Collector{db: db, minSampleSize: 100}
+	for _, o := range opts {
+		o(c)
+	}
+	return c
+}
+
+// CollectorOption configures a Collector.
+type CollectorOption func(*Collector)
+
+// WithMinSampleSize sets the minimum sessions per A/B group for z-test computation.
+func WithMinSampleSize(n int) CollectorOption {
+	return func(c *Collector) {
+		if n > 0 {
+			c.minSampleSize = n
+		}
+	}
 }
 
 // Collect gathers all pipeline metrics.
@@ -101,11 +119,11 @@ func (c *Collector) Collect() (*PipelineMetrics, error) {
 	}
 
 	// Stage pass rates: rejected_at_stage tells us where sessions were rejected.
-	// Stage 1 total = all processed (non-pending). Passed = those that made it past stage 1.
-	if err := c.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE extraction_status != 'pending'`).Scan(&m.Stage1Total); err != nil {
+	// Exclude error sessions — only count pending→extracted and pending→rejected flows.
+	if err := c.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE extraction_status NOT IN ('pending', 'error')`).Scan(&m.Stage1Total); err != nil {
 		return nil, fmt.Errorf("stage1 total: %w", err)
 	}
-	if err := c.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE extraction_status != 'pending' AND (rejected_at_stage > 1 OR rejected_at_stage = 0)`).Scan(&m.Stage1Passed); err != nil {
+	if err := c.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE extraction_status NOT IN ('pending', 'error') AND (rejected_at_stage > 1 OR rejected_at_stage = 0)`).Scan(&m.Stage1Passed); err != nil {
 		return nil, fmt.Errorf("stage1 passed: %w", err)
 	}
 	if m.Stage1Total > 0 {
@@ -114,7 +132,7 @@ func (c *Collector) Collect() (*PipelineMetrics, error) {
 
 	// Stage 2: total = stage1 passed, passed = those past stage 2
 	m.Stage2Total = m.Stage1Passed
-	if err := c.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE extraction_status != 'pending' AND (rejected_at_stage > 2 OR rejected_at_stage = 0)`).Scan(&m.Stage2Passed); err != nil {
+	if err := c.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE extraction_status NOT IN ('pending', 'error') AND (rejected_at_stage > 2 OR rejected_at_stage = 0)`).Scan(&m.Stage2Passed); err != nil {
 		return nil, fmt.Errorf("stage2 passed: %w", err)
 	}
 	if m.Stage2Total > 0 {
@@ -128,15 +146,24 @@ func (c *Collector) Collect() (*PipelineMetrics, error) {
 		m.Stage3PassRate = float64(m.Stage3Passed) / float64(m.Stage3Total)
 	}
 
-	// Human review precision
-	if err := c.db.QueryRow(`SELECT COUNT(*) FROM human_review_samples WHERE verdict IS NOT NULL`).Scan(&m.HumanReviewTotal); err != nil {
+	// Human review precision (§3.4).
+	// Verdicts: 'agree', 'disagree_should_extract', 'disagree_should_reject'.
+	// Precision = agree / (agree + disagree_should_reject).
+	// Recall = agree / (agree + disagree_should_extract).
+	if err := c.db.QueryRow(`SELECT COUNT(*) FROM human_review_samples WHERE verdict IN ('agree', 'disagree_should_extract', 'disagree_should_reject')`).Scan(&m.HumanReviewTotal); err != nil {
 		return nil, fmt.Errorf("review total: %w", err)
 	}
-	if err := c.db.QueryRow(`SELECT COUNT(*) FROM human_review_samples WHERE verdict = 'useful'`).Scan(&m.HumanReviewUseful); err != nil {
-		return nil, fmt.Errorf("review useful: %w", err)
+	if err := c.db.QueryRow(`SELECT COUNT(*) FROM human_review_samples WHERE verdict = 'agree'`).Scan(&m.HumanReviewUseful); err != nil {
+		return nil, fmt.Errorf("review agree: %w", err)
 	}
-	if m.HumanReviewTotal > 0 {
-		m.ExtractionPrecision = float64(m.HumanReviewUseful) / float64(m.HumanReviewTotal)
+	// Precision denominator: agree + disagree_should_reject (i.e. total minus disagree_should_extract).
+	var disagreeReject int
+	if err := c.db.QueryRow(`SELECT COUNT(*) FROM human_review_samples WHERE verdict = 'disagree_should_reject'`).Scan(&disagreeReject); err != nil {
+		return nil, fmt.Errorf("review disagree_should_reject: %w", err)
+	}
+	precisionDenom := m.HumanReviewUseful + disagreeReject
+	if precisionDenom > 0 {
+		m.ExtractionPrecision = float64(m.HumanReviewUseful) / float64(precisionDenom)
 	}
 
 	// Injection metrics
@@ -248,8 +275,9 @@ func (c *Collector) collectAB() (*ABTestResult, error) {
 		ab.ControlRate = float64(ab.ControlSuccess) / float64(ab.ControlSessions)
 	}
 
-	// Two-proportion z-test.
-	if ab.TreatmentSessions > 0 && ab.ControlSessions > 0 {
+	// Only compute z-test when both groups have sufficient data.
+	ab.SufficientData = ab.TreatmentSessions >= c.minSampleSize && ab.ControlSessions >= c.minSampleSize
+	if ab.SufficientData {
 		ab.ZScore, ab.PValue = TwoProportionZTest(
 			ab.TreatmentSuccess, ab.TreatmentSessions,
 			ab.ControlSuccess, ab.ControlSessions,

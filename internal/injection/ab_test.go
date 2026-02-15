@@ -44,11 +44,11 @@ func TestABAssignmentDistribution(t *testing.T) {
 	callIdx := 0
 	// Deterministic sequence: 0.0, 0.1, 0.2, ..., 0.9 repeated
 	ab := NewABInjector(inner, writer, config, slog.Default())
-	ab.randFunc = func() float64 {
+	ab.SetRandFunc(func() float64 {
 		v := float64(callIdx%10) / 10.0
 		callIdx++
 		return v
-	}
+	})
 
 	controlCount := 0
 	treatmentCount := 0
@@ -120,7 +120,7 @@ func TestABControlGroupNoDelivery(t *testing.T) {
 
 	ab := NewABInjector(inner, writer, config, nil)
 	// Force control.
-	ab.randFunc = func() float64 { return 0.1 }
+	ab.SetRandFunc(func() float64 { return 0.1 })
 
 	resp, err := ab.Inject(context.Background(), extraction.InjectionRequest{
 		SessionID: "sess-ctrl",
@@ -162,7 +162,7 @@ func TestABTreatmentGroupDelivers(t *testing.T) {
 	config := ABConfig{Enabled: true, ControlRatio: 0.5, MinSampleSize: 10}
 
 	ab := NewABInjector(inner, writer, config, nil)
-	ab.randFunc = func() float64 { return 0.9 } // > 0.5 → treatment
+	ab.SetRandFunc(func() float64 { return 0.9 }) // > 0.5 → treatment
 
 	resp, err := ab.Inject(context.Background(), extraction.InjectionRequest{
 		SessionID: "sess-treat",

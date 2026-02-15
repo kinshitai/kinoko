@@ -13,3 +13,8 @@
 - NewPipeline returns (*Pipeline, error) — validates required deps at construction time.
 - buildSkillMD takes Stage3Result + content to populate body with actual extracted knowledge.
 - SKILL.md template follows Luka's brief-004: front matter with id/version/quality/confidence/extracted_by, body with When to Use / Solution / Why It Works / Pitfalls sections.
+- Phase 9: ABInjector wraps Injector (decorator pattern), not embedded in Injector itself. Clean separation.
+- A/B events use separate IDs with "-ab" suffix to avoid collision with normal injection events from inner injector.
+- Two-proportion z-test uses Abramowitz & Stegun normal CDF approximation — no external stats dependency.
+- Metrics collector uses rejected_at_stage=0 to mean "not rejected" (passed all stages or extracted). Stage pass rates derived from this.
+- ABTestConfig duplicated in config package (not importing injection) to avoid circular deps.
