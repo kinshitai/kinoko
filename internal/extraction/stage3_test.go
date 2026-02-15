@@ -1,7 +1,6 @@
 package extraction
 
 import (
-	"github.com/mycelium-dev/mycelium/internal/model"
 	"bytes"
 	"context"
 	"errors"
@@ -13,7 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mycelium-dev/mycelium/internal/circuitbreaker"
 	"github.com/mycelium-dev/mycelium/internal/config"
+	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
 // --- Mock LLM ---
@@ -1115,12 +1116,11 @@ func TestStage3Critic_ConcurrentHalfOpen(t *testing.T) {
 
 	critic := newTestCriticWithClock(llm, func() time.Time { return now })
 
-	// Open circuit with 5 failures via direct state manipulation.
-	critic.mu.Lock()
-	critic.consecutiveFail = 5
-	critic.circuitOpenAt = now
-	critic.openDuration = 5 * time.Minute
-	critic.mu.Unlock()
+	// Open circuit by recording 5 failures.
+	for i := 0; i < 5; i++ {
+		critic.cb.Allow()
+		critic.cb.RecordFailure()
+	}
 
 	// Advance past open duration.
 	now = now.Add(6 * time.Minute)
@@ -1311,9 +1311,21 @@ func newTestCritic(llm LLMClient) Stage3Critic {
 	return c
 }
 
+// clockAdapter adapts a func() time.Time to circuitbreaker.Clock.
+type clockAdapter struct {
+	fn func() time.Time
+}
+
+func (a clockAdapter) Now() time.Time { return a.fn() }
+
 func newTestCriticWithClock(llm LLMClient, clock func() time.Time) *stage3Critic {
 	c := NewStage3Critic(llm, s3testConfig(), s3testLogger()).(*stage3Critic)
 	c.clock = clock
 	c.sleep = func(d time.Duration) {}
+	c.cb = circuitbreaker.New(circuitbreaker.Config{
+		Threshold:    5,
+		BaseDuration: 5 * time.Minute,
+		MaxDuration:  30 * time.Minute,
+	}, clockAdapter{fn: clock})
 	return c
 }

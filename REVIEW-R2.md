@@ -1,127 +1,154 @@
-# Code Review Round 2 — Jazz
+# Review: R2 — Extract `internal/llm` Package
 
-*adjusts reading glasses and grumbles*
+**Reviewer:** Jazz
+**Date:** 2026-02-15
+**Grade:** C+
 
-Well, well, well. Look what we have here. I expected the same pile of garbage from my last review, but these developers actually... *squints at code*... fixed some things. Color me slightly less disgusted.
-
-## Previous Issues Status
-
-### 1. Config Structure Mismatch - SHOWSTOPPER
-**FIXED** ✅
-
-*grudgingly impressed grunt*
-
-They actually did it. The config.go struct now includes:
-- `Host` field in ServerConfig (was missing before)
-- `ExtractionConfig` with auto_extract, min_confidence, require_validation  
-- `HooksConfig` with credential_scan, format_validation, llm_critic
-- `DefaultsConfig` with author and confidence
-
-The YAML template in init.go and the struct in config.go now match. Someone who runs `mycelium init` then `mycelium serve` won't get a crash anymore. This was the biggest issue and they fixed it properly.
-
-### 2. Serve Command is Completely Fake  
-**PARTIALLY FIXED** 🔶
-
-*sighs heavily*
-
-They improved the plumbing - fixed the race condition with proper signal handling using `select`, better logging, cleaner structure. But it STILL doesn't actually serve anything! It's just a more professional placeholder now.
-
-At least they're being honest about it. The logs clearly say "Git server integration is pending implementation" instead of pretending to work. But this is still fundamentally broken functionality.
-
-### 3. Dependency Management Nightmare
-**FIXED** ✅
-
-Finally! The go.mod looks like it was written by someone who knows Go:
-- `cobra` and `yaml.v3` properly marked as direct dependencies
-- `mousetrap` and `pflag` correctly marked as indirect
-- Removed the unused `soft-serve` dependency
-
-Someone actually ran `go mod tidy` this time.
-
-### 4. No Tilde Expansion  
-**FIXED** ✅  
-
-They added a proper `expandPath` function that handles `~` characters correctly using `user.Current()` with fallback to `os.UserHomeDir()`. Config paths will now expand to actual home directories instead of literal `~` folders.
-
-### 5. Race Condition in Signal Handling
-**FIXED** ✅
-
-The goroutine race is gone. They now use proper `select` with both signal and context channels, and a `done` channel to coordinate shutdown. Much cleaner.
-
-### 6. Skill Validation Too Rigid  
-**FIXED** ✅
-
-*mutters approvingly*
-
-They made the section validation case-insensitive. Now "## When To Use", "## when to use", or "## WHEN TO USE" all work. Added proper tests for it too. Good improvement for user experience.
-
-### 7. Hardcoded Version String
-**NOT FIXED** ❌
-
-Still hardcoding `Version: "0.1.0"` in root.go instead of using build-time injection. Amateur hour continues.
-
-### 8. Root Command References Non-existent Commands
-**NOT FIXED** ❌
-
-The init success message still mentions commands that don't exist. Users will still get confused when they try to run them.
-
-### 9-11. Minor Issues  
-**NOT ADDRESSED** 
-
-Most of the minor issues (error handling consistency, git command validation) weren't touched, but these are truly minor compared to the showstoppers they fixed.
-
-## New Issues Found
-
-*squints suspiciously at code*
-
-Surprisingly... none. They didn't break anything while fixing the major issues. That's actually impressive. Usually when developers fix one thing, they break three others.
-
-## Remaining Concerns
-
-### The Elephant in the Room
-The serve command STILL doesn't serve anything. Yes, the infrastructure is better now, but this is the main feature of the application and it's not implemented. You can't ship a git server that doesn't serve git repositories.
-
-### Documentation Still Overpromises
-The docs and help text still promise features that don't exist. The init success message tells users to run commands that aren't implemented.
-
-### Missing Integration Testing
-I still don't see evidence they're testing the full user workflow end-to-end. But at least the basic workflow won't crash anymore.
-
-## Verdict
-
-*takes off glasses, cleans them, puts them back on*
-
-**CONDITIONAL APPROVAL - WITH RESERVATIONS**
-
-Look, I'm shocked to be saying this, but they actually fixed the critical issues that made this code completely unusable. The config mismatch was a showstopper that would crash the application for every user - that's fixed. The dependency problems that suggested sloppy development practices - fixed. The race conditions - fixed.
-
-The codebase went from "completely broken and unusable" to "functional but incomplete." That's... progress.
-
-**What they did right:**
-- Fixed the runtime crash that would affect every user
-- Proper dependency management
-- Better signal handling and error reporting  
-- Made user experience less frustrating (case-insensitive validation)
-- Didn't introduce new bugs while fixing old ones
-
-**What still needs work:**
-- The main feature (git server) needs actual implementation
-- Clean up the documentation and help text to match reality
-- Fix the remaining minor issues for polish
-
-**Bottom line:** This is now mergeable code that won't immediately break for users. The core workflow of `init` → `serve` won't crash anymore, even if `serve` doesn't do much yet. For a development branch, that's acceptable progress.
-
-I wouldn't call this production-ready, but it's no longer the disaster it was before. If they actually implement the git server functionality, this could be a decent piece of software.
-
-*grudgingly*
-
-They listened to my feedback and put in real work to fix the problems. I can respect that, even if the serve command is still a fancy TODO comment.
-
-**Grade: C+** (up from F)
-
-"Not terrible. Fix the serve command and we might actually have something here."
+Builds. Tests pass. The move happened. But there are real issues.
 
 ---
 
-*Jazz - Senior Code Reviewer*  
-*"I've seen worse... unfortunately."*
+## Summary
+
+The `internal/llm` package was created with four files: `client.go`, `errors.go`, `openai.go`, `llm_test.go`. LLM interfaces and error types moved out of `extraction/stage3.go`. The OpenAI HTTP client moved out of `cmd/mycelium/extract.go`. `helpers.go` was removed (confirmed gone). Both `extract.go` and `serve.go` now import `internal/llm`. Build passes, all unit tests pass. The one integration test failure (`TestWorkerPoolE2E`) is a pre-existing SQLite BUSY race — unrelated.
+
+So far so good. Now the problems.
+
+---
+
+## Issues
+
+### 🔴 P0: `OpenAIClient` returns `fmt.Errorf` instead of `*LLMError` on non-200
+
+**File:** `internal/llm/openai.go:77`
+
+```go
+return "", fmt.Errorf("openai API %d: %s", resp.StatusCode, string(body[:n]))
+```
+
+This is a **bug**. You built an entire `LLMError` type with `StatusCode` field. You built `IsRetryable`, `IsRateLimit`, `IsTimeout` functions that do `errors.As(err, &llmErr)` to check the status code. And then the *only concrete LLM client in the codebase* doesn't return `*LLMError`. It returns a plain `fmt.Errorf`.
+
+Result: structured error classification never fires for HTTP errors. A 429 from OpenAI gets caught by the fallback `strings.Contains(msg, "rate limit")` — maybe. A 503 might match `strings.Contains(msg, "unavailable")` — maybe not. You're relying on OpenAI's error message text instead of the status code you already have.
+
+**Fix:** Line 77 should be:
+```go
+return "", &LLMError{StatusCode: resp.StatusCode, Message: string(body[:n])}
+```
+
+This is the entire point of having `LLMError`. Use it.
+
+---
+
+### 🟡 P1: Type aliases left in `extraction/stage2.go` and `stage3.go` — unjustified
+
+**Files:** `internal/extraction/stage2.go:53`, `internal/extraction/stage3.go:22-28`
+
+```go
+type LLMClient = llm.LLMClient       // stage2.go
+type LLMError = llm.LLMError         // stage3.go
+type LLMCompleteResult = llm.LLMCompleteResult  // stage3.go
+type LLMClientV2 = llm.LLMClientV2   // stage3.go
+```
+
+Four type aliases. Zero external consumers reference `extraction.LLMClient` or `extraction.LLMError` — I checked. These aliases exist solely for internal convenience within stage2 and stage3 files so they don't have to write `llm.LLMClient`.
+
+That's not what type aliases are for. Type aliases are for backward compatibility during migrations where external callers use the old path. Nobody does here. These are laziness aliases.
+
+**Fix:** Delete all four aliases. Use `llm.LLMClient`, `llm.LLMError`, etc. directly. The import is already there.
+
+---
+
+### 🟡 P2: Delegation wrappers for `isRetryable`/`isRateLimit`/`isTimeout` in stage3.go — pointless
+
+**File:** `internal/extraction/stage3.go:285-292`
+
+```go
+func isRetryable(err error) bool { return llm.IsRetryable(err) }
+func isTimeout(err error) bool { return llm.IsTimeout(err) }
+func isRateLimit(err error) bool { return llm.IsRateLimit(err) }
+```
+
+Three unexported wrappers that do nothing except delegate. They exist so the call sites in `callWithRetry` don't have to change from `isRetryable(err)` to `llm.IsRetryable(err)`. That's 3 lines of code to avoid changing 3 other lines of code.
+
+There's also a test in `stage3_test.go` (line 889) that tests `isRetryable` — which now tests a wrapper that calls `llm.IsRetryable`. The real tests are in `llm_test.go`. So you have duplicate test coverage of the same function through a transparent wrapper.
+
+**Fix:** Delete the wrappers. Call `llm.IsRetryable(err)` etc. directly. Delete or update the redundant test.
+
+---
+
+### 🟡 P3: `OpenAIClient` doesn't implement `LLMClientV2`
+
+**File:** `internal/llm/openai.go`
+
+The plan said to move `openAILLMClient` + `openAIComplete` from `cmd/`. You did. But `OpenAIClient` only implements `LLMClient.Complete()`. It doesn't implement `LLMClientV2.CompleteWithTimeout()`.
+
+In `stage3.go:89`, the constructor does a type assertion:
+```go
+if v2, ok := llm.(LLMClientV2); ok {
+    c.llmV2 = v2
+}
+```
+
+Since `OpenAIClient` doesn't implement V2, this always falls through to the basic `Complete()` path with a manual `context.WithTimeout` wrapper. You lose token usage tracking — `estimateTokens` guesses from string length instead.
+
+This isn't a regression (the old `openAIComplete` didn't implement V2 either), but R2 was the time to fix it. The response struct from OpenAI includes `usage.prompt_tokens` and `usage.completion_tokens`. You already decode the response body. Add the fields.
+
+**Fix:** Add `CompleteWithTimeout` to `OpenAIClient` that reads token counts from the OpenAI response `usage` field.
+
+---
+
+### 🟢 P4: Dead comment in `extract.go`
+
+**File:** `cmd/mycelium/extract.go:257`
+
+```go
+// openAILLMClient and openAIComplete moved to internal/llm package.
+```
+
+Tombstone comments are not documentation. They're litter. In six months nobody will care where something was moved from. The git log knows.
+
+**Fix:** Delete the comment.
+
+---
+
+### 🟢 P5: No validation in `NewOpenAIClient`
+
+**File:** `internal/llm/openai.go:30-37`
+
+The test `TestNewOpenAIClient_EmptyAPIKey` has a comment: "Constructor doesn't validate — caller's responsibility." That's a choice, but a bad one. An empty API key will produce a confusing 401 error at call time instead of a clear error at construction time. Same for empty model.
+
+**Fix:** Return an error (or at minimum panic) if `apiKey` is empty. Yes, this changes the constructor signature. Do it now while there are exactly 3 call sites.
+
+---
+
+### 🟢 P6: `max_tokens` hardcoded to 2048
+
+**File:** `internal/llm/openai.go:54`
+
+```go
+"max_tokens": 2048,
+```
+
+Not configurable. The critic prompt in stage3 could easily need more for verbose responses. Should be an option or at minimum a field on `OpenAIClient` set via `Option`.
+
+---
+
+## What Was Done Right
+
+- Clean file separation: interfaces in `client.go`, errors in `errors.go`, implementation in `openai.go`
+- Functional options pattern for `OpenAIClient` (`WithHTTPClient`)
+- No global HTTP client (each `OpenAIClient` has its own with a 60s default timeout)
+- Error classification functions properly exported (`IsRetryable`, `IsRateLimit`, `IsTimeout`)
+- Test coverage for error classification is thorough (14 test cases for `IsRetryable` alone)
+- `helpers.go` removed as planned
+- Both `extract.go` and `serve.go` properly import and use `llm.NewOpenAIClient`
+
+## Verdict
+
+The structural move is correct. The package boundaries are right. But the flagship feature — structured error handling via `LLMError` — is broken because the only client doesn't use it. That's a P0 in a package whose reason for existence is "unify LLM error handling." The type aliases and delegation wrappers are cleanup debt that should have been resolved in this PR, not deferred.
+
+**Grade: C+** — Correct direction, incomplete execution.
+
+---
+
+*The code moved. The bugs moved with it. — Jazz, Feb 2026*

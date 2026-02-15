@@ -447,11 +447,13 @@ func TestCircuitBreaker_OpenDurationResetsOnRecovery(t *testing.T) {
 		client.Embed(context.Background(), "test")
 	}
 
-	client.mu.Lock()
-	dur := client.cbCurrentOpenDur
-	client.mu.Unlock()
-	if dur != 50*time.Millisecond {
-		t.Fatalf("expected open duration reset to 50ms, got %v", dur)
+	// Verify open duration reset to base (50ms) by checking recovery timing.
+	// After 60ms (> 50ms base), half-open should be available.
+	time.Sleep(60 * time.Millisecond)
+	shouldFail.Store(false)
+	_, err = client.Embed(context.Background(), "test")
+	if err != nil {
+		t.Fatalf("expected recovery at base duration (50ms), got %v", err)
 	}
 }
 

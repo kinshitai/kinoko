@@ -13,8 +13,9 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
-	"sync"
 	"time"
+
+	"github.com/mycelium-dev/mycelium/internal/circuitbreaker"
 )
 
 // Embedder computes vector embeddings for text.
@@ -74,36 +75,11 @@ func DefaultConfig() Config {
 	}
 }
 
-// circuitState represents the circuit breaker state.
-type circuitState int
-
-const (
-	circuitClosed   circuitState = iota
-	circuitOpen
-	circuitHalfOpen
-)
-
-// maxOpenDuration caps the escalating open duration.
-const maxOpenDuration = 30 * time.Minute
-
 // maxResponseBody caps response body reads (10 MB).
 const maxResponseBody = 10 << 20
 
 // maxErrorBodyLog caps body bytes included in error messages.
 const maxErrorBodyLog = 512
-
-func (s circuitState) String() string {
-	switch s {
-	case circuitClosed:
-		return "closed"
-	case circuitOpen:
-		return "open"
-	case circuitHalfOpen:
-		return "half-open"
-	default:
-		return "unknown"
-	}
-}
 
 // permanentError wraps errors that should not be retried (4xx except 429).
 type permanentError struct {
@@ -119,21 +95,15 @@ func IsPermanent(err error) bool {
 	return errors.As(err, &pe)
 }
 
-// ErrCircuitOpen is returned when the circuit breaker is open.
-var ErrCircuitOpen = errors.New("circuit breaker is open")
+// ErrCircuitOpen is an alias for circuitbreaker.ErrOpen for backward compatibility.
+var ErrCircuitOpen = circuitbreaker.ErrOpen
 
 // Client is the OpenAI-compatible embedding client.
 type Client struct {
 	cfg    Config
 	http   *http.Client
 	logger *slog.Logger
-
-	mu                 sync.Mutex
-	cbState            circuitState
-	cbFailures         int
-	cbOpenedAt         time.Time
-	cbHalfOpenInFlight int
-	cbCurrentOpenDur   time.Duration // current open duration (escalates on half-open failure)
+	cb     *circuitbreaker.Breaker
 }
 
 // New creates a new embedding Client.
@@ -142,10 +112,14 @@ func New(cfg Config, logger *slog.Logger) *Client {
 		logger = slog.Default()
 	}
 	return &Client{
-		cfg:              cfg,
-		http:             &http.Client{Timeout: 30 * time.Second},
-		logger:           logger.With("component", "embedding"),
-		cbCurrentOpenDur: cfg.CircuitBreaker.OpenDuration,
+		cfg:    cfg,
+		http:   &http.Client{Timeout: 30 * time.Second},
+		logger: logger.With("component", "embedding"),
+		cb: circuitbreaker.New(circuitbreaker.Config{
+			Threshold:    cfg.CircuitBreaker.FailureThreshold,
+			BaseDuration: cfg.CircuitBreaker.OpenDuration,
+			MaxDuration:  30 * time.Minute,
+		}, nil),
 	}
 }
 
@@ -193,7 +167,7 @@ func (c *Client) EmbedBatch(ctx context.Context, texts []string) ([][]float32, e
 			))
 		}
 
-		if err := c.cbAllow(); err != nil {
+		if err := c.cb.Allow(); err != nil {
 			lastErr = err
 			continue
 		}
@@ -204,11 +178,11 @@ func (c *Client) EmbedBatch(ctx context.Context, texts []string) ([][]float32, e
 			if IsPermanent(lastErr) {
 				return nil, lastErr
 			}
-			c.cbRecordFailure()
+			c.cb.RecordFailure()
 			continue
 		}
 
-		c.cbRecordSuccess()
+		c.cb.RecordSuccess()
 		return result, nil
 	}
 
@@ -316,84 +290,4 @@ func (c *Client) doRequest(ctx context.Context, texts []string) ([][]float32, er
 	}
 
 	return results, nil
-}
-
-// --- Circuit breaker ---
-
-func (c *Client) cbAllow() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	switch c.cbState {
-	case circuitClosed:
-		return nil
-	case circuitOpen:
-		if time.Since(c.cbOpenedAt) >= c.cbCurrentOpenDur {
-			c.cbState = circuitHalfOpen
-			c.cbHalfOpenInFlight = 0
-			c.logger.Info("circuit breaker transition", "from", "open", "to", "half-open")
-			c.cbHalfOpenInFlight++
-			return nil
-		}
-		return ErrCircuitOpen
-	case circuitHalfOpen:
-		if c.cbHalfOpenInFlight < c.cfg.CircuitBreaker.HalfOpenMax {
-			c.cbHalfOpenInFlight++
-			return nil
-		}
-		return ErrCircuitOpen
-	}
-	return nil
-}
-
-func (c *Client) cbRecordSuccess() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.cbState == circuitHalfOpen {
-		c.logger.Info("circuit breaker transition", "from", "half-open", "to", "closed")
-	}
-	c.cbState = circuitClosed
-	c.cbFailures = 0
-	c.cbHalfOpenInFlight = 0
-	c.cbCurrentOpenDur = c.cfg.CircuitBreaker.OpenDuration // reset to base
-}
-
-func (c *Client) cbRecordFailure() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.cbFailures++
-	c.logger.Warn("embedding request failed",
-		"consecutive_failures", c.cbFailures,
-		"circuit_state", c.cbState.String(),
-	)
-
-	switch c.cbState {
-	case circuitClosed:
-		if c.cbFailures >= c.cfg.CircuitBreaker.FailureThreshold {
-			c.cbState = circuitOpen
-			c.cbOpenedAt = time.Now()
-			c.cbCurrentOpenDur = c.cfg.CircuitBreaker.OpenDuration // base duration
-			c.logger.Warn("circuit breaker transition",
-				"from", "closed",
-				"to", "open",
-				"open_duration", c.cbCurrentOpenDur,
-			)
-		}
-	case circuitHalfOpen:
-		// Escalate: double the open duration, capped at max.
-		nextDur := c.cbCurrentOpenDur * 2
-		if nextDur > maxOpenDuration {
-			nextDur = maxOpenDuration
-		}
-		c.cbCurrentOpenDur = nextDur
-		c.cbState = circuitOpen
-		c.cbOpenedAt = time.Now()
-		c.logger.Warn("circuit breaker transition",
-			"from", "half-open",
-			"to", "open",
-			"open_duration", c.cbCurrentOpenDur,
-		)
-	}
 }

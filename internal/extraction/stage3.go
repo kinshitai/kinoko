@@ -9,10 +9,10 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
+	"github.com/mycelium-dev/mycelium/internal/circuitbreaker"
 	"github.com/mycelium-dev/mycelium/internal/config"
 	"github.com/mycelium-dev/mycelium/internal/llm"
 	"github.com/mycelium-dev/mycelium/internal/model"
@@ -30,8 +30,8 @@ type LLMClientV2 = llm.LLMClientV2
 // maxContentBytes is the truncation limit for session content sent to the LLM.
 const maxContentBytes = 100 * 1024
 
-// ErrCircuitOpen is returned when the circuit breaker is open.
-var ErrCircuitOpen = errors.New("stage3: circuit breaker open")
+// ErrCircuitOpen is an alias for circuitbreaker.ErrOpen for backward compatibility.
+var ErrCircuitOpen = circuitbreaker.ErrOpen
 
 // Stage3Critic evaluates a session via LLM and returns an extract/reject verdict.
 type Stage3Critic interface {
@@ -49,12 +49,7 @@ type stage3Critic struct {
 	llmV2 LLMClientV2 // optional, for token usage + timeout control
 	cfg   config.ExtractionConfig
 	log   *slog.Logger
-
-	// Circuit breaker state
-	mu              sync.Mutex
-	consecutiveFail int
-	circuitOpenAt   time.Time
-	openDuration    time.Duration
+	cb    *circuitbreaker.Breaker
 
 	// Injectable clock/sleep for testing
 	clock clockFunc
@@ -68,12 +63,16 @@ func NewStage3Critic(
 	log *slog.Logger,
 ) Stage3Critic {
 	c := &stage3Critic{
-		llm:          llm,
-		cfg:          cfg,
-		log:          log,
-		openDuration: 5 * time.Minute,
-		clock:        time.Now,
-		sleep:        time.Sleep,
+		llm: llm,
+		cfg: cfg,
+		log: log,
+		cb: circuitbreaker.New(circuitbreaker.Config{
+			Threshold:    5,
+			BaseDuration: 5 * time.Minute,
+			MaxDuration:  30 * time.Minute,
+		}, nil),
+		clock: time.Now,
+		sleep: time.Sleep,
 	}
 	if v2, ok := llm.(LLMClientV2); ok {
 		c.llmV2 = v2
@@ -103,7 +102,7 @@ func (c *stage3Critic) Evaluate(ctx context.Context, session model.SessionRecord
 	c.log.Info("stage3 evaluate start", "session_id", session.ID)
 
 	// Check circuit breaker
-	if err := c.checkCircuit(); err != nil {
+	if err := c.cb.Allow(); err != nil {
 		return nil, err
 	}
 
@@ -120,13 +119,13 @@ func (c *stage3Critic) Evaluate(ctx context.Context, session model.SessionRecord
 	// Call LLM with retry
 	retryResult, err := c.callWithRetry(ctx, prompt, session.ID)
 	if err != nil {
-		c.recordFailure()
+		c.cb.RecordFailure()
 		elapsed := c.clock().Sub(start).Milliseconds()
 		c.log.Error("stage3 LLM call failed", "session_id", session.ID, "error", err, "latency_ms", elapsed)
 		return nil, fmt.Errorf("stage3: llm call: %w", err)
 	}
 
-	c.recordSuccess()
+	c.cb.RecordSuccess()
 
 	// Parse response
 	result, err := c.parseAndValidate(retryResult.content)
@@ -371,49 +370,6 @@ func (c *stage3Critic) callLLM(ctx context.Context, prompt string, timeout time.
 // estimateTokens provides a rough token estimate (~4 chars per token).
 func estimateTokens(prompt, response string) int {
 	return (len(prompt) + len(response)) / 4
-}
-
-// Circuit breaker methods
-
-func (c *stage3Critic) checkCircuit() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.consecutiveFail < 5 {
-		return nil
-	}
-
-	elapsed := c.clock().Sub(c.circuitOpenAt)
-	if elapsed < c.openDuration {
-		return ErrCircuitOpen
-	}
-
-	// Half-open: allow one probe
-	return nil
-}
-
-func (c *stage3Critic) recordFailure() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.consecutiveFail++
-	if c.consecutiveFail == 5 {
-		c.circuitOpenAt = c.clock()
-		c.openDuration = 5 * time.Minute
-		c.log.Warn("stage3 circuit breaker opened")
-	} else if c.consecutiveFail > 5 {
-		// Failed during half-open probe → re-open with doubled duration
-		c.circuitOpenAt = c.clock()
-		c.openDuration = c.openDuration * 2
-		c.log.Warn("stage3 circuit breaker re-opened", "duration", c.openDuration)
-	}
-}
-
-func (c *stage3Critic) recordSuccess() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.consecutiveFail = 0
 }
 
 func truncateContent(content []byte, maxBytes int) []byte {
