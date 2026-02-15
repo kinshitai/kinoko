@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -64,7 +65,7 @@ func contains(s, sub string) bool {
 type predictableEmbedder struct {
 	dims      int
 	failAfter int // -1 = always fail, 0 = never fail, N = fail after N successes
-	callCount int
+	callCount atomic.Int64
 }
 
 func newPredictableEmbedder(dims int) *predictableEmbedder {
@@ -72,11 +73,11 @@ func newPredictableEmbedder(dims int) *predictableEmbedder {
 }
 
 func (e *predictableEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
-	e.callCount++
+	count := e.callCount.Add(1)
 	if e.failAfter == -1 {
 		return nil, fmt.Errorf("simulated embedding failure (always)")
 	}
-	if e.failAfter > 0 && e.callCount > e.failAfter {
+	if e.failAfter > 0 && int(count) > e.failAfter {
 		return nil, fmt.Errorf("simulated embedding failure after %d calls", e.failAfter)
 	}
 	return e.deterministicVector(text), nil

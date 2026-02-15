@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -474,26 +475,28 @@ func TestPipelineStratifiedSamplingBalance(t *testing.T) {
 
 	// Extracted samples should be >= rejected samples (since extracted pool
 	// is always underrepresented, all extracted get sampled).
-	if p.extractedSamples == 0 {
+	ext := p.extractedSamples.Load()
+	rej := p.rejectedSamples.Load()
+	if ext == 0 {
 		t.Error("no extracted samples collected")
 	}
-	if p.rejectedSamples == 0 {
+	if rej == 0 {
 		t.Error("no rejected samples collected")
 	}
 	// The ratio should be much closer to 50/50 than the input 10/90.
-	total := p.extractedSamples + p.rejectedSamples
-	extractedPct := float64(p.extractedSamples) / float64(total)
+	total := ext + rej
+	extractedPct := float64(ext) / float64(total)
 	if extractedPct < 0.2 {
-		t.Errorf("extracted = %d/%d (%.0f%%), want >= 20%% (stratified)", p.extractedSamples, total, extractedPct*100)
+		t.Errorf("extracted = %d/%d (%.0f%%), want >= 20%% (stratified)", ext, total, extractedPct*100)
 	}
 }
 
 type countingReviewer struct {
-	count int
+	count atomic.Int64
 }
 
 func (r *countingReviewer) InsertReviewSample(_ context.Context, _ string, _ []byte) error {
-	r.count++
+	r.count.Add(1)
 	return nil
 }
 

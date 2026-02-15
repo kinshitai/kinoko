@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -52,8 +53,9 @@ type Pipeline struct {
 	extractor  string               // pipeline version identifier
 
 	// Stratified sampling counters: maintain ~50/50 extracted vs rejected.
-	extractedSamples int
-	rejectedSamples  int
+	// Accessed atomically for concurrency safety.
+	extractedSamples atomic.Int64
+	rejectedSamples  atomic.Int64
 }
 
 // PipelineConfig holds constructor parameters for Pipeline.

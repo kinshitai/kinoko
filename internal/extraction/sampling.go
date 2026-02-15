@@ -37,14 +37,17 @@ func (p *Pipeline) maybeSample(ctx context.Context, sessionID string, result *mo
 	}
 
 	// Stratified sampling: maintain ~50/50 between extracted and rejected pools.
+	extracted := p.extractedSamples.Load()
+	rejected := p.rejectedSamples.Load()
+
 	underrepresented := false
 	overrepresented := false
 	if isExtracted {
-		underrepresented = p.extractedSamples < p.rejectedSamples
-		overrepresented = p.extractedSamples > p.rejectedSamples
+		underrepresented = extracted < rejected
+		overrepresented = extracted > rejected
 	} else {
-		underrepresented = p.rejectedSamples < p.extractedSamples
-		overrepresented = p.rejectedSamples > p.extractedSamples
+		underrepresented = rejected < extracted
+		overrepresented = rejected > extracted
 	}
 
 	if overrepresented {
@@ -75,11 +78,11 @@ func (p *Pipeline) maybeSample(ctx context.Context, sessionID string, result *mo
 	}
 
 	if isExtracted {
-		p.extractedSamples++
+		p.extractedSamples.Add(1)
 	} else {
-		p.rejectedSamples++
+		p.rejectedSamples.Add(1)
 	}
 
 	p.log.Info("human review sampled", "session_id", sessionID, "status", result.Status, "pool", pool,
-		"extracted_samples", p.extractedSamples, "rejected_samples", p.rejectedSamples)
+		"extracted_samples", p.extractedSamples.Load(), "rejected_samples", p.rejectedSamples.Load())
 }

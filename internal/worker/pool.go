@@ -150,7 +150,7 @@ func (p *workerPool) process(ctx context.Context, workerID string, entry *QueueE
 	// Use a detached context for all DB operations during processing.
 	// The pool context (ctx) may be cancelled during graceful shutdown,
 	// but in-flight work must still be able to Complete/Fail/read sessions.
-	dbCtx, dbCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 300*time.Second) // 5min: accommodates stage3 retry (up to 150s)
 	defer dbCancel()
 
 	// Read log file from disk.

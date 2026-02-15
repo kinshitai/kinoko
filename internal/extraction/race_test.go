@@ -48,7 +48,9 @@ func TestBug_PipelineSamplingRace(t *testing.T) {
 
 	// The test itself may not fail deterministically without -race,
 	// but the race detector will flag the unsynchronized counter access.
-	total := p.extractedSamples + p.rejectedSamples
+	ext := p.extractedSamples.Load()
+	rej := p.rejectedSamples.Load()
+	total := ext + rej
 	t.Logf("sampling counters: extracted=%d rejected=%d total=%d (expected %d)",
-		p.extractedSamples, p.rejectedSamples, total, goroutines*callsPerGoroutine)
+		ext, rej, total, goroutines*callsPerGoroutine)
 }
