@@ -392,10 +392,10 @@ func (s *SQLiteStore) UpdateUsage(ctx context.Context, id string, outcome string
 // WriteInjectionEvent inserts a row into injection_events.
 func (s *SQLiteStore) WriteInjectionEvent(ctx context.Context, ev InjectionEventRecord) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO injection_events (id, session_id, skill_id, rank_position, match_score, pattern_overlap, cosine_sim, historical_rate, injected_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO injection_events (id, session_id, skill_id, rank_position, match_score, pattern_overlap, cosine_sim, historical_rate, injected_at, ab_group, delivered)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		ev.ID, ev.SessionID, ev.SkillID, ev.RankPosition, ev.MatchScore,
-		ev.PatternOverlap, ev.CosineSim, ev.HistoricalRate, ev.InjectedAt)
+		ev.PatternOverlap, ev.CosineSim, ev.HistoricalRate, ev.InjectedAt, ev.ABGroup, ev.Delivered)
 	if err != nil {
 		return fmt.Errorf("insert injection event: %w", err)
 	}
@@ -413,6 +413,8 @@ type InjectionEventRecord struct {
 	CosineSim      float64
 	HistoricalRate float64
 	InjectedAt     time.Time
+	ABGroup        string // "treatment", "control", or "" (no A/B test)
+	Delivered      bool   // false for control group sessions
 }
 
 func (s *SQLiteStore) UpdateDecay(ctx context.Context, id string, decayScore float64) error {

@@ -60,6 +60,16 @@ type ExtractionConfig struct {
 
 	// Version similarity threshold (Appendix A) — used in Phase 5+ for skill versioning.
 	VersionSimilarityThreshold float64 `yaml:"version_similarity_threshold"`
+
+	// A/B testing (§3.3)
+	ABTest ABTestConfig `yaml:"ab_test"`
+}
+
+// ABTestConfig mirrors injection.ABConfig for YAML config loading.
+type ABTestConfig struct {
+	Enabled       bool    `yaml:"enabled"`
+	ControlRatio  float64 `yaml:"control_ratio"`
+	MinSampleSize int     `yaml:"min_sample_size"`
 }
 
 // HooksConfig contains pre-commit hook configuration

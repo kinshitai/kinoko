@@ -70,7 +70,9 @@ CREATE TABLE IF NOT EXISTS injection_events (
     cosine_sim      REAL NOT NULL,
     historical_rate REAL NOT NULL,
     injected_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    session_outcome TEXT DEFAULT NULL
+    session_outcome TEXT DEFAULT NULL,
+    ab_group        TEXT NOT NULL DEFAULT '',
+    delivered       BOOLEAN NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS human_review_samples (
