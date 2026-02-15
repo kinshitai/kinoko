@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
 // --- Mocks ---
@@ -20,20 +20,20 @@ import (
 type mockQueue struct {
 	mu       sync.Mutex
 	entries  []*QueueEntry
-	results  map[string]*extraction.ExtractionResult
+	results  map[string]*model.ExtractionResult
 	failures map[string]struct{ err error; permanent bool }
 	claimCh  chan struct{} // signaled on each claim attempt
 }
 
 func newMockQueue() *mockQueue {
 	return &mockQueue{
-		results:  make(map[string]*extraction.ExtractionResult),
+		results:  make(map[string]*model.ExtractionResult),
 		failures: make(map[string]struct{ err error; permanent bool }),
 		claimCh:  make(chan struct{}, 100),
 	}
 }
 
-func (q *mockQueue) Enqueue(_ context.Context, _ extraction.SessionRecord, _ []byte) error {
+func (q *mockQueue) Enqueue(_ context.Context, _ model.SessionRecord, _ []byte) error {
 	return nil
 }
 
@@ -49,7 +49,7 @@ func (q *mockQueue) Claim(_ context.Context, _ string) (*QueueEntry, error) {
 	return e, nil
 }
 
-func (q *mockQueue) Complete(_ context.Context, sessionID string, result *extraction.ExtractionResult) error {
+func (q *mockQueue) Complete(_ context.Context, sessionID string, result *model.ExtractionResult) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.results[sessionID] = result
@@ -92,10 +92,10 @@ func (q *mockQueue) addEntry(id, logPath string, retryCount int) {
 }
 
 type mockExtractor struct {
-	fn func(ctx context.Context, session extraction.SessionRecord, content []byte) (*extraction.ExtractionResult, error)
+	fn func(ctx context.Context, session model.SessionRecord, content []byte) (*model.ExtractionResult, error)
 }
 
-func (m *mockExtractor) Extract(ctx context.Context, session extraction.SessionRecord, content []byte) (*extraction.ExtractionResult, error) {
+func (m *mockExtractor) Extract(ctx context.Context, session model.SessionRecord, content []byte) (*model.ExtractionResult, error) {
 	return m.fn(ctx, session, content)
 }
 
@@ -116,8 +116,8 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 }
 
-func dummySessionGetter(_ context.Context, id string) (*extraction.SessionRecord, error) {
-	return &extraction.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
+func dummySessionGetter(_ context.Context, id string) (*model.SessionRecord, error) {
+	return &model.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
 }
 
 func writeLogFile(t *testing.T, dir, id, content string) string {
@@ -133,7 +133,7 @@ func writeLogFile(t *testing.T, dir, id, content string) string {
 
 func TestPool_StartStop(t *testing.T) {
 	q := newMockQueue()
-	ext := &mockExtractor{fn: func(_ context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+	ext := &mockExtractor{fn: func(_ context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		return nil, nil
 	}}
 
@@ -164,8 +164,8 @@ func TestPool_ProcessSessions(t *testing.T) {
 	q.addEntry("s1", path1, 0)
 	q.addEntry("s2", path2, 0)
 
-	ext := &mockExtractor{fn: func(_ context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
-		return &extraction.ExtractionResult{Status: extraction.StatusExtracted}, nil
+	ext := &mockExtractor{fn: func(_ context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
+		return &model.ExtractionResult{Status: model.StatusExtracted}, nil
 	}}
 
 	cfg := testConfig()
@@ -216,7 +216,7 @@ func TestPool_RetryOnPipelineError(t *testing.T) {
 	path := writeLogFile(t, dir, "s1", "log")
 	q.addEntry("s1", path, 0) // retry_count=0, under max
 
-	ext := &mockExtractor{fn: func(_ context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+	ext := &mockExtractor{fn: func(_ context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		return nil, errors.New("llm down")
 	}}
 
@@ -266,7 +266,7 @@ func TestPool_FailPermanentAfterMaxRetries(t *testing.T) {
 	path := writeLogFile(t, dir, "s1", "log")
 	q.addEntry("s1", path, 2) // retry_count=2, max_retries=3 → 2+1 >= 3 → permanent
 
-	ext := &mockExtractor{fn: func(_ context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+	ext := &mockExtractor{fn: func(_ context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		return nil, errors.New("still broken")
 	}}
 
@@ -312,7 +312,7 @@ func TestPool_FileReadFailIsPermanent(t *testing.T) {
 	q := newMockQueue()
 	q.addEntry("s1", "/nonexistent/path.log", 0)
 
-	ext := &mockExtractor{fn: func(_ context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+	ext := &mockExtractor{fn: func(_ context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		t.Error("extractor should not be called")
 		return nil, nil
 	}}
@@ -360,7 +360,7 @@ func TestPool_GracefulShutdown_InFlightCompletes(t *testing.T) {
 	extractStarted := make(chan struct{})
 	extractContinue := make(chan struct{})
 
-	ext := &mockExtractor{fn: func(ctx context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+	ext := &mockExtractor{fn: func(ctx context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		close(extractStarted)
 		// Extract receives a detached context, so ctx.Done() should NOT fire
 		// when the pool is stopped. We wait on extractContinue only.
@@ -369,7 +369,7 @@ func TestPool_GracefulShutdown_InFlightCompletes(t *testing.T) {
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("extract context should not be cancelled: %w", ctx.Err())
 		}
-		return &extraction.ExtractionResult{Status: extraction.StatusExtracted}, nil
+		return &model.ExtractionResult{Status: model.StatusExtracted}, nil
 	}}
 
 	cfg := testConfig()
@@ -409,10 +409,10 @@ func TestPool_StatsCountRejected(t *testing.T) {
 	path := writeLogFile(t, dir, "s1", "log")
 	q.addEntry("s1", path, 0)
 
-	ext := &mockExtractor{fn: func(_ context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
-		return &extraction.ExtractionResult{
-			Status: extraction.StatusRejected,
-			Stage1: &extraction.Stage1Result{Passed: false, Reason: "too short"},
+	ext := &mockExtractor{fn: func(_ context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
+		return &model.ExtractionResult{
+			Status: model.StatusRejected,
+			Stage1: &model.Stage1Result{Passed: false, Reason: "too short"},
 		}, nil
 	}}
 
@@ -451,12 +451,12 @@ func TestPool_GetSessionFailureIsTransient(t *testing.T) {
 	path := writeLogFile(t, dir, "s1", "log")
 	q.addEntry("s1", path, 0)
 
-	ext := &mockExtractor{fn: func(_ context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+	ext := &mockExtractor{fn: func(_ context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		t.Error("extractor should not be called when getSession fails")
 		return nil, nil
 	}}
 
-	failingSessionGetter := func(_ context.Context, _ string) (*extraction.SessionRecord, error) {
+	failingSessionGetter := func(_ context.Context, _ string) (*model.SessionRecord, error) {
 		return nil, errors.New("db connection refused")
 	}
 
@@ -501,7 +501,7 @@ func TestPool_GetSessionFailureIsTransient(t *testing.T) {
 
 func TestPool_EmptyQueue_NoSpin(t *testing.T) {
 	q := newMockQueue()
-	ext := &mockExtractor{fn: func(_ context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+	ext := &mockExtractor{fn: func(_ context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		return nil, nil
 	}}
 

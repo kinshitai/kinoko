@@ -15,6 +15,7 @@ import (
 
 	"github.com/mycelium-dev/mycelium/internal/embedding"
 	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 )
 
@@ -37,7 +38,7 @@ type InjectionEventWriter interface {
 
 // Injector selects relevant skills to inject into an agent session.
 type Injector interface {
-	Inject(ctx context.Context, req extraction.InjectionRequest) (*extraction.InjectionResponse, error)
+	Inject(ctx context.Context, req model.InjectionRequest) (*model.InjectionResponse, error)
 }
 
 // injector implements Injector.
@@ -70,7 +71,7 @@ func New(
 	}
 }
 
-func (inj *injector) Inject(ctx context.Context, req extraction.InjectionRequest) (*extraction.InjectionResponse, error) {
+func (inj *injector) Inject(ctx context.Context, req model.InjectionRequest) (*model.InjectionResponse, error) {
 	maxSkills := req.MaxSkills
 	if maxSkills <= 0 {
 		maxSkills = defaultMaxSkills
@@ -80,7 +81,7 @@ func (inj *injector) Inject(ctx context.Context, req extraction.InjectionRequest
 	classification, err := inj.classifyPrompt(ctx, req.Prompt)
 	if err != nil {
 		inj.log.Warn("prompt classification failed, using empty patterns", "error", err)
-		classification = extraction.PromptClassification{}
+		classification = model.PromptClassification{}
 	}
 
 	// Step 2: Compute prompt embedding (fallback if unavailable).
@@ -116,7 +117,7 @@ func (inj *injector) Inject(ctx context.Context, req extraction.InjectionRequest
 	}
 
 	if len(candidates) == 0 {
-		return &extraction.InjectionResponse{
+		return &model.InjectionResponse{
 			Skills:         nil,
 			Classification: classification,
 		}, nil
@@ -147,9 +148,9 @@ func (inj *injector) Inject(ctx context.Context, req extraction.InjectionRequest
 
 	// Step 6: Build response and write injection events.
 	now := time.Now().UTC()
-	skills := make([]extraction.InjectedSkill, len(candidates))
+	skills := make([]model.InjectedSkill, len(candidates))
 	for i, c := range candidates {
-		skills[i] = extraction.InjectedSkill{
+		skills[i] = model.InjectedSkill{
 			SkillID:        c.Skill.ID,
 			PatternOverlap: c.PatternOverlap,
 			CosineSim:      c.CosineSim,
@@ -178,27 +179,27 @@ func (inj *injector) Inject(ctx context.Context, req extraction.InjectionRequest
 		}
 	}
 
-	return &extraction.InjectionResponse{
+	return &model.InjectionResponse{
 		Skills:         skills,
 		Classification: classification,
 	}, nil
 }
 
 // classifyPrompt uses the LLM to classify the user prompt.
-func (inj *injector) classifyPrompt(ctx context.Context, prompt string) (extraction.PromptClassification, error) {
+func (inj *injector) classifyPrompt(ctx context.Context, prompt string) (model.PromptClassification, error) {
 	if prompt == "" {
-		return extraction.PromptClassification{}, fmt.Errorf("empty prompt")
+		return model.PromptClassification{}, fmt.Errorf("empty prompt")
 	}
 
 	llmPrompt := buildClassificationPrompt(prompt)
 	resp, err := inj.llm.Complete(ctx, llmPrompt)
 	if err != nil {
-		return extraction.PromptClassification{}, fmt.Errorf("llm classify: %w", err)
+		return model.PromptClassification{}, fmt.Errorf("llm classify: %w", err)
 	}
 
 	var result classificationResponse
 	if err := parseClassificationResponse(resp, &result); err != nil {
-		return extraction.PromptClassification{}, fmt.Errorf("parse classification: %w", err)
+		return model.PromptClassification{}, fmt.Errorf("parse classification: %w", err)
 	}
 
 	// Validate intent.
@@ -208,7 +209,7 @@ func (inj *injector) classifyPrompt(ctx context.Context, prompt string) (extract
 	}
 
 	// Validate domain (M5).
-	result.Domain = extraction.ValidateDomain(result.Domain)
+	result.Domain = model.ValidateDomain(result.Domain)
 
 	// Validate patterns against taxonomy (C1).
 	var validPats []string
@@ -221,7 +222,7 @@ func (inj *injector) classifyPrompt(ctx context.Context, prompt string) (extract
 		validPats = validPats[:maxPatterns]
 	}
 
-	return extraction.PromptClassification{
+	return model.PromptClassification{
 		Intent:   result.Intent,
 		Domain:   result.Domain,
 		Patterns: validPats,

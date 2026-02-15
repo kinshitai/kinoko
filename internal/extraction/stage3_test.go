@@ -1,6 +1,7 @@
 package extraction
 
 import (
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"bytes"
 	"context"
 	"errors"
@@ -68,19 +69,19 @@ func s3testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(&bytes.Buffer{}, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
 
-func s3testSession() SessionRecord {
-	return SessionRecord{
+func s3testSession() model.SessionRecord {
+	return model.SessionRecord{
 		ID:        "test-session-123",
 		LibraryID: "test-lib",
 	}
 }
 
-func passingStage2() *Stage2Result {
-	return &Stage2Result{
+func passingStage2() *model.Stage2Result {
+	return &model.Stage2Result{
 		Passed:            true,
 		EmbeddingDistance:  0.55,
 		NoveltyScore:      0.85,
-		RubricScores: QualityScores{
+		RubricScores: model.QualityScores{
 			ProblemSpecificity:    4,
 			SolutionCompleteness:  4,
 			ContextPortability:    3,
@@ -90,7 +91,7 @@ func passingStage2() *Stage2Result {
 			InnovationLevel:       3,
 			CompositeScore:        3.55,
 		},
-		ClassifiedCategory: CategoryTactical,
+		ClassifiedCategory: model.CategoryTactical,
 		ClassifiedPatterns: []string{"FIX/Backend/DatabaseConnection"},
 	}
 }
@@ -262,12 +263,12 @@ func TestStage3Critic(t *testing.T) {
 		name        string
 		llmResponse string
 		llmErr      error
-		stage2      *Stage2Result
+		stage2      *model.Stage2Result
 		content     []byte
 		wantPassed  *bool // nil = don't check
 		wantVerdict string
 		wantErr     bool
-		checkResult func(t *testing.T, r *Stage3Result)
+		checkResult func(t *testing.T, r *model.Stage3Result)
 	}{
 		{
 			name:        "extract verdict with high scores",
@@ -291,7 +292,7 @@ func TestStage3Critic(t *testing.T) {
 			stage2:      passingStage2(),
 			content:     []byte("session"),
 			wantPassed:  boolPtr(true),
-			checkResult: func(t *testing.T, r *Stage3Result) {
+			checkResult: func(t *testing.T, r *model.Stage3Result) {
 				if !r.ReusablePattern {
 					t.Error("expected ReusablePattern=true")
 				}
@@ -326,7 +327,7 @@ func TestStage3Critic(t *testing.T) {
 			stage2:      passingStage2(),
 			content:     []byte("session"),
 			wantPassed:  boolPtr(false),
-			checkResult: func(t *testing.T, r *Stage3Result) {
+			checkResult: func(t *testing.T, r *model.Stage3Result) {
 				if r.CriticVerdict != "reject" {
 					t.Errorf("expected reject, got %s", r.CriticVerdict)
 				}
@@ -353,7 +354,7 @@ func TestStage3Critic(t *testing.T) {
 			stage2:      passingStage2(),
 			content:     []byte("session"),
 			wantPassed:  boolPtr(false),
-			checkResult: func(t *testing.T, r *Stage3Result) {
+			checkResult: func(t *testing.T, r *model.Stage3Result) {
 				if r.Passed {
 					t.Error("should not pass with all-1 scores")
 				}
@@ -401,7 +402,7 @@ func TestStage3Critic(t *testing.T) {
 			llmResponse: verdictWithConfidence(1.5),
 			stage2:      passingStage2(),
 			content:     []byte("session"),
-			checkResult: func(t *testing.T, r *Stage3Result) {
+			checkResult: func(t *testing.T, r *model.Stage3Result) {
 				if r.RefinedScores.CriticConfidence > 1.0 {
 					t.Error("confidence must be clamped to [0, 1]")
 				}
@@ -412,7 +413,7 @@ func TestStage3Critic(t *testing.T) {
 			llmResponse: verdictWithConfidence(-0.5),
 			stage2:      passingStage2(),
 			content:     []byte("session"),
-			checkResult: func(t *testing.T, r *Stage3Result) {
+			checkResult: func(t *testing.T, r *model.Stage3Result) {
 				if r.RefinedScores.CriticConfidence < 0 {
 					t.Error("confidence must be clamped to [0, 1]")
 				}
@@ -466,7 +467,7 @@ func TestStage3Critic(t *testing.T) {
 		{
 			name:        "stage2.Passed=false",
 			llmResponse: extractVerdictJSON(),
-			stage2:      &Stage2Result{Passed: false},
+			stage2:      &model.Stage2Result{Passed: false},
 			content:     []byte("session"),
 			wantErr:     true,
 		},
@@ -703,7 +704,7 @@ func TestStage3Critic_ContentEdgeCases(t *testing.T) {
 		name    string
 		content []byte
 		wantErr bool
-		check   func(t *testing.T, r *Stage3Result)
+		check   func(t *testing.T, r *model.Stage3Result)
 	}{
 		{"null bytes", []byte("fix\x00bug"), false, nil},
 		{"pure JSON content", []byte(`{"key":"value"}`), false, nil},
@@ -1143,61 +1144,61 @@ func TestStage3Critic_ConcurrentHalfOpen(t *testing.T) {
 	}
 }
 
-// --- P2: Stage2Result edge cases ---
+// --- P2: model.Stage2Result edge cases ---
 
 func TestStage3Critic_Stage2InputEdges(t *testing.T) {
 	tests := []struct {
 		name   string
-		stage2 *Stage2Result
+		stage2 *model.Stage2Result
 	}{
 		{
 			name: "zero novelty score",
-			stage2: &Stage2Result{
+			stage2: &model.Stage2Result{
 				Passed: true, NoveltyScore: 0, EmbeddingDistance: 0.5,
-				RubricScores: QualityScores{
+				RubricScores: model.QualityScores{
 					ProblemSpecificity: 3, SolutionCompleteness: 3, ContextPortability: 3,
 					ReasoningTransparency: 3, TechnicalAccuracy: 3, VerificationEvidence: 3,
 					InnovationLevel: 3, CompositeScore: 3.0,
 				},
-				ClassifiedCategory: CategoryTactical,
+				ClassifiedCategory: model.CategoryTactical,
 			},
 		},
 		{
 			name: "empty patterns",
-			stage2: &Stage2Result{
+			stage2: &model.Stage2Result{
 				Passed: true, NoveltyScore: 0.5, EmbeddingDistance: 0.5,
-				RubricScores: QualityScores{
+				RubricScores: model.QualityScores{
 					ProblemSpecificity: 3, SolutionCompleteness: 3, ContextPortability: 3,
 					ReasoningTransparency: 3, TechnicalAccuracy: 3, VerificationEvidence: 3,
 					InnovationLevel: 3, CompositeScore: 3.0,
 				},
-				ClassifiedCategory: CategoryTactical,
+				ClassifiedCategory: model.CategoryTactical,
 				ClassifiedPatterns: []string{},
 			},
 		},
 		{
 			name: "max scores",
-			stage2: &Stage2Result{
+			stage2: &model.Stage2Result{
 				Passed: true, NoveltyScore: 1.0, EmbeddingDistance: 0.8,
-				RubricScores: QualityScores{
+				RubricScores: model.QualityScores{
 					ProblemSpecificity: 5, SolutionCompleteness: 5, ContextPortability: 5,
 					ReasoningTransparency: 5, TechnicalAccuracy: 5, VerificationEvidence: 5,
 					InnovationLevel: 5, CompositeScore: 5.0,
 				},
-				ClassifiedCategory: CategoryFoundational,
+				ClassifiedCategory: model.CategoryFoundational,
 				ClassifiedPatterns: []string{"BUILD/Backend/APIDesign"},
 			},
 		},
 		{
 			name: "min viable scores",
-			stage2: &Stage2Result{
+			stage2: &model.Stage2Result{
 				Passed: true, NoveltyScore: 0.05, EmbeddingDistance: 0.3,
-				RubricScores: QualityScores{
+				RubricScores: model.QualityScores{
 					ProblemSpecificity: 1, SolutionCompleteness: 1, ContextPortability: 1,
 					ReasoningTransparency: 1, TechnicalAccuracy: 1, VerificationEvidence: 1,
 					InnovationLevel: 1, CompositeScore: 1.0,
 				},
-				ClassifiedCategory: CategoryContextual,
+				ClassifiedCategory: model.CategoryContextual,
 			},
 		},
 	}

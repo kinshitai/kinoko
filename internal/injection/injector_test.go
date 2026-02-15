@@ -9,7 +9,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 )
 
@@ -50,11 +50,11 @@ type mockStore struct {
 	lastQ   storage.SkillQuery
 }
 
-func (m *mockStore) Put(_ context.Context, _ *extraction.SkillRecord, _ []byte) error { return nil }
-func (m *mockStore) Get(_ context.Context, _ string) (*extraction.SkillRecord, error) {
+func (m *mockStore) Put(_ context.Context, _ *model.SkillRecord, _ []byte) error { return nil }
+func (m *mockStore) Get(_ context.Context, _ string) (*model.SkillRecord, error) {
 	return nil, nil
 }
-func (m *mockStore) GetLatestByName(_ context.Context, _, _ string) (*extraction.SkillRecord, error) {
+func (m *mockStore) GetLatestByName(_ context.Context, _, _ string) (*model.SkillRecord, error) {
 	return nil, nil
 }
 func (m *mockStore) Query(_ context.Context, q storage.SkillQuery) ([]storage.ScoredSkill, error) {
@@ -63,7 +63,7 @@ func (m *mockStore) Query(_ context.Context, q storage.SkillQuery) ([]storage.Sc
 }
 func (m *mockStore) UpdateUsage(_ context.Context, _ string, _ string) error { return nil }
 func (m *mockStore) UpdateDecay(_ context.Context, _ string, _ float64) error { return nil }
-func (m *mockStore) ListByDecay(_ context.Context, _ string, _ int) ([]extraction.SkillRecord, error) {
+func (m *mockStore) ListByDecay(_ context.Context, _ string, _ int) ([]model.SkillRecord, error) {
 	return nil, nil
 }
 
@@ -89,7 +89,7 @@ func classifyJSON(intent, domain string, patterns []string) string {
 
 func makeSkill(id string, patterns []string, successCorr float64) storage.ScoredSkill {
 	return storage.ScoredSkill{
-		Skill: extraction.SkillRecord{
+		Skill: model.SkillRecord{
 			ID:                 id,
 			Patterns:           patterns,
 			SuccessCorrelation: successCorr,
@@ -119,7 +119,7 @@ func TestFullFlow(t *testing.T) {
 	}}
 
 	inj := newTestInjector(emb, store, llm, ew)
-	resp, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:     "build a REST API",
 		LibraryIDs: []string{"lib1"},
 		MaxSkills:  5,
@@ -157,7 +157,7 @@ func TestInjectionEventWriting(t *testing.T) {
 	}}
 
 	inj := newTestInjector(emb, store, llm, ew)
-	_, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	_, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "build something",
 		SessionID: "sess-42",
 		MaxSkills: 5,
@@ -186,7 +186,7 @@ func TestInjectionEventNotWrittenWithoutSessionID(t *testing.T) {
 	store := &mockStore{results: []storage.ScoredSkill{makeSkill("s1", nil, 0.5)}}
 
 	inj := newTestInjector(emb, store, llm, ew)
-	_, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	_, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "build",
 		SessionID: "", // no session ID
 		MaxSkills: 3,
@@ -207,7 +207,7 @@ func TestInjectionEventWriteError(t *testing.T) {
 
 	inj := newTestInjector(emb, store, llm, ew)
 	// Event write failure should not break injection.
-	resp, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "build",
 		SessionID: "sess-1",
 		MaxSkills: 3,
@@ -228,7 +228,7 @@ func TestEmbeddingFallback(t *testing.T) {
 	}}
 
 	inj := newTestInjector(emb, store, llm, nil)
-	resp, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "fix db connection",
 		MaxSkills: 3,
 	})
@@ -248,7 +248,7 @@ func TestNilEmbedder(t *testing.T) {
 	store := &mockStore{results: []storage.ScoredSkill{makeSkill("s1", nil, 0.5)}}
 
 	inj := New(nil, store, llm, nil, slog.Default())
-	resp, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "build something",
 		MaxSkills: 3,
 	})
@@ -268,7 +268,7 @@ func TestEmptyLibrary(t *testing.T) {
 	store := &mockStore{results: nil}
 
 	inj := newTestInjector(emb, store, llm, nil)
-	resp, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "build an API",
 		MaxSkills: 3,
 	})
@@ -289,7 +289,7 @@ func TestClassificationFailure(t *testing.T) {
 	store := &mockStore{results: []storage.ScoredSkill{makeSkill("s1", nil, 0.5)}}
 
 	inj := newTestInjector(emb, store, llm, nil)
-	resp, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "help",
 		MaxSkills: 3,
 	})
@@ -313,7 +313,7 @@ func TestMaxSkillsLimiting(t *testing.T) {
 	store := &mockStore{results: skills}
 
 	inj := newTestInjector(emb, store, llm, nil)
-	resp, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "build",
 		MaxSkills: 3,
 	})
@@ -339,7 +339,7 @@ func TestLibraryPriorityOrdering(t *testing.T) {
 	store := &mockStore{results: []storage.ScoredSkill{s2, s1}}
 
 	inj := newTestInjector(emb, store, llm, nil)
-	resp, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "build API",
 		MaxSkills: 5,
 	})
@@ -367,7 +367,7 @@ func TestDefaultMaxSkills(t *testing.T) {
 	store := &mockStore{results: skills}
 
 	inj := newTestInjector(emb, store, llm, nil)
-	resp, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "build",
 		MaxSkills: 0, // should default to 3
 	})
@@ -385,7 +385,7 @@ func TestStoreQueryError(t *testing.T) {
 	store := &mockStore{err: errors.New("database locked")}
 
 	inj := newTestInjector(emb, store, llm, nil)
-	_, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	_, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "build",
 		MaxSkills: 3,
 	})
@@ -403,7 +403,7 @@ func TestEmptyPrompt(t *testing.T) {
 	store := &mockStore{results: []storage.ScoredSkill{makeSkill("s1", nil, 0.5)}}
 
 	inj := newTestInjector(emb, store, llm, nil)
-	resp, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "",
 		MaxSkills: 3,
 	})
@@ -422,7 +422,7 @@ func TestDomainValidation(t *testing.T) {
 	store := &mockStore{results: nil}
 
 	inj := newTestInjector(emb, store, llm, nil)
-	resp, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "build an API in Go",
 		MaxSkills: 3,
 	})
@@ -441,7 +441,7 @@ func TestInvalidIntentDefaultsToBuild(t *testing.T) {
 	store := &mockStore{results: nil}
 
 	inj := newTestInjector(emb, store, llm, nil)
-	resp, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "do something",
 		MaxSkills: 3,
 	})
@@ -460,7 +460,7 @@ func TestMarkdownFencedJSON(t *testing.T) {
 	store := &mockStore{results: nil}
 
 	inj := newTestInjector(emb, store, llm, nil)
-	resp, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "fix rendering",
 		MaxSkills: 3,
 	})
@@ -485,7 +485,7 @@ func TestPatternValidationFiltering(t *testing.T) {
 	store := &mockStore{results: nil}
 
 	inj := newTestInjector(emb, store, llm, nil)
-	resp, err := inj.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
 		Prompt:    "build API",
 		MaxSkills: 3,
 	})

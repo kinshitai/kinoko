@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
 func testStore(t *testing.T) *SQLiteStore {
@@ -23,14 +23,14 @@ func testStore(t *testing.T) *SQLiteStore {
 	return s
 }
 
-func testSkill(id, name, lib string) *extraction.SkillRecord {
-	return &extraction.SkillRecord{
+func testSkill(id, name, lib string) *model.SkillRecord {
+	return &model.SkillRecord{
 		ID:          id,
 		Name:        name,
 		Version:     1,
 		LibraryID:   lib,
-		Category:    extraction.CategoryTactical,
-		Quality: extraction.QualityScores{
+		Category:    model.CategoryTactical,
+		Quality: model.QualityScores{
 			ProblemSpecificity:    4,
 			SolutionCompleteness:  4,
 			ContextPortability:    3,

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/mycelium-dev/mycelium/internal/decay"
-	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
 // --- mocks for scheduler tests ---
@@ -20,11 +20,11 @@ type schedMockQueue struct {
 	depthVal          int
 }
 
-func (q *schedMockQueue) Enqueue(_ context.Context, _ extraction.SessionRecord, _ []byte) error {
+func (q *schedMockQueue) Enqueue(_ context.Context, _ model.SessionRecord, _ []byte) error {
 	return nil
 }
 func (q *schedMockQueue) Claim(_ context.Context, _ string) (*QueueEntry, error) { return nil, nil }
-func (q *schedMockQueue) Complete(_ context.Context, _ string, _ *extraction.ExtractionResult) error {
+func (q *schedMockQueue) Complete(_ context.Context, _ string, _ *model.ExtractionResult) error {
 	return nil
 }
 func (q *schedMockQueue) Fail(_ context.Context, _ string, _ error) error         { return nil }
@@ -48,7 +48,7 @@ func (p *schedMockPool) Stats() PoolStats {
 
 type schedMockSkillReader struct{}
 
-func (r *schedMockSkillReader) ListByDecay(_ context.Context, _ string, _ int) ([]extraction.SkillRecord, error) {
+func (r *schedMockSkillReader) ListByDecay(_ context.Context, _ string, _ int) ([]model.SkillRecord, error) {
 	return nil, nil
 }
 

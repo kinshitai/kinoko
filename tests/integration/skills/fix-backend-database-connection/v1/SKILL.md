@@ -1,6 +1,6 @@
 ---
 name: fix-backend-database-connection
-id: 019c62f7-71b4-7402-a78d-e16655498418
+id: 019c6316-5968-7948-8998-775295e78f12
 version: 1
 category: tactical
 patterns:
@@ -8,7 +8,7 @@ patterns:
 extracted_by: pipeline-v1
 quality: 3.65
 confidence: 0.87
-source_session: sess-cei-1
+source_session: sess-real-pipe
 created: 2026-02-15
 ---
 
@@ -23,7 +23,7 @@ Category: tactical
 ## Solution
 
 ```
-unique extraction problem 1
+User asked to fix database connection pooling. Agent implemented retry logic.
 ```
 
 ## Why It Works

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 )
 
@@ -35,9 +35,9 @@ func setupQueue(t *testing.T) (*SQLiteQueue, string) {
 	return q, dataDir
 }
 
-func makeSession(id string) extraction.SessionRecord {
+func makeSession(id string) model.SessionRecord {
 	now := time.Now().UTC()
-	return extraction.SessionRecord{
+	return model.SessionRecord{
 		ID:              id,
 		StartedAt:       now.Add(-10 * time.Minute),
 		EndedAt:         now,
@@ -308,9 +308,9 @@ func TestComplete(t *testing.T) {
 	q.Enqueue(ctx, makeSession("sess-1"), []byte("log"))
 	q.Claim(ctx, "worker-1")
 
-	result := &extraction.ExtractionResult{
-		Status: extraction.StatusExtracted,
-		Skill:  &extraction.SkillRecord{ID: "skill-1"},
+	result := &model.ExtractionResult{
+		Status: model.StatusExtracted,
+		Skill:  &model.SkillRecord{ID: "skill-1"},
 	}
 	if err := q.Complete(ctx, "sess-1", result); err != nil {
 		t.Fatalf("complete: %v", err)

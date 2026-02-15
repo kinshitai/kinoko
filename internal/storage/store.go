@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 	_ "modernc.org/sqlite"
 )
 
@@ -41,19 +41,19 @@ const skillColumns = `id, name, version, parent_id, library_id, category,
 
 // SessionStore persists and updates session records.
 type SessionStore interface {
-	InsertSession(ctx context.Context, session *extraction.SessionRecord) error
-	UpdateSessionResult(ctx context.Context, session *extraction.SessionRecord) error
+	InsertSession(ctx context.Context, session *model.SessionRecord) error
+	UpdateSessionResult(ctx context.Context, session *model.SessionRecord) error
 }
 
 // SkillStore persists and retrieves skills.
 type SkillStore interface {
-	Put(ctx context.Context, skill *extraction.SkillRecord, body []byte) error
-	Get(ctx context.Context, id string) (*extraction.SkillRecord, error)
-	GetLatestByName(ctx context.Context, name string, libraryID string) (*extraction.SkillRecord, error)
+	Put(ctx context.Context, skill *model.SkillRecord, body []byte) error
+	Get(ctx context.Context, id string) (*model.SkillRecord, error)
+	GetLatestByName(ctx context.Context, name string, libraryID string) (*model.SkillRecord, error)
 	Query(ctx context.Context, q SkillQuery) ([]ScoredSkill, error)
 	UpdateUsage(ctx context.Context, id string, outcome string) error
 	UpdateDecay(ctx context.Context, id string, decayScore float64) error
-	ListByDecay(ctx context.Context, libraryID string, limit int) ([]extraction.SkillRecord, error)
+	ListByDecay(ctx context.Context, libraryID string, limit int) ([]model.SkillRecord, error)
 }
 
 // SkillQuery defines query parameters for skill search.
@@ -68,7 +68,7 @@ type SkillQuery struct {
 
 // ScoredSkill is a skill with match scores.
 type ScoredSkill struct {
-	Skill          extraction.SkillRecord
+	Skill          model.SkillRecord
 	PatternOverlap float64
 	CosineSim      float64
 	HistoricalRate float64
@@ -160,7 +160,7 @@ func (s *SQLiteStore) DB() *sql.DB {
 	return s.db
 }
 
-func (s *SQLiteStore) Put(ctx context.Context, skill *extraction.SkillRecord, body []byte) error {
+func (s *SQLiteStore) Put(ctx context.Context, skill *model.SkillRecord, body []byte) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -231,7 +231,7 @@ func (s *SQLiteStore) Put(ctx context.Context, skill *extraction.SkillRecord, bo
 	return nil
 }
 
-func (s *SQLiteStore) Get(ctx context.Context, id string) (*extraction.SkillRecord, error) {
+func (s *SQLiteStore) Get(ctx context.Context, id string) (*model.SkillRecord, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT `+skillColumns+` FROM skills WHERE id = ?`, id)
 	skill, err := scanSkillFrom(row)
 	if err != nil {
@@ -251,7 +251,7 @@ func (s *SQLiteStore) Get(ctx context.Context, id string) (*extraction.SkillReco
 	return skill, nil
 }
 
-func (s *SQLiteStore) GetLatestByName(ctx context.Context, name string, libraryID string) (*extraction.SkillRecord, error) {
+func (s *SQLiteStore) GetLatestByName(ctx context.Context, name string, libraryID string) (*model.SkillRecord, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT `+skillColumns+` FROM skills WHERE name = ? AND library_id = ? ORDER BY version DESC LIMIT 1`,
 		name, libraryID)
@@ -302,7 +302,7 @@ func (s *SQLiteStore) Query(ctx context.Context, q SkillQuery) ([]ScoredSkill, e
 	}
 	defer rows.Close()
 
-	var candidates []extraction.SkillRecord
+	var candidates []model.SkillRecord
 	var candidateIDs []string
 	for rows.Next() {
 		skill, err := scanSkillFrom(rows)
@@ -466,8 +466,8 @@ func (s *SQLiteStore) UpdateInjectionOutcome(ctx context.Context, sessionID stri
 }
 
 // GetSession retrieves a session record by ID.
-func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*extraction.SessionRecord, error) {
-	var sr extraction.SessionRecord
+func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*model.SessionRecord, error) {
+	var sr model.SessionRecord
 	var extractedSkillID sql.NullString
 	var status string
 	var logContentPath, lastError, claimedBy string
@@ -492,7 +492,7 @@ func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*extraction.Se
 		}
 		return nil, fmt.Errorf("get session %s: %w", id, err)
 	}
-	sr.ExtractionStatus = extraction.ExtractionStatus(status)
+	sr.ExtractionStatus = model.ExtractionStatus(status)
 	if extractedSkillID.Valid {
 		sr.ExtractedSkillID = extractedSkillID.String
 	}
@@ -501,7 +501,7 @@ func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*extraction.Se
 }
 
 // InsertSession inserts a session record into the sessions table.
-func (s *SQLiteStore) InsertSession(ctx context.Context, session *extraction.SessionRecord) error {
+func (s *SQLiteStore) InsertSession(ctx context.Context, session *model.SessionRecord) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO sessions (
 			id, started_at, ended_at, duration_minutes, tool_call_count, error_count,
@@ -523,7 +523,7 @@ func (s *SQLiteStore) InsertSession(ctx context.Context, session *extraction.Ses
 }
 
 // UpdateSessionResult updates extraction results on an existing session row.
-func (s *SQLiteStore) UpdateSessionResult(ctx context.Context, session *extraction.SessionRecord) error {
+func (s *SQLiteStore) UpdateSessionResult(ctx context.Context, session *model.SessionRecord) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE sessions SET
 			extraction_status = ?,
@@ -566,7 +566,7 @@ func (s *SQLiteStore) UpdateDecay(ctx context.Context, id string, decayScore flo
 	return nil
 }
 
-func (s *SQLiteStore) ListByDecay(ctx context.Context, libraryID string, limit int) ([]extraction.SkillRecord, error) {
+func (s *SQLiteStore) ListByDecay(ctx context.Context, libraryID string, limit int) ([]model.SkillRecord, error) {
 	query := `SELECT ` + skillColumns + ` FROM skills WHERE library_id = ? ORDER BY decay_score ASC`
 	args := []any{libraryID}
 	if limit > 0 {
@@ -579,7 +579,7 @@ func (s *SQLiteStore) ListByDecay(ctx context.Context, libraryID string, limit i
 	}
 	defer rows.Close()
 
-	var skills []extraction.SkillRecord
+	var skills []model.SkillRecord
 	for rows.Next() {
 		skill, err := scanSkillFrom(rows)
 		if err != nil {
@@ -598,8 +598,8 @@ type scanner interface {
 }
 
 // scanSkillFrom scans a skill from any scanner (Row or Rows).
-func scanSkillFrom(sc scanner) (*extraction.SkillRecord, error) {
-	var s extraction.SkillRecord
+func scanSkillFrom(sc scanner) (*model.SkillRecord, error) {
+	var s model.SkillRecord
 	var parentID, sourceSessionID sql.NullString
 	var lastInjected sql.NullTime
 	err := sc.Scan(

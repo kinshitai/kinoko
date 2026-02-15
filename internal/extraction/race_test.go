@@ -1,6 +1,7 @@
 package extraction
 
 import (
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"context"
 	"fmt"
 	"sync"
@@ -36,7 +37,7 @@ func TestBug_PipelineSamplingRace(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			for i := 0; i < callsPerGoroutine; i++ {
-				sess := SessionRecord{
+				sess := model.SessionRecord{
 					ID:        fmt.Sprintf("race-sess-%d-%d", id, i),
 					LibraryID: "lib-race",
 				}

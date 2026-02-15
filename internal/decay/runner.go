@@ -8,7 +8,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
 // Config configures the decay system.
@@ -57,7 +57,7 @@ func ValidateConfig(cfg Config) error {
 type SkillReader interface {
 	// ListByDecay returns skills ordered by decay score.
 	// Pass limit=0 to retrieve all skills (no limit).
-	ListByDecay(ctx context.Context, libraryID string, limit int) ([]extraction.SkillRecord, error)
+	ListByDecay(ctx context.Context, libraryID string, limit int) ([]model.SkillRecord, error)
 }
 
 // SkillWriter writes updated decay scores.
@@ -177,20 +177,20 @@ func (r *Runner) SetNow(fn func() time.Time) {
 	r.now = fn
 }
 
-func (r *Runner) halfLifeDays(cat extraction.SkillCategory) int {
+func (r *Runner) halfLifeDays(cat model.SkillCategory) int {
 	switch cat {
-	case extraction.CategoryFoundational:
+	case model.CategoryFoundational:
 		return r.cfg.FoundationalHalfLifeDays
-	case extraction.CategoryTactical:
+	case model.CategoryTactical:
 		return r.cfg.TacticalHalfLifeDays
-	case extraction.CategoryContextual:
+	case model.CategoryContextual:
 		return r.cfg.ContextualHalfLifeDays
 	default:
 		return r.cfg.ContextualHalfLifeDays
 	}
 }
 
-func (r *Runner) shouldRescue(s *extraction.SkillRecord, now time.Time) bool {
+func (r *Runner) shouldRescue(s *model.SkillRecord, now time.Time) bool {
 	if s.LastInjectedAt.IsZero() {
 		return false
 	}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/mycelium-dev/mycelium/internal/decay"
 	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/injection"
 	"github.com/mycelium-dev/mycelium/internal/metrics"
 	"github.com/mycelium-dev/mycelium/internal/storage"
@@ -59,7 +60,7 @@ func TestFullExtractionFlow(t *testing.T) {
 	}
 
 	// Verify extraction succeeded.
-	if result.Status != extraction.StatusExtracted {
+	if result.Status != model.StatusExtracted {
 		t.Fatalf("status = %q, want extracted (error: %s)", result.Status, result.Error)
 	}
 	if result.Skill == nil {
@@ -91,7 +92,7 @@ func TestFullExtractionFlow(t *testing.T) {
 	if dbSkill.ExtractedBy != "integration-test-v1" {
 		t.Errorf("extracted_by = %q", dbSkill.ExtractedBy)
 	}
-	if dbSkill.Category != extraction.CategoryTactical {
+	if dbSkill.Category != model.CategoryTactical {
 		t.Errorf("category = %q, want tactical", dbSkill.Category)
 	}
 	if dbSkill.Quality.ProblemSpecificity != 4 {
@@ -135,14 +136,14 @@ func TestFullInjectionFlow(t *testing.T) {
 	embedder := newPredictableEmbedder(3)
 
 	// Seed two skills into the DB.
-	skill1 := &extraction.SkillRecord{
+	skill1 := &model.SkillRecord{
 		ID:        "skill-inj-1",
 		Name:      "fix-db-conn",
 		Version:   1,
 		LibraryID: "test-lib",
-		Category:  extraction.CategoryTactical,
+		Category:  model.CategoryTactical,
 		Patterns:  []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.85,
@@ -153,14 +154,14 @@ func TestFullInjectionFlow(t *testing.T) {
 		ExtractedBy:        "test",
 		FilePath:           "skills/fix-db-conn/SKILL.md",
 	}
-	skill2 := &extraction.SkillRecord{
+	skill2 := &model.SkillRecord{
 		ID:        "skill-inj-2",
 		Name:      "build-api",
 		Version:   1,
 		LibraryID: "test-lib",
-		Category:  extraction.CategoryFoundational,
+		Category:  model.CategoryFoundational,
 		Patterns:  []string{"BUILD/Backend/APIDesign"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 3, SolutionCompleteness: 3, ContextPortability: 4,
 			ReasoningTransparency: 3, TechnicalAccuracy: 3, VerificationEvidence: 3,
 			InnovationLevel: 2, CompositeScore: 3.0, CriticConfidence: 0.7,
@@ -186,7 +187,7 @@ func TestFullInjectionFlow(t *testing.T) {
 
 	inj := injection.New(embedder, store, llm, store, testLogger())
 
-	resp, err := inj.Inject(ctx, extraction.InjectionRequest{
+	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix database connection pooling issue",
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  5,
@@ -229,14 +230,14 @@ func TestFeedbackLoop(t *testing.T) {
 	embedder := newPredictableEmbedder(3)
 
 	// Step 1: Seed a skill.
-	skill := &extraction.SkillRecord{
+	skill := &model.SkillRecord{
 		ID:        "skill-fb-1",
 		Name:      "fix-auth-flow",
 		Version:   1,
 		LibraryID: "test-lib",
-		Category:  extraction.CategoryTactical,
+		Category:  model.CategoryTactical,
 		Patterns:  []string{"FIX/Backend/AuthFlow"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -299,26 +300,26 @@ func TestDecayCycle(t *testing.T) {
 	skills := []struct {
 		id       string
 		name     string
-		category extraction.SkillCategory
+		category model.SkillCategory
 		age      int // days since last injection
 	}{
-		{"skill-d1", "foundational-skill", extraction.CategoryFoundational, 365}, // 1 half-life
-		{"skill-d2", "tactical-skill", extraction.CategoryTactical, 90},          // 1 half-life
-		{"skill-d3", "contextual-skill", extraction.CategoryContextual, 180},     // 1 half-life
-		{"skill-d4", "fresh-tactical", extraction.CategoryTactical, 1},           // barely aged
-		{"skill-d5", "nearly-dead", extraction.CategoryTactical, 900},            // very old
+		{"skill-d1", "foundational-skill", model.CategoryFoundational, 365}, // 1 half-life
+		{"skill-d2", "tactical-skill", model.CategoryTactical, 90},          // 1 half-life
+		{"skill-d3", "contextual-skill", model.CategoryContextual, 180},     // 1 half-life
+		{"skill-d4", "fresh-tactical", model.CategoryTactical, 1},           // barely aged
+		{"skill-d5", "nearly-dead", model.CategoryTactical, 900},            // very old
 	}
 
 	for _, s := range skills {
 		lastInjected := now.AddDate(0, 0, -s.age)
-		sk := &extraction.SkillRecord{
+		sk := &model.SkillRecord{
 			ID:        s.id,
 			Name:      s.name,
 			Version:   1,
 			LibraryID: "test-lib",
 			Category:  s.category,
 			Patterns:  []string{"FIX/Backend/DatabaseConnection"},
-			Quality: extraction.QualityScores{
+			Quality: model.QualityScores{
 				ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 				ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 				InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -390,14 +391,14 @@ func TestABTestFlow(t *testing.T) {
 	embedder := newPredictableEmbedder(3)
 
 	// Seed a skill.
-	sk := &extraction.SkillRecord{
+	sk := &model.SkillRecord{
 		ID:        "skill-ab-1",
 		Name:      "fix-deploy",
 		Version:   1,
 		LibraryID: "test-lib",
-		Category:  extraction.CategoryTactical,
+		Category:  model.CategoryTactical,
 		Patterns:  []string{"FIX/DevOps/DeploymentFailure"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -430,7 +431,7 @@ func TestABTestFlow(t *testing.T) {
 	// Run treatment: force rand to return > controlRatio.
 	abInj.SetRandFunc(func() float64 { return 0.9 }) // treatment
 
-	respT, err := abInj.Inject(ctx, extraction.InjectionRequest{
+	respT, err := abInj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix deployment failure",
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  5,
@@ -446,7 +447,7 @@ func TestABTestFlow(t *testing.T) {
 	// Run control: force rand to return < controlRatio.
 	abInj.SetRandFunc(func() float64 { return 0.1 }) // control
 
-	respC, err := abInj.Inject(ctx, extraction.InjectionRequest{
+	respC, err := abInj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix deployment failure",
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  5,
@@ -499,7 +500,7 @@ func TestRejectionFlows(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if result.Status != extraction.StatusRejected {
+		if result.Status != model.StatusRejected {
 			t.Fatalf("status = %q, want rejected", result.Status)
 		}
 		if result.Stage1 == nil || result.Stage1.Passed {
@@ -543,7 +544,7 @@ func TestRejectionFlows(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if result.Status != extraction.StatusRejected {
+		if result.Status != model.StatusRejected {
 			t.Fatalf("status = %q, want rejected", result.Status)
 		}
 		if result.Stage3 == nil || result.Stage3.Passed {
@@ -595,12 +596,12 @@ func TestEmbeddingFailureDegradation(t *testing.T) {
 	}
 
 	// Should be StatusError since embedding failed in Stage2.
-	if result.Status != extraction.StatusError {
+	if result.Status != model.StatusError {
 		// Stage2 depends on embedding — if embed fails, Score returns error.
 		// Pipeline wraps this as StatusError.
 		t.Errorf("status = %q, want error (embedding failure should propagate as stage2 error)", result.Status)
 	}
-	if result.Status == extraction.StatusError && result.Error == "" {
+	if result.Status == model.StatusError && result.Error == "" {
 		t.Error("expected error message in result")
 	}
 
@@ -612,11 +613,11 @@ func TestEmbeddingFailureDegradation(t *testing.T) {
 
 	// Test injection fallback: with embedding failure, injection uses pattern-only mode.
 	// Seed a skill for injection.
-	sk := &extraction.SkillRecord{
+	sk := &model.SkillRecord{
 		ID: "skill-fallback", Name: "fix-db", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -635,7 +636,7 @@ func TestEmbeddingFailureDegradation(t *testing.T) {
 	}
 	inj := injection.New(nil, store, classifyLLM, nil, testLogger()) // nil embedder = degraded
 
-	resp, err := inj.Inject(ctx, extraction.InjectionRequest{
+	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix db connection",
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  3,
@@ -676,7 +677,7 @@ func TestStatsAccuracy(t *testing.T) {
 	// causing duplicate errors. This is realistic — each unique skill needs unique patterns.
 	sess0 := goodSession("sess-stats-good-0", "test-lib")
 	result0, _ := pipeline.Extract(ctx, sess0, []byte("fix database connection pooling"))
-	if result0.Status != extraction.StatusExtracted {
+	if result0.Status != model.StatusExtracted {
 		t.Fatalf("good session 0: status=%q error=%s", result0.Status, result0.Error)
 	}
 	insertSession(t, store.DB(), sess0, result0)
@@ -718,14 +719,14 @@ func TestStatsAccuracy(t *testing.T) {
 }
 
 // insertSession inserts a session record into the sessions table for metrics.
-func insertSession(t *testing.T, db *sql.DB, sess extraction.SessionRecord, result *extraction.ExtractionResult) {
+func insertSession(t *testing.T, db *sql.DB, sess model.SessionRecord, result *model.ExtractionResult) {
 	t.Helper()
 	status := string(result.Status)
 	rejStage := 0
 	rejReason := ""
 	skillID := ""
 
-	if result.Status == extraction.StatusRejected {
+	if result.Status == model.StatusRejected {
 		if result.Stage1 != nil && !result.Stage1.Passed {
 			rejStage = 1
 			rejReason = result.Stage1.Reason
@@ -765,11 +766,11 @@ func TestDecayRescue(t *testing.T) {
 
 	now := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
 
-	sk := &extraction.SkillRecord{
+	sk := &model.SkillRecord{
 		ID: "skill-rescue", Name: "rescue-me", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -831,11 +832,11 @@ func TestMultipleSkillsQueryOrdering(t *testing.T) {
 		{"mid-quality", 3.5, 0.3, []string{"FIX/Backend/DatabaseConnection"}},
 		{"high-quality", 4.5, 0.8, []string{"FIX/Backend/DatabaseConnection"}},
 	} {
-		sk := &extraction.SkillRecord{
+		sk := &model.SkillRecord{
 			ID: fmt.Sprintf("skill-order-%d", i), Name: tc.name, Version: 1,
-			LibraryID: "test-lib", Category: extraction.CategoryTactical,
+			LibraryID: "test-lib", Category: model.CategoryTactical,
 			Patterns: tc.patterns,
-			Quality: extraction.QualityScores{
+			Quality: model.QualityScores{
 				ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 				ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 				InnovationLevel: 3, CompositeScore: tc.composite, CriticConfidence: 0.8,
@@ -893,10 +894,10 @@ func TestVersionChainIntegrity(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	v1 := &extraction.SkillRecord{
+	v1 := &model.SkillRecord{
 		ID: "v1-id", Name: "fix-db", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
-		Quality: extraction.QualityScores{
+		Category: model.CategoryTactical,
+		Quality: model.QualityScores{
 			ProblemSpecificity: 3, SolutionCompleteness: 3, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 3, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.0, CriticConfidence: 0.7,
@@ -907,10 +908,10 @@ func TestVersionChainIntegrity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	v2 := &extraction.SkillRecord{
+	v2 := &model.SkillRecord{
 		ID: "v2-id", Name: "fix-db", Version: 2, ParentID: "v1-id", LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
-		Quality: extraction.QualityScores{
+		Category: model.CategoryTactical,
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -954,11 +955,11 @@ func TestDeadSkillFiltering(t *testing.T) {
 	embedder := newPredictableEmbedder(3)
 
 	// One alive skill, one dead.
-	alive := &extraction.SkillRecord{
+	alive := &model.SkillRecord{
 		ID: "alive", Name: "alive-skill", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -968,11 +969,11 @@ func TestDeadSkillFiltering(t *testing.T) {
 		ExtractedBy: "test",
 		FilePath:    "skills/alive/SKILL.md",
 	}
-	dead := &extraction.SkillRecord{
+	dead := &model.SkillRecord{
 		ID: "dead", Name: "dead-skill", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -991,7 +992,7 @@ func TestDeadSkillFiltering(t *testing.T) {
 	}
 	inj := injection.New(embedder, store, llm, store, testLogger())
 
-	resp, err := inj.Inject(ctx, extraction.InjectionRequest{
+	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix db",
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  10,
@@ -1021,11 +1022,11 @@ func TestSkillPutAtomicity(t *testing.T) {
 	ctx := context.Background()
 
 	// First insert succeeds.
-	sk1 := &extraction.SkillRecord{
+	sk1 := &model.SkillRecord{
 		ID: "atom-1", Name: "atomic-skill", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -1037,11 +1038,11 @@ func TestSkillPutAtomicity(t *testing.T) {
 	}
 
 	// Second insert with same name+version+library should fail (unique constraint).
-	sk2 := &extraction.SkillRecord{
+	sk2 := &model.SkillRecord{
 		ID: "atom-2", Name: "atomic-skill", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"BUILD/Backend/APIDesign"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 3, SolutionCompleteness: 3, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 3, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.0, CriticConfidence: 0.7,
@@ -1111,7 +1112,7 @@ func TestConcurrentExtractions(t *testing.T) {
 				errs <- err
 				return
 			}
-			if result.Status == extraction.StatusError {
+			if result.Status == model.StatusError {
 				errs <- fmt.Errorf("session %d: %s", idx, result.Error)
 				return
 			}
@@ -1156,10 +1157,10 @@ func TestSchemaConstraints(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("invalid category rejected", func(t *testing.T) {
-		sk := &extraction.SkillRecord{
+		sk := &model.SkillRecord{
 			ID: "bad-cat", Name: "bad-category", Version: 1, LibraryID: "test-lib",
-			Category: extraction.SkillCategory("invalid"),
-			Quality: extraction.QualityScores{
+			Category: model.SkillCategory("invalid"),
+			Quality: model.QualityScores{
 				ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 				ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 				InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -1173,10 +1174,10 @@ func TestSchemaConstraints(t *testing.T) {
 	})
 
 	t.Run("quality score out of range rejected", func(t *testing.T) {
-		sk := &extraction.SkillRecord{
+		sk := &model.SkillRecord{
 			ID: "bad-score", Name: "bad-score", Version: 1, LibraryID: "test-lib",
-			Category: extraction.CategoryTactical,
-			Quality: extraction.QualityScores{
+			Category: model.CategoryTactical,
+			Quality: model.QualityScores{
 				ProblemSpecificity: 10, // out of range!
 				SolutionCompleteness: 4, ContextPortability: 3,
 				ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
@@ -1191,10 +1192,10 @@ func TestSchemaConstraints(t *testing.T) {
 	})
 
 	t.Run("confidence out of range rejected", func(t *testing.T) {
-		sk := &extraction.SkillRecord{
+		sk := &model.SkillRecord{
 			ID: "bad-conf", Name: "bad-conf", Version: 1, LibraryID: "test-lib",
-			Category: extraction.CategoryTactical,
-			Quality: extraction.QualityScores{
+			Category: model.CategoryTactical,
+			Quality: model.QualityScores{
 				ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 				ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 				InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 1.5, // out of range!
@@ -1247,7 +1248,7 @@ func TestSessionPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != extraction.StatusExtracted {
+	if result.Status != model.StatusExtracted {
 		t.Fatalf("status = %q, want extracted", result.Status)
 	}
 
@@ -1271,7 +1272,7 @@ func TestSessionPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rejResult.Status != extraction.StatusRejected {
+	if rejResult.Status != model.StatusRejected {
 		t.Fatalf("status = %q, want rejected", rejResult.Status)
 	}
 
@@ -1305,11 +1306,11 @@ func TestEmbeddingCosineSimilarityE2E(t *testing.T) {
 
 	// Seed a skill WITH embedding.
 	vec := embedder.deterministicVector("fix database connection")
-	sk := &extraction.SkillRecord{
+	sk := &model.SkillRecord{
 		ID: "skill-cos-1", Name: "fix-db-conn", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -1329,7 +1330,7 @@ func TestEmbeddingCosineSimilarityE2E(t *testing.T) {
 	}
 	inj := injection.New(embedder, store, llm, store, testLogger())
 
-	resp, err := inj.Inject(ctx, extraction.InjectionRequest{
+	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix database connection", // same text = same embedding = cosine 1.0
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  5,
@@ -1348,7 +1349,7 @@ func TestEmbeddingCosineSimilarityE2E(t *testing.T) {
 	}
 
 	// Now inject with a DIFFERENT prompt.
-	resp2, err := inj.Inject(ctx, extraction.InjectionRequest{
+	resp2, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "build REST API design patterns",
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  5,
@@ -1377,11 +1378,11 @@ func TestABEventDeduplication(t *testing.T) {
 	embedder := newPredictableEmbedder(3)
 
 	// Seed a skill.
-	sk := &extraction.SkillRecord{
+	sk := &model.SkillRecord{
 		ID: "skill-dedup-1", Name: "fix-deploy", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/DevOps/DeploymentFailure"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -1407,7 +1408,7 @@ func TestABEventDeduplication(t *testing.T) {
 
 	abInj.SetRandFunc(func() float64 { return 0.9 }) // treatment
 
-	_, err := abInj.Inject(ctx, extraction.InjectionRequest{
+	_, err := abInj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix deployment failure",
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  5,
@@ -1472,7 +1473,7 @@ func TestHumanReviewSampling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != extraction.StatusExtracted {
+	if result.Status != model.StatusExtracted {
 		t.Fatalf("status = %q, want extracted", result.Status)
 	}
 
@@ -1524,14 +1525,14 @@ func TestStatsThroughPipeline(t *testing.T) {
 	// 1 good extraction.
 	sess1 := goodSession("sess-sp-1", "test-lib")
 	r1, _ := pipeline.Extract(ctx, sess1, []byte("fix database connection pooling"))
-	if r1.Status != extraction.StatusExtracted {
+	if r1.Status != model.StatusExtracted {
 		t.Fatalf("expected extracted, got %q: %s", r1.Status, r1.Error)
 	}
 
 	// 1 rejection at stage1.
 	sess2 := shortSession("sess-sp-2", "test-lib")
 	r2, _ := pipeline.Extract(ctx, sess2, []byte("tiny"))
-	if r2.Status != extraction.StatusRejected {
+	if r2.Status != model.StatusRejected {
 		t.Fatalf("expected rejected, got %q", r2.Status)
 	}
 
@@ -1568,11 +1569,11 @@ func TestConcurrentExtractionAndInjection(t *testing.T) {
 	embedder := newPredictableEmbedder(3)
 
 	// Pre-seed a skill for injection to find.
-	sk := &extraction.SkillRecord{
+	sk := &model.SkillRecord{
 		ID: "pre-seed-1", Name: "pre-seeded", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -1612,7 +1613,7 @@ func TestConcurrentExtractionAndInjection(t *testing.T) {
 			emb := newPredictableEmbedder(3)
 			llm := &predictableLLM{classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"})}
 			inj := injection.New(emb, store, llm, store, testLogger())
-			_, err := inj.Inject(ctx, extraction.InjectionRequest{
+			_, err := inj.Inject(ctx, model.InjectionRequest{
 				Prompt:     "fix database issue",
 				LibraryIDs: []string{"test-lib"},
 				MaxSkills:  3,

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
 // TestBug_UnboundedINClause tests the P1 issue where loadPatternsMulti and
@@ -90,7 +90,7 @@ func TestDuplicateSessionInsert(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 
-	sess := &extraction.SessionRecord{
+	sess := &model.SessionRecord{
 		ID:               "sess-dup-1",
 		StartedAt:        time.Now(),
 		EndedAt:          time.Now(),
@@ -101,7 +101,7 @@ func TestDuplicateSessionInsert(t *testing.T) {
 		ErrorRate:        0.0,
 		HasSuccessfulExec: true,
 		LibraryID:        "default",
-		ExtractionStatus: extraction.StatusPending,
+		ExtractionStatus: model.StatusPending,
 	}
 
 	if err := s.InsertSession(ctx, sess); err != nil {
@@ -122,7 +122,7 @@ func TestSessionInsertAndGet(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 
-	sess := &extraction.SessionRecord{
+	sess := &model.SessionRecord{
 		ID:               "sess-ig-1",
 		StartedAt:        time.Now().UTC().Truncate(time.Second),
 		EndedAt:          time.Now().UTC().Truncate(time.Second),
@@ -136,7 +136,7 @@ func TestSessionInsertAndGet(t *testing.T) {
 		AgentModel:       "gpt-4",
 		UserID:           "user-1",
 		LibraryID:        "lib-1",
-		ExtractionStatus: extraction.StatusPending,
+		ExtractionStatus: model.StatusPending,
 	}
 
 	if err := s.InsertSession(ctx, sess); err != nil {
@@ -150,7 +150,7 @@ func TestSessionInsertAndGet(t *testing.T) {
 	if got.DurationMinutes != 12.5 {
 		t.Errorf("duration = %f, want 12.5", got.DurationMinutes)
 	}
-	if got.ExtractionStatus != extraction.StatusPending {
+	if got.ExtractionStatus != model.StatusPending {
 		t.Errorf("status = %q, want pending", got.ExtractionStatus)
 	}
 }

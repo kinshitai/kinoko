@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 )
 
@@ -19,9 +19,9 @@ var ErrBackpressure = fmt.Errorf("queue backpressure: depth exceeds critical thr
 
 // SessionQueue manages the extraction work queue.
 type SessionQueue interface {
-	Enqueue(ctx context.Context, session extraction.SessionRecord, logContent []byte) error
+	Enqueue(ctx context.Context, session model.SessionRecord, logContent []byte) error
 	Claim(ctx context.Context, workerID string) (*QueueEntry, error)
-	Complete(ctx context.Context, sessionID string, result *extraction.ExtractionResult) error
+	Complete(ctx context.Context, sessionID string, result *model.ExtractionResult) error
 	Fail(ctx context.Context, sessionID string, err error) error
 	FailPermanent(ctx context.Context, sessionID string, err error) error
 	Depth(ctx context.Context) (int, error)
@@ -58,7 +58,7 @@ func (q *SQLiteQueue) queueDir() string {
 	return filepath.Join(q.dataDir, "queue")
 }
 
-func (q *SQLiteQueue) Enqueue(ctx context.Context, session extraction.SessionRecord, logContent []byte) error {
+func (q *SQLiteQueue) Enqueue(ctx context.Context, session model.SessionRecord, logContent []byte) error {
 	// Write log content to disk first (outside transaction to avoid holding lock during I/O).
 	dir := q.queueDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -69,7 +69,7 @@ func (q *SQLiteQueue) Enqueue(ctx context.Context, session extraction.SessionRec
 		return fmt.Errorf("write log file: %w", err)
 	}
 
-	session.ExtractionStatus = extraction.StatusQueued
+	session.ExtractionStatus = model.StatusQueued
 	session.LogPath = logPath
 
 	// Depth check + INSERT in a single IMMEDIATE transaction to prevent TOCTOU race.
@@ -104,7 +104,7 @@ func (q *SQLiteQueue) Enqueue(ctx context.Context, session extraction.SessionRec
 		session.ID, session.StartedAt, session.EndedAt, session.DurationMinutes,
 		session.ToolCallCount, session.ErrorCount, session.MessageCount, session.ErrorRate,
 		session.HasSuccessfulExec, session.TokensUsed, session.AgentModel,
-		session.UserID, session.LibraryID, string(extraction.StatusQueued),
+		session.UserID, session.LibraryID, string(model.StatusQueued),
 		session.RejectedAtStage, session.RejectionReason,
 		nil, logPath,
 	)
@@ -150,11 +150,11 @@ func (q *SQLiteQueue) Claim(ctx context.Context, workerID string) (*QueueEntry, 
 	return &entry, nil
 }
 
-func (q *SQLiteQueue) Complete(ctx context.Context, sessionID string, result *extraction.ExtractionResult) error {
+func (q *SQLiteQueue) Complete(ctx context.Context, sessionID string, result *model.ExtractionResult) error {
 	db := q.store.DB()
-	status := extraction.StatusRejected
-	if result.Status == extraction.StatusExtracted {
-		status = extraction.StatusExtracted
+	status := model.StatusRejected
+	if result.Status == model.StatusExtracted {
+		status = model.StatusExtracted
 	}
 
 	var skillID interface{}

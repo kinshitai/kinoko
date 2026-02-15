@@ -11,20 +11,21 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
 // Compile-time interface check.
-var _ Extractor = (*Pipeline)(nil)
+var _ model.Extractor = (*Pipeline)(nil)
 
 // SkillWriter persists a skill record and its SKILL.md body.
 type SkillWriter interface {
-	Put(ctx context.Context, skill *SkillRecord, body []byte) error
+	Put(ctx context.Context, skill *model.SkillRecord, body []byte) error
 }
 
 // SessionWriter persists and updates session records.
 type SessionWriter interface {
-	InsertSession(ctx context.Context, session *SessionRecord) error
-	UpdateSessionResult(ctx context.Context, session *SessionRecord) error
+	InsertSession(ctx context.Context, session *model.SessionRecord) error
+	UpdateSessionResult(ctx context.Context, session *model.SessionRecord) error
 }
 
 // HumanReviewWriter writes extraction results selected for human review.
@@ -40,7 +41,7 @@ type SkillEmbedder interface {
 // RandIntn returns a random int in [0, n). Injectable for testing.
 type RandIntn func(n int) int
 
-// Pipeline implements Extractor by wiring Stage1 → Stage2 → Stage3 → SkillWriter.
+// Pipeline implements model.Extractor by wiring Stage1 → Stage2 → Stage3 → SkillWriter.
 type Pipeline struct {
 	stage1     Stage1Filter
 	stage2     Stage2Scorer
@@ -125,9 +126,9 @@ func cryptoRandIntn(n int) int {
 }
 
 // Extract runs the full extraction pipeline on a session.
-func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content []byte) (*ExtractionResult, error) {
+func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, content []byte) (*model.ExtractionResult, error) {
 	start := time.Now()
-	result := &ExtractionResult{
+	result := &model.ExtractionResult{
 		SessionID:   session.ID,
 		ProcessedAt: start,
 	}
@@ -136,7 +137,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 
 	// Persist session before extraction begins.
 	if p.sessions != nil {
-		session.ExtractionStatus = StatusPending
+		session.ExtractionStatus = model.StatusPending
 		if err := p.sessions.InsertSession(ctx, &session); err != nil {
 			p.log.Error("failed to insert session", "session_id", session.ID, "error", err)
 			// Non-fatal: continue extraction even if session persistence fails.
@@ -151,7 +152,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 	result.Stage1 = s1
 
 	if !s1.Passed {
-		result.Status = StatusRejected
+		result.Status = model.StatusRejected
 		result.DurationMs = time.Since(start).Milliseconds()
 		p.log.Info("pipeline reject",
 			"session_id", session.ID,
@@ -172,7 +173,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 	s2, err := p.stage2.Score(ctx, session, content)
 	s2Ms := time.Since(s2Start).Milliseconds()
 	if err != nil {
-		result.Status = StatusError
+		result.Status = model.StatusError
 		result.Error = fmt.Sprintf("stage2 [session=%s]: %v", session.ID, err)
 		result.DurationMs = time.Since(start).Milliseconds()
 		p.log.Error("pipeline error",
@@ -189,7 +190,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 	result.Stage2 = s2
 
 	if !s2.Passed {
-		result.Status = StatusRejected
+		result.Status = model.StatusRejected
 		result.DurationMs = time.Since(start).Milliseconds()
 		p.log.Info("pipeline reject",
 			"session_id", session.ID,
@@ -210,7 +211,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 	s3, err := p.stage3.Evaluate(ctx, session, content, s2)
 	s3Ms := time.Since(s3Start).Milliseconds()
 	if err != nil {
-		result.Status = StatusError
+		result.Status = model.StatusError
 		result.Error = fmt.Sprintf("stage3 [session=%s]: %v", session.ID, err)
 		result.DurationMs = time.Since(start).Milliseconds()
 		p.log.Error("pipeline error",
@@ -227,7 +228,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 	result.Stage3 = s3
 
 	if !s3.Passed {
-		result.Status = StatusRejected
+		result.Status = model.StatusRejected
 		result.DurationMs = time.Since(start).Milliseconds()
 		p.log.Info("pipeline reject",
 			"session_id", session.ID,
@@ -247,7 +248,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 	skillID := uuid.Must(uuid.NewV7()).String()
 	now := time.Now()
 
-	skill := &SkillRecord{
+	skill := &model.SkillRecord{
 		ID:              skillID,
 		Name:            skillName,
 		Version:         1,
@@ -277,7 +278,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 
 	storeStart := time.Now()
 	if err := p.writer.Put(ctx, skill, body); err != nil {
-		result.Status = StatusError
+		result.Status = model.StatusError
 		result.Error = fmt.Sprintf("store [session=%s]: %v", session.ID, err)
 		result.DurationMs = time.Since(start).Milliseconds()
 		p.log.Error("pipeline error",
@@ -293,7 +294,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 	}
 	storeMs := time.Since(storeStart).Milliseconds()
 
-	result.Status = StatusExtracted
+	result.Status = model.StatusExtracted
 	result.Skill = skill
 	result.DurationMs = time.Since(start).Milliseconds()
 
@@ -307,7 +308,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 
 	// Update session with extraction result.
 	if p.sessions != nil {
-		session.ExtractionStatus = StatusExtracted
+		session.ExtractionStatus = model.StatusExtracted
 		session.ExtractedSkillID = skillID
 		if err := p.sessions.UpdateSessionResult(ctx, &session); err != nil {
 			p.log.Error("failed to update session result", "session_id", session.ID, "error", err)
@@ -319,12 +320,12 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 }
 
 // updateSessionStatus updates the session record with rejection/error info if sessions are being tracked.
-func (p *Pipeline) updateSessionStatus(ctx context.Context, session *SessionRecord, result *ExtractionResult) {
+func (p *Pipeline) updateSessionStatus(ctx context.Context, session *model.SessionRecord, result *model.ExtractionResult) {
 	if p.sessions == nil {
 		return
 	}
 	session.ExtractionStatus = result.Status
-	if result.Status == StatusRejected {
+	if result.Status == model.StatusRejected {
 		if result.Stage1 != nil && !result.Stage1.Passed {
 			session.RejectedAtStage = 1
 			session.RejectionReason = result.Stage1.Reason
@@ -336,7 +337,7 @@ func (p *Pipeline) updateSessionStatus(ctx context.Context, session *SessionReco
 			session.RejectionReason = result.Stage3.CriticReasoning
 		}
 	}
-	if result.Status == StatusError {
+	if result.Status == model.StatusError {
 		session.RejectionReason = result.Error
 	}
 	if err := p.sessions.UpdateSessionResult(ctx, session); err != nil {
@@ -347,12 +348,12 @@ func (p *Pipeline) updateSessionStatus(ctx context.Context, session *SessionReco
 // maybeSample writes to human_review_samples with stratified sampling per §3.4.
 // Maintains ~50/50 split between extracted and rejected pools by always sampling
 // from whichever pool is underrepresented, and probabilistically from the other.
-func (p *Pipeline) maybeSample(ctx context.Context, sessionID string, result *ExtractionResult) {
+func (p *Pipeline) maybeSample(ctx context.Context, sessionID string, result *model.ExtractionResult) {
 	if p.reviewer == nil || p.sampleRate <= 0 {
 		return
 	}
 
-	isExtracted := result.Status == StatusExtracted
+	isExtracted := result.Status == model.StatusExtracted
 	pool := "rejected"
 	if isExtracted {
 		pool = "extracted"
@@ -413,7 +414,7 @@ func (p *Pipeline) maybeSample(ctx context.Context, sessionID string, result *Ex
 
 // skillNameFromClassification derives a kebab-case skill name from classified
 // patterns and category. E.g. "FIX/Backend/DatabaseConnection" → "fix-backend-database-connection".
-func skillNameFromClassification(patterns []string, category SkillCategory) string {
+func skillNameFromClassification(patterns []string, category model.SkillCategory) string {
 	if len(patterns) > 0 {
 		// Use first pattern: split on "/" and kebab-case.
 		parts := strings.Split(patterns[0], "/")
@@ -483,7 +484,7 @@ func titleCase(s string) string {
 
 // buildSkillMD generates a proper SKILL.md with YAML front matter and structured body.
 // It populates sections from the Stage 3 critic reasoning and session content.
-func buildSkillMD(skill *SkillRecord, stage3 *Stage3Result, content []byte) []byte {
+func buildSkillMD(skill *model.SkillRecord, stage3 *model.Stage3Result, content []byte) []byte {
 	var b strings.Builder
 
 	// YAML front matter

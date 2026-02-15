@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/mycelium-dev/mycelium/internal/decay"
-	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 	"github.com/mycelium-dev/mycelium/internal/worker"
 )
@@ -40,9 +40,9 @@ func newWorkerQueue(t *testing.T, store *storage.SQLiteStore, cfg worker.Config)
 	return worker.NewSQLiteQueue(store, dataDir, cfg, testLogger()), dataDir
 }
 
-func makeWorkerSession(id, libraryID string) extraction.SessionRecord {
+func makeWorkerSession(id, libraryID string) model.SessionRecord {
 	now := time.Now().UTC()
-	return extraction.SessionRecord{
+	return model.SessionRecord{
 		ID:                id,
 		StartedAt:         now.Add(-10 * time.Minute),
 		EndedAt:           now,
@@ -72,12 +72,12 @@ func workerConfig() worker.Config {
 	}
 }
 
-// mockExtractor implements extraction.Extractor.
+// mockExtractor implements model.Extractor.
 type workerMockExtractor struct {
-	fn func(ctx context.Context, session extraction.SessionRecord, content []byte) (*extraction.ExtractionResult, error)
+	fn func(ctx context.Context, session model.SessionRecord, content []byte) (*model.ExtractionResult, error)
 }
 
-func (m *workerMockExtractor) Extract(ctx context.Context, session extraction.SessionRecord, content []byte) (*extraction.ExtractionResult, error) {
+func (m *workerMockExtractor) Extract(ctx context.Context, session model.SessionRecord, content []byte) (*model.ExtractionResult, error) {
 	return m.fn(ctx, session, content)
 }
 
@@ -132,9 +132,9 @@ func TestWorkerHappyPath(t *testing.T) {
 	}
 
 	// Complete.
-	result := &extraction.ExtractionResult{
-		Status: extraction.StatusExtracted,
-		Skill:  &extraction.SkillRecord{ID: "skill-w1"},
+	result := &model.ExtractionResult{
+		Status: model.StatusExtracted,
+		Skill:  &model.SkillRecord{ID: "skill-w1"},
 	}
 	if err := q.Complete(ctx, "sess-w1", result); err != nil {
 		t.Fatalf("complete: %v", err)
@@ -209,9 +209,9 @@ func TestWorkerRetryThenSucceed(t *testing.T) {
 	}
 
 	// Complete successfully.
-	q.Complete(ctx, "sess-w2", &extraction.ExtractionResult{
-		Status: extraction.StatusExtracted,
-		Skill:  &extraction.SkillRecord{ID: "skill-w2"},
+	q.Complete(ctx, "sess-w2", &model.ExtractionResult{
+		Status: model.StatusExtracted,
+		Skill:  &model.SkillRecord{ID: "skill-w2"},
 	})
 
 	store.DB().QueryRow("SELECT extraction_status FROM sessions WHERE id = 'sess-w2'").Scan(&status)
@@ -364,13 +364,13 @@ func TestWorkerConcurrentProcessing(t *testing.T) {
 	}
 
 	var processedIDs sync.Map
-	ext := &workerMockExtractor{fn: func(_ context.Context, sess extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+	ext := &workerMockExtractor{fn: func(_ context.Context, sess model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		processedIDs.Store(sess.ID, true)
-		return &extraction.ExtractionResult{Status: extraction.StatusExtracted}, nil
+		return &model.ExtractionResult{Status: model.StatusExtracted}, nil
 	}}
 
-	getSession := func(_ context.Context, id string) (*extraction.SessionRecord, error) {
-		return &extraction.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
+	getSession := func(_ context.Context, id string) (*model.SessionRecord, error) {
+		return &model.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
 	}
 
 	pool := worker.NewPool(q, ext, getSession, cfg, testLogger())
@@ -436,14 +436,14 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 	extractStarted := make(chan struct{})
 	extractDone := make(chan struct{})
 
-	ext := &workerMockExtractor{fn: func(_ context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+	ext := &workerMockExtractor{fn: func(_ context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		close(extractStarted)
 		<-extractDone
-		return &extraction.ExtractionResult{Status: extraction.StatusExtracted}, nil
+		return &model.ExtractionResult{Status: model.StatusExtracted}, nil
 	}}
 
-	getSession := func(_ context.Context, id string) (*extraction.SessionRecord, error) {
-		return &extraction.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
+	getSession := func(_ context.Context, id string) (*model.SessionRecord, error) {
+		return &model.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
 	}
 
 	pool := worker.NewPool(q, ext, getSession, cfg, testLogger())
@@ -499,19 +499,19 @@ func TestWorkerPoolE2E(t *testing.T) {
 	q.Enqueue(ctx, makeWorkerSession("sess-e2e-fail", "lib-1"), []byte("bad log"))
 
 	var failCount atomic.Int32
-	ext := &workerMockExtractor{fn: func(_ context.Context, sess extraction.SessionRecord, content []byte) (*extraction.ExtractionResult, error) {
+	ext := &workerMockExtractor{fn: func(_ context.Context, sess model.SessionRecord, content []byte) (*model.ExtractionResult, error) {
 		if sess.ID == "sess-e2e-fail" {
 			failCount.Add(1)
 			return nil, errors.New("pipeline error")
 		}
-		return &extraction.ExtractionResult{
-			Status: extraction.StatusExtracted,
-			Skill:  &extraction.SkillRecord{ID: "skill-" + sess.ID},
+		return &model.ExtractionResult{
+			Status: model.StatusExtracted,
+			Skill:  &model.SkillRecord{ID: "skill-" + sess.ID},
 		}, nil
 	}}
 
-	getSession := func(_ context.Context, id string) (*extraction.SessionRecord, error) {
-		return &extraction.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
+	getSession := func(_ context.Context, id string) (*model.SessionRecord, error) {
+		return &model.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
 	}
 
 	pool := worker.NewPool(q, ext, getSession, cfg, testLogger())
@@ -617,7 +617,7 @@ func (p *schedPool) Stats() worker.PoolStats       { return worker.PoolStats{} }
 
 type mockSkillReader struct{}
 
-func (r *mockSkillReader) ListByDecay(_ context.Context, _ string, _ int) ([]extraction.SkillRecord, error) {
+func (r *mockSkillReader) ListByDecay(_ context.Context, _ string, _ int) ([]model.SkillRecord, error) {
 	return nil, nil
 }
 
@@ -667,9 +667,9 @@ func TestWorkerCompleteRejection(t *testing.T) {
 	q.Enqueue(ctx, makeWorkerSession("sess-rej", "lib-1"), []byte("log"))
 	q.Claim(ctx, "worker-0")
 
-	result := &extraction.ExtractionResult{
-		Status: extraction.StatusRejected,
-		Stage1: &extraction.Stage1Result{Passed: false, Reason: "too short"},
+	result := &model.ExtractionResult{
+		Status: model.StatusRejected,
+		Stage1: &model.Stage1Result{Passed: false, Reason: "too short"},
 	}
 	q.Complete(ctx, "sess-rej", result)
 
@@ -839,18 +839,18 @@ func TestWorkerPoolStats(t *testing.T) {
 		q.Enqueue(ctx, makeWorkerSession(fmt.Sprintf("sess-stats-%d", i), "lib-1"), []byte("log"))
 	}
 
-	ext := &workerMockExtractor{fn: func(_ context.Context, sess extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+	ext := &workerMockExtractor{fn: func(_ context.Context, sess model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		if sess.ID == "sess-stats-2" {
-			return &extraction.ExtractionResult{
-				Status: extraction.StatusRejected,
-				Stage1: &extraction.Stage1Result{Passed: false, Reason: "short"},
+			return &model.ExtractionResult{
+				Status: model.StatusRejected,
+				Stage1: &model.Stage1Result{Passed: false, Reason: "short"},
 			}, nil
 		}
-		return &extraction.ExtractionResult{Status: extraction.StatusExtracted}, nil
+		return &model.ExtractionResult{Status: model.StatusExtracted}, nil
 	}}
 
-	getSession := func(_ context.Context, id string) (*extraction.SessionRecord, error) {
-		return &extraction.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
+	getSession := func(_ context.Context, id string) (*model.SessionRecord, error) {
+		return &model.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
 	}
 
 	pool := worker.NewPool(q, ext, getSession, cfg, testLogger())
@@ -941,11 +941,11 @@ func TestWorkerEnqueueHook(t *testing.T) {
 	ctx := context.Background()
 
 	// Simulate what serve.go does: OnSessionEnd calls queue.Enqueue.
-	onSessionEnd := func(ctx context.Context, session extraction.SessionRecord, logContent []byte) (*extraction.ExtractionResult, error) {
+	onSessionEnd := func(ctx context.Context, session model.SessionRecord, logContent []byte) (*model.ExtractionResult, error) {
 		if err := q.Enqueue(ctx, session, logContent); err != nil {
 			return nil, err
 		}
-		return &extraction.ExtractionResult{Status: extraction.StatusQueued}, nil
+		return &model.ExtractionResult{Status: model.StatusQueued}, nil
 	}
 
 	session := makeWorkerSession("sess-hook", "lib-1")
@@ -953,7 +953,7 @@ func TestWorkerEnqueueHook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != extraction.StatusQueued {
+	if result.Status != model.StatusQueued {
 		t.Errorf("status = %q, want queued", result.Status)
 	}
 
@@ -990,13 +990,13 @@ func TestWorkerFileReadFailure(t *testing.T) {
 	// Reset to queued so pool can pick it up.
 	store.DB().Exec("UPDATE sessions SET extraction_status = 'queued', claimed_by = '', claimed_at = NULL WHERE id = 'sess-nofile'")
 
-	ext := &workerMockExtractor{fn: func(_ context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+	ext := &workerMockExtractor{fn: func(_ context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		t.Error("extractor should not be called for missing file")
 		return nil, nil
 	}}
 
-	getSession := func(_ context.Context, id string) (*extraction.SessionRecord, error) {
-		return &extraction.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
+	getSession := func(_ context.Context, id string) (*model.SessionRecord, error) {
+		return &model.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
 	}
 
 	pool := worker.NewPool(q, ext, getSession, cfg, testLogger())
@@ -1097,7 +1097,7 @@ func TestWorkerDBIntegrity(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		q.Claim(ctx, "worker-0")
 	}
-	q.Complete(ctx, "sess-int-0", &extraction.ExtractionResult{Status: extraction.StatusExtracted})
+	q.Complete(ctx, "sess-int-0", &model.ExtractionResult{Status: model.StatusExtracted})
 	q.Fail(ctx, "sess-int-1", errors.New("err"))
 	q.FailPermanent(ctx, "sess-int-2", errors.New("fatal"))
 	store.DB().Exec("UPDATE sessions SET claimed_at = datetime('now', '-20 minutes') WHERE id = 'sess-int-3'")

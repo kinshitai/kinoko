@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mycelium-dev/mycelium/internal/config"
+	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
 type stage1Filter struct {
@@ -28,7 +29,7 @@ func NewStage1Filter(cfg config.ExtractionConfig, log *slog.Logger) Stage1Filter
 	}
 }
 
-func (f *stage1Filter) Filter(session SessionRecord) *Stage1Result {
+func (f *stage1Filter) Filter(session model.SessionRecord) *model.Stage1Result {
 	// Validate ErrorRate consistency
 	if session.ToolCallCount > 0 {
 		expected := float64(session.ErrorCount) / float64(session.ToolCallCount)
@@ -43,7 +44,7 @@ func (f *stage1Filter) Filter(session SessionRecord) *Stage1Result {
 		}
 	}
 
-	result := &Stage1Result{
+	result := &model.Stage1Result{
 		DurationOK:      session.DurationMinutes >= f.minDuration && session.DurationMinutes <= f.maxDuration,
 		ToolCallCountOK: session.ToolCallCount >= f.minTools,
 		ErrorRateOK:     session.ErrorRate <= f.maxError,

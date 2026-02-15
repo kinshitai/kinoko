@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mycelium-dev/mycelium/internal/config"
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/embedding"
 )
 
@@ -64,7 +65,7 @@ type SkillQuerier interface {
 
 // Stage2Scorer runs embedding novelty + structured rubric scoring.
 type Stage2Scorer interface {
-	Score(ctx context.Context, session SessionRecord, content []byte) (*Stage2Result, error)
+	Score(ctx context.Context, session model.SessionRecord, content []byte) (*model.Stage2Result, error)
 }
 
 type stage2Scorer struct {
@@ -94,8 +95,8 @@ func NewStage2Scorer(
 	}
 }
 
-func (s *stage2Scorer) Score(ctx context.Context, session SessionRecord, content []byte) (*Stage2Result, error) {
-	result := &Stage2Result{}
+func (s *stage2Scorer) Score(ctx context.Context, session model.SessionRecord, content []byte) (*model.Stage2Result, error) {
+	result := &model.Stage2Result{}
 
 	// Classifier 1: Embedding Novelty
 	emb, err := s.embedder.Embed(ctx, string(content))
@@ -189,7 +190,7 @@ func (s *stage2Scorer) Score(ctx context.Context, session SessionRecord, content
 	return result, nil
 }
 
-// rubricScoresJSON maps the snake_case JSON from the LLM to QualityScores.
+// rubricScoresJSON maps the snake_case JSON from the LLM to model.QualityScores.
 type rubricScoresJSON struct {
 	ProblemSpecificity    int `json:"problem_specificity"`
 	SolutionCompleteness  int `json:"solution_completeness"`
@@ -200,8 +201,8 @@ type rubricScoresJSON struct {
 	InnovationLevel       int `json:"innovation_level"`
 }
 
-func (r rubricScoresJSON) toQualityScores() QualityScores {
-	return QualityScores{
+func (r rubricScoresJSON) toQualityScores() model.QualityScores {
+	return model.QualityScores{
 		ProblemSpecificity:    r.ProblemSpecificity,
 		SolutionCompleteness:  r.SolutionCompleteness,
 		ContextPortability:    r.ContextPortability,
@@ -215,14 +216,14 @@ func (r rubricScoresJSON) toQualityScores() QualityScores {
 // rubricResponse is the expected JSON structure from the LLM.
 type rubricResponse struct {
 	Scores   rubricScoresJSON `json:"scores"`
-	Category SkillCategory    `json:"category"`
+	Category model.SkillCategory    `json:"category"`
 	Patterns []string         `json:"patterns"`
 }
 
-// Weighted composite score per spec §1.1 QualityScores.
+// Weighted composite score per spec §1.1 model.QualityScores.
 // Weights: problem_specificity=0.15, solution_completeness=0.20, context_portability=0.15,
 // reasoning_transparency=0.10, technical_accuracy=0.20, verification_evidence=0.10, innovation_level=0.10.
-func compositeScore(q QualityScores) float64 {
+func compositeScore(q model.QualityScores) float64 {
 	return float64(q.ProblemSpecificity)*0.15 +
 		float64(q.SolutionCompleteness)*0.20 +
 		float64(q.ContextPortability)*0.15 +
@@ -290,13 +291,13 @@ func (r rubricScoresJSON) validate() error {
 	return nil
 }
 
-// validateCategory returns the category if valid, or CategoryTactical as default.
-func validateCategory(c SkillCategory) SkillCategory {
+// validateCategory returns the category if valid, or model.CategoryTactical as default.
+func validateCategory(c model.SkillCategory) model.SkillCategory {
 	switch c {
-	case CategoryFoundational, CategoryTactical, CategoryContextual:
+	case model.CategoryFoundational, model.CategoryTactical, model.CategoryContextual:
 		return c
 	default:
-		return CategoryTactical
+		return model.CategoryTactical
 	}
 }
 

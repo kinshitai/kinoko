@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 )
 
@@ -20,20 +20,20 @@ func (r *recordingEventWriter) WriteInjectionEvent(_ context.Context, ev storage
 }
 
 type stubInjector struct {
-	resp *extraction.InjectionResponse
+	resp *model.InjectionResponse
 	err  error
 	calls atomic.Int32
 }
 
-func (s *stubInjector) Inject(_ context.Context, _ extraction.InjectionRequest) (*extraction.InjectionResponse, error) {
+func (s *stubInjector) Inject(_ context.Context, _ model.InjectionRequest) (*model.InjectionResponse, error) {
 	s.calls.Add(1)
 	return s.resp, s.err
 }
 
 func TestABAssignmentDistribution(t *testing.T) {
 	inner := &stubInjector{
-		resp: &extraction.InjectionResponse{
-			Skills: []extraction.InjectedSkill{
+		resp: &model.InjectionResponse{
+			Skills: []model.InjectedSkill{
 				{SkillID: "sk1", CompositeScore: 0.9, RankPosition: 1},
 			},
 		},
@@ -55,7 +55,7 @@ func TestABAssignmentDistribution(t *testing.T) {
 	n := 100
 
 	for i := 0; i < n; i++ {
-		req := extraction.InjectionRequest{
+		req := model.InjectionRequest{
 			SessionID: "sess-" + string(rune('a'+i%26)),
 			Prompt:    "test",
 		}
@@ -84,15 +84,15 @@ func TestABAssignmentDistribution(t *testing.T) {
 
 func TestABDisabled(t *testing.T) {
 	inner := &stubInjector{
-		resp: &extraction.InjectionResponse{
-			Skills: []extraction.InjectedSkill{{SkillID: "sk1"}},
+		resp: &model.InjectionResponse{
+			Skills: []model.InjectedSkill{{SkillID: "sk1"}},
 		},
 	}
 	writer := &recordingEventWriter{}
 	config := ABConfig{Enabled: false}
 
 	ab := NewABInjector(inner, writer, config, nil)
-	resp, err := ab.Inject(context.Background(), extraction.InjectionRequest{Prompt: "test"})
+	resp, err := ab.Inject(context.Background(), model.InjectionRequest{Prompt: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,12 +107,12 @@ func TestABDisabled(t *testing.T) {
 
 func TestABControlGroupNoDelivery(t *testing.T) {
 	inner := &stubInjector{
-		resp: &extraction.InjectionResponse{
-			Skills: []extraction.InjectedSkill{
+		resp: &model.InjectionResponse{
+			Skills: []model.InjectedSkill{
 				{SkillID: "sk1", CompositeScore: 0.8, RankPosition: 1},
 				{SkillID: "sk2", CompositeScore: 0.5, RankPosition: 2},
 			},
-			Classification: extraction.PromptClassification{Intent: "BUILD"},
+			Classification: model.PromptClassification{Intent: "BUILD"},
 		},
 	}
 	writer := &recordingEventWriter{}
@@ -122,7 +122,7 @@ func TestABControlGroupNoDelivery(t *testing.T) {
 	// Force control.
 	ab.SetRandFunc(func() float64 { return 0.1 })
 
-	resp, err := ab.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := ab.Inject(context.Background(), model.InjectionRequest{
 		SessionID: "sess-ctrl",
 		Prompt:    "test",
 	})
@@ -154,8 +154,8 @@ func TestABControlGroupNoDelivery(t *testing.T) {
 
 func TestABTreatmentGroupDelivers(t *testing.T) {
 	inner := &stubInjector{
-		resp: &extraction.InjectionResponse{
-			Skills: []extraction.InjectedSkill{{SkillID: "sk1", RankPosition: 1}},
+		resp: &model.InjectionResponse{
+			Skills: []model.InjectedSkill{{SkillID: "sk1", RankPosition: 1}},
 		},
 	}
 	writer := &recordingEventWriter{}
@@ -164,7 +164,7 @@ func TestABTreatmentGroupDelivers(t *testing.T) {
 	ab := NewABInjector(inner, writer, config, nil)
 	ab.SetRandFunc(func() float64 { return 0.9 }) // > 0.5 → treatment
 
-	resp, err := ab.Inject(context.Background(), extraction.InjectionRequest{
+	resp, err := ab.Inject(context.Background(), model.InjectionRequest{
 		SessionID: "sess-treat",
 		Prompt:    "test",
 	})

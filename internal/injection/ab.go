@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 )
 
@@ -72,7 +72,7 @@ func NewABInjector(inner Injector, eventWriter InjectionEventWriter, config ABCo
 }
 
 // Inject assigns the session to a group and either delivers or withholds skills.
-func (ab *ABInjector) Inject(ctx context.Context, req extraction.InjectionRequest) (*extraction.InjectionResponse, error) {
+func (ab *ABInjector) Inject(ctx context.Context, req model.InjectionRequest) (*model.InjectionResponse, error) {
 	if !ab.config.Enabled {
 		return ab.inner.Inject(ctx, req)
 	}
@@ -115,7 +115,7 @@ func (ab *ABInjector) Inject(ctx context.Context, req extraction.InjectionReques
 
 	if !delivered {
 		// Control group: return empty skills.
-		return &extraction.InjectionResponse{
+		return &model.InjectionResponse{
 			Skills:         nil,
 			Classification: resp.Classification,
 		}, nil

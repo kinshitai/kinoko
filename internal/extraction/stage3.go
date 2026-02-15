@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mycelium-dev/mycelium/internal/config"
+	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
 // LLMError is a structured error carrying an HTTP status code from an LLM call.
@@ -48,7 +49,7 @@ var ErrCircuitOpen = errors.New("stage3: circuit breaker open")
 
 // Stage3Critic evaluates a session via LLM and returns an extract/reject verdict.
 type Stage3Critic interface {
-	Evaluate(ctx context.Context, session SessionRecord, content []byte, stage2 *Stage2Result) (*Stage3Result, error)
+	Evaluate(ctx context.Context, session model.SessionRecord, content []byte, stage2 *model.Stage2Result) (*model.Stage3Result, error)
 }
 
 // clockFunc allows injecting a time source for testing.
@@ -94,7 +95,7 @@ func NewStage3Critic(
 	return c
 }
 
-func (c *stage3Critic) Evaluate(ctx context.Context, session SessionRecord, content []byte, stage2 *Stage2Result) (*Stage3Result, error) {
+func (c *stage3Critic) Evaluate(ctx context.Context, session model.SessionRecord, content []byte, stage2 *model.Stage2Result) (*model.Stage3Result, error) {
 	start := c.clock()
 
 	// Input validation
@@ -146,7 +147,7 @@ func (c *stage3Critic) Evaluate(ctx context.Context, session SessionRecord, cont
 	if err != nil {
 		elapsed := c.clock().Sub(start).Milliseconds()
 		c.log.Warn("stage3 parse error, treating as rejection", "session_id", session.ID, "error", err)
-		return &Stage3Result{
+		return &model.Stage3Result{
 			Passed:          false,
 			CriticVerdict:   "reject",
 			CriticReasoning: fmt.Sprintf("critic_parse_error: %v", err),
@@ -179,7 +180,7 @@ type criticResponse struct {
 	Contradicts bool            `json:"contradicts_best_practices"`
 }
 
-func (c *stage3Critic) parseAndValidate(resp string) (*Stage3Result, error) {
+func (c *stage3Critic) parseAndValidate(resp string) (*model.Stage3Result, error) {
 	var cr criticResponse
 	if err := parseCriticResponse(resp, &cr); err != nil {
 		return nil, err
@@ -223,7 +224,7 @@ func (c *stage3Critic) parseAndValidate(resp string) (*Stage3Result, error) {
 
 	passed := verdict == "extract"
 
-	return &Stage3Result{
+	return &model.Stage3Result{
 		Passed:                   passed,
 		CriticVerdict:            verdict,
 		CriticReasoning:          cr.Reasoning,
@@ -235,14 +236,14 @@ func (c *stage3Critic) parseAndValidate(resp string) (*Stage3Result, error) {
 }
 
 // averageScore returns the mean of all 7 rubric scores.
-func averageScore(q QualityScores) float64 {
+func averageScore(q model.QualityScores) float64 {
 	sum := q.ProblemSpecificity + q.SolutionCompleteness + q.ContextPortability +
 		q.ReasoningTransparency + q.TechnicalAccuracy + q.VerificationEvidence + q.InnovationLevel
 	return float64(sum) / 7.0
 }
 
 // allScoresAbove returns true if every score is >= threshold.
-func allScoresAbove(q QualityScores, threshold int) bool {
+func allScoresAbove(q model.QualityScores, threshold int) bool {
 	return q.ProblemSpecificity >= threshold &&
 		q.SolutionCompleteness >= threshold &&
 		q.ContextPortability >= threshold &&
@@ -496,7 +497,7 @@ func sanitizeDelimiters(content []byte, beginDelim, endDelim string) []byte {
 	return []byte(s)
 }
 
-func buildCriticPrompt(content []byte, stage2 *Stage2Result) string {
+func buildCriticPrompt(content []byte, stage2 *model.Stage2Result) string {
 	nonce := generateNonce()
 	beginDelim := fmt.Sprintf("---BEGIN SESSION %s---", nonce)
 	endDelim := fmt.Sprintf("---END SESSION %s---", nonce)

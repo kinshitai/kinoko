@@ -12,6 +12,7 @@ import (
 
 	"github.com/mycelium-dev/mycelium/internal/config"
 	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 )
 
@@ -145,9 +146,9 @@ func (m *mockReviewWriter) InsertReviewSample(_ context.Context, sessionID strin
 
 // --- Test Fixtures ---
 
-func goodSession(id, libraryID string) extraction.SessionRecord {
+func goodSession(id, libraryID string) model.SessionRecord {
 	now := time.Now()
-	return extraction.SessionRecord{
+	return model.SessionRecord{
 		ID:                id,
 		StartedAt:         now.Add(-15 * time.Minute),
 		EndedAt:           now,
@@ -164,7 +165,7 @@ func goodSession(id, libraryID string) extraction.SessionRecord {
 	}
 }
 
-func shortSession(id, libraryID string) extraction.SessionRecord {
+func shortSession(id, libraryID string) model.SessionRecord {
 	s := goodSession(id, libraryID)
 	s.DurationMinutes = 0.5
 	s.ToolCallCount = 1

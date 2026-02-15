@@ -15,6 +15,7 @@ import (
 
 	"github.com/mycelium-dev/mycelium/internal/decay"
 	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/injection"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 	"github.com/mycelium-dev/mycelium/internal/worker"
@@ -37,7 +38,7 @@ func TestPipelineWorkerConcurrentResults(t *testing.T) {
 	const n = 5
 	type result struct {
 		idx    int
-		status extraction.ExtractionStatus
+		status model.ExtractionStatus
 		err    error
 	}
 	results := make(chan result, n)
@@ -80,7 +81,7 @@ func TestPipelineWorkerConcurrentResults(t *testing.T) {
 			t.Logf("worker %d error: %v", r.idx, r.err)
 			continue
 		}
-		if r.status == extraction.StatusExtracted {
+		if r.status == model.StatusExtracted {
 			extracted++
 		}
 	}
@@ -128,19 +129,19 @@ func TestWorkerTimeoutMidExtraction(t *testing.T) {
 	// Extractor that takes longer than the 60s pool timeout.
 	// We simulate by checking context cancellation.
 	var ctxWasCancelled atomic.Bool
-	ext := &workerMockExtractor{fn: func(ctx context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+	ext := &workerMockExtractor{fn: func(ctx context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		// Pool gives 60s. We'll just wait for cancellation to prove it happens.
 		select {
 		case <-ctx.Done():
 			ctxWasCancelled.Store(true)
 			return nil, ctx.Err()
 		case <-time.After(70 * time.Second):
-			return &extraction.ExtractionResult{Status: extraction.StatusExtracted}, nil
+			return &model.ExtractionResult{Status: model.StatusExtracted}, nil
 		}
 	}}
 
-	getSession := func(_ context.Context, id string) (*extraction.SessionRecord, error) {
-		return &extraction.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
+	getSession := func(_ context.Context, id string) (*model.SessionRecord, error) {
+		return &model.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
 	}
 
 	pool := worker.NewPool(q, ext, getSession, cfg, testLogger())
@@ -290,7 +291,7 @@ func TestImportInvalidSessionLog(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if result.Status != extraction.StatusRejected {
+	if result.Status != model.StatusRejected {
 		t.Errorf("invalid session status = %q, want rejected", result.Status)
 	}
 }
@@ -388,14 +389,14 @@ func TestBug_UnboundedINClause(t *testing.T) {
 	// Insert >999 skills.
 	const skillCount = 1050
 	for i := 0; i < skillCount; i++ {
-		sk := &extraction.SkillRecord{
+		sk := &model.SkillRecord{
 			ID:        fmt.Sprintf("skill-in-%04d", i),
 			Name:      fmt.Sprintf("skill-%04d", i),
 			Version:   1,
 			LibraryID: "test-lib",
-			Category:  extraction.CategoryTactical,
+			Category:  model.CategoryTactical,
 			Patterns:  []string{"FIX/Backend/DatabaseConnection"},
-			Quality: extraction.QualityScores{
+			Quality: model.QualityScores{
 				ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 				ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 				InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -438,11 +439,11 @@ func TestInjectNoEmbeddingService(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed a skill with patterns.
-	sk := &extraction.SkillRecord{
+	sk := &model.SkillRecord{
 		ID: "skill-noem", Name: "fix-db-noem", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -462,7 +463,7 @@ func TestInjectNoEmbeddingService(t *testing.T) {
 	// nil embedder = circuit breaker open / no embedding service.
 	inj := injection.New(nil, store, llm, nil, testLogger())
 
-	resp, err := inj.Inject(ctx, extraction.InjectionRequest{
+	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix database connection issue",
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  5,
@@ -490,11 +491,11 @@ func TestInjectMissingSkillFile(t *testing.T) {
 	embedder := newPredictableEmbedder(3)
 
 	// Skill points to a file that doesn't exist.
-	sk := &extraction.SkillRecord{
+	sk := &model.SkillRecord{
 		ID: "skill-nofile", Name: "ghost-skill", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -513,7 +514,7 @@ func TestInjectMissingSkillFile(t *testing.T) {
 	}
 	inj := injection.New(embedder, store, llm, store, testLogger())
 
-	resp, err := inj.Inject(ctx, extraction.InjectionRequest{
+	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix database connection",
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  5,
@@ -558,7 +559,7 @@ func TestExtractThenInject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != extraction.StatusExtracted {
+	if result.Status != model.StatusExtracted {
 		t.Fatalf("extraction status = %q, want extracted: %s", result.Status, result.Error)
 	}
 
@@ -568,7 +569,7 @@ func TestExtractThenInject(t *testing.T) {
 	}
 	inj := injection.New(embedder, store, classifyLLM, store, testLogger())
 
-	resp, err := inj.Inject(ctx, extraction.InjectionRequest{
+	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix database connection",
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  5,
@@ -607,11 +608,11 @@ func TestExtractDecayInjectRanking(t *testing.T) {
 	now := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
 
 	// Seed two skills: one fresh, one old.
-	fresh := &extraction.SkillRecord{
+	fresh := &model.SkillRecord{
 		ID: "skill-fresh", Name: "fresh-skill", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -621,11 +622,11 @@ func TestExtractDecayInjectRanking(t *testing.T) {
 		ExtractedBy: "test",
 		FilePath:    "skills/fresh/SKILL.md",
 	}
-	old := &extraction.SkillRecord{
+	old := &model.SkillRecord{
 		ID: "skill-old", Name: "old-skill", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -666,7 +667,7 @@ func TestExtractDecayInjectRanking(t *testing.T) {
 	}
 	inj := injection.New(embedder, store, llm, store, testLogger())
 
-	resp, err := inj.Inject(ctx, extraction.InjectionRequest{
+	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix database connection",
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  5,
@@ -707,11 +708,11 @@ func TestSkillFileDeletedGraceful(t *testing.T) {
 	skillFile := filepath.Join(skillDir, "SKILL.md")
 	os.WriteFile(skillFile, []byte("# Test Skill\nContent here."), 0644)
 
-	sk := &extraction.SkillRecord{
+	sk := &model.SkillRecord{
 		ID: "skill-del", Name: "deletable-skill", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -746,7 +747,7 @@ func TestSkillFileDeletedGraceful(t *testing.T) {
 	}
 	inj := injection.New(embedder, store, llm, store, testLogger())
 
-	resp, err := inj.Inject(ctx, extraction.InjectionRequest{
+	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix database connection",
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  5,
@@ -788,17 +789,17 @@ func TestServeLifecycleSimulation(t *testing.T) {
 	q.Enqueue(ctx, session, []byte("User asked to fix database connection pooling. Agent fixed it."))
 
 	// Mock extractor that produces a real skill.
-	ext := &workerMockExtractor{fn: func(_ context.Context, sess extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
-		return &extraction.ExtractionResult{
-			Status: extraction.StatusExtracted,
-			Skill: &extraction.SkillRecord{
+	ext := &workerMockExtractor{fn: func(_ context.Context, sess model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
+		return &model.ExtractionResult{
+			Status: model.StatusExtracted,
+			Skill: &model.SkillRecord{
 				ID:   "skill-serve-1",
 				Name: "fix-db-serve",
 			},
 		}, nil
 	}}
 
-	getSession := func(_ context.Context, id string) (*extraction.SessionRecord, error) {
+	getSession := func(_ context.Context, id string) (*model.SessionRecord, error) {
 		s := makeWorkerSession(id, "lib-1")
 		return &s, nil
 	}
@@ -860,17 +861,17 @@ func TestGracefulShutdownDuringExtraction(t *testing.T) {
 	extractStarted := make(chan struct{})
 	extractDone := make(chan struct{})
 
-	ext := &workerMockExtractor{fn: func(ctx context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+	ext := &workerMockExtractor{fn: func(ctx context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		close(extractStarted)
 		<-extractDone // Wait for test to signal completion.
-		return &extraction.ExtractionResult{
-			Status: extraction.StatusExtracted,
-			Skill:  &extraction.SkillRecord{ID: "skill-shutdown"},
+		return &model.ExtractionResult{
+			Status: model.StatusExtracted,
+			Skill:  &model.SkillRecord{ID: "skill-shutdown"},
 		}, nil
 	}}
 
-	getSession := func(_ context.Context, id string) (*extraction.SessionRecord, error) {
-		return &extraction.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
+	getSession := func(_ context.Context, id string) (*model.SessionRecord, error) {
+		return &model.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
 	}
 
 	pool := worker.NewPool(q, ext, getSession, cfg, testLogger())
@@ -911,11 +912,11 @@ func TestSchedulerDecayModifiesScores(t *testing.T) {
 	now := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
 
 	// Seed a skill that should decay.
-	sk := &extraction.SkillRecord{
+	sk := &model.SkillRecord{
 		ID: "skill-sched-decay", Name: "decaying-skill", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -1036,7 +1037,7 @@ func TestBug_SessionInsertFailureSwallowed(t *testing.T) {
 	// Extract a session — session should be persisted.
 	sess := goodSession("sess-swallow-1", "test-lib")
 	result, _ := pipeline.Extract(ctx, sess, []byte("fix database connection pooling"))
-	if result.Status != extraction.StatusExtracted {
+	if result.Status != model.StatusExtracted {
 		t.Fatalf("status = %q, want extracted", result.Status)
 	}
 
@@ -1095,7 +1096,7 @@ func TestWorkerPoolWithRealPipeline(t *testing.T) {
 
 	q.Enqueue(ctx, sess, []byte("User asked to fix database connection pooling. Agent implemented retry logic."))
 
-	getSession := func(_ context.Context, id string) (*extraction.SessionRecord, error) {
+	getSession := func(_ context.Context, id string) (*model.SessionRecord, error) {
 		s := makeWorkerSession(id, "lib-1")
 		s.DurationMinutes = 15
 		s.ToolCallCount = 8
@@ -1155,11 +1156,11 @@ func TestInjectWithFailingEmbedder(t *testing.T) {
 
 	embedder := newPredictableEmbedder(3)
 
-	sk := &extraction.SkillRecord{
+	sk := &model.SkillRecord{
 		ID: "skill-failem", Name: "fix-db-failem", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -1181,7 +1182,7 @@ func TestInjectWithFailingEmbedder(t *testing.T) {
 
 	inj := injection.New(failEmbedder, store, llm, store, testLogger())
 
-	resp, err := inj.Inject(ctx, extraction.InjectionRequest{
+	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix database connection",
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  5,
@@ -1207,11 +1208,11 @@ func TestExtractDecayToZeroFiltered(t *testing.T) {
 	embedder := newPredictableEmbedder(3)
 	now := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
 
-	sk := &extraction.SkillRecord{
+	sk := &model.SkillRecord{
 		ID: "skill-decay-zero", Name: "doomed-skill", Version: 1, LibraryID: "test-lib",
-		Category: extraction.CategoryTactical,
+		Category: model.CategoryTactical,
 		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: extraction.QualityScores{
+		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -1242,7 +1243,7 @@ func TestExtractDecayToZeroFiltered(t *testing.T) {
 	}
 	inj := injection.New(embedder, store, llm, store, testLogger())
 
-	resp, err := inj.Inject(ctx, extraction.InjectionRequest{
+	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix database connection",
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  5,
@@ -1280,7 +1281,7 @@ func TestContextCancellationPropagation(t *testing.T) {
 	q.Enqueue(ctx, makeWorkerSession("sess-cancel", "lib-1"), []byte("log"))
 
 	var extractCtxCancelled atomic.Bool
-	ext := &workerMockExtractor{fn: func(ctx context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
+	ext := &workerMockExtractor{fn: func(ctx context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		// Worker pool uses detached context (context.Background + 60s timeout).
 		// So parent context cancellation should NOT reach here.
 		select {
@@ -1288,12 +1289,12 @@ func TestContextCancellationPropagation(t *testing.T) {
 			extractCtxCancelled.Store(true)
 			return nil, ctx.Err()
 		case <-time.After(200 * time.Millisecond):
-			return &extraction.ExtractionResult{Status: extraction.StatusExtracted}, nil
+			return &model.ExtractionResult{Status: model.StatusExtracted}, nil
 		}
 	}}
 
-	getSession := func(_ context.Context, id string) (*extraction.SessionRecord, error) {
-		return &extraction.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
+	getSession := func(_ context.Context, id string) (*model.SessionRecord, error) {
+		return &model.SessionRecord{ID: id, LibraryID: "lib-1"}, nil
 	}
 
 	pool := worker.NewPool(q, ext, getSession, cfg, testLogger())
@@ -1331,11 +1332,11 @@ func TestInjectionMatchScoreOrdering(t *testing.T) {
 
 	// Create 3 skills with different embeddings.
 	for i, name := range []string{"exact-match", "partial-match", "no-match"} {
-		sk := &extraction.SkillRecord{
+		sk := &model.SkillRecord{
 			ID: fmt.Sprintf("skill-ord-%d", i), Name: name, Version: 1, LibraryID: "test-lib",
-			Category: extraction.CategoryTactical,
+			Category: model.CategoryTactical,
 			Patterns: []string{"FIX/Backend/DatabaseConnection"},
-			Quality: extraction.QualityScores{
+			Quality: model.QualityScores{
 				ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 				ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 				InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -1353,7 +1354,7 @@ func TestInjectionMatchScoreOrdering(t *testing.T) {
 	}
 	inj := injection.New(embedder, store, llm, store, testLogger())
 
-	resp, err := inj.Inject(ctx, extraction.InjectionRequest{
+	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "exact-match", // Same text as first skill's embedding.
 		LibraryIDs: []string{"test-lib"},
 		MaxSkills:  10,

@@ -1,6 +1,7 @@
 package extraction
 
 import (
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"context"
 	"errors"
 	"fmt"
@@ -14,37 +15,37 @@ import (
 // --- Mocks ---
 
 type mockStage1 struct {
-	result *Stage1Result
+	result *model.Stage1Result
 }
 
-func (m *mockStage1) Filter(_ SessionRecord) *Stage1Result { return m.result }
+func (m *mockStage1) Filter(_ model.SessionRecord) *model.Stage1Result { return m.result }
 
 type mockStage2 struct {
-	result *Stage2Result
+	result *model.Stage2Result
 	err    error
 }
 
-func (m *mockStage2) Score(_ context.Context, _ SessionRecord, _ []byte) (*Stage2Result, error) {
+func (m *mockStage2) Score(_ context.Context, _ model.SessionRecord, _ []byte) (*model.Stage2Result, error) {
 	return m.result, m.err
 }
 
 type mockStage3 struct {
-	result *Stage3Result
+	result *model.Stage3Result
 	err    error
 }
 
-func (m *mockStage3) Evaluate(_ context.Context, _ SessionRecord, _ []byte, _ *Stage2Result) (*Stage3Result, error) {
+func (m *mockStage3) Evaluate(_ context.Context, _ model.SessionRecord, _ []byte, _ *model.Stage2Result) (*model.Stage3Result, error) {
 	return m.result, m.err
 }
 
 type mockWriter struct {
 	err    error
 	called bool
-	skill  *SkillRecord
+	skill  *model.SkillRecord
 	body   []byte
 }
 
-func (m *mockWriter) Put(_ context.Context, skill *SkillRecord, body []byte) error {
+func (m *mockWriter) Put(_ context.Context, skill *model.SkillRecord, body []byte) error {
 	m.called = true
 	m.skill = skill
 	m.body = body
@@ -67,20 +68,20 @@ func (m *mockReviewer) InsertReviewSample(_ context.Context, sessionID string, d
 
 // --- Helpers ---
 
-func passStage1() *Stage1Result {
-	return &Stage1Result{Passed: true}
+func passStage1() *model.Stage1Result {
+	return &model.Stage1Result{Passed: true}
 }
 
-func failStage1(reason string) *Stage1Result {
-	return &Stage1Result{Passed: false, Reason: reason}
+func failStage1(reason string) *model.Stage1Result {
+	return &model.Stage1Result{Passed: false, Reason: reason}
 }
 
-func passStage2() *Stage2Result {
-	return &Stage2Result{
+func passStage2() *model.Stage2Result {
+	return &model.Stage2Result{
 		Passed:             true,
-		ClassifiedCategory: CategoryTactical,
+		ClassifiedCategory: model.CategoryTactical,
 		ClassifiedPatterns: []string{"FIX/Backend/DatabaseConnection"},
-		RubricScores: QualityScores{
+		RubricScores: model.QualityScores{
 			ProblemSpecificity:    4,
 			SolutionCompleteness:  4,
 			ContextPortability:    3,
@@ -93,15 +94,15 @@ func passStage2() *Stage2Result {
 	}
 }
 
-func failStage2(reason string) *Stage2Result {
-	return &Stage2Result{Passed: false, Reason: reason}
+func failStage2(reason string) *model.Stage2Result {
+	return &model.Stage2Result{Passed: false, Reason: reason}
 }
 
-func passStage3() *Stage3Result {
-	return &Stage3Result{
+func passStage3() *model.Stage3Result {
+	return &model.Stage3Result{
 		Passed:        true,
 		CriticVerdict: "extract",
-		RefinedScores: QualityScores{
+		RefinedScores: model.QualityScores{
 			ProblemSpecificity:    4,
 			SolutionCompleteness:  4,
 			ContextPortability:    3,
@@ -115,16 +116,16 @@ func passStage3() *Stage3Result {
 	}
 }
 
-func failStage3() *Stage3Result {
-	return &Stage3Result{
+func failStage3() *model.Stage3Result {
+	return &model.Stage3Result{
 		Passed:          false,
 		CriticVerdict:   "reject",
 		CriticReasoning: "not reusable",
 	}
 }
 
-func pipelineTestSession() SessionRecord {
-	return SessionRecord{
+func pipelineTestSession() model.SessionRecord {
+	return model.SessionRecord{
 		ID:        "sess-001",
 		LibraryID: "lib-1",
 	}
@@ -143,13 +144,13 @@ func fixedRand(val int) RandIntn {
 func TestPipelineExtract(t *testing.T) {
 	tests := []struct {
 		name           string
-		s1             *Stage1Result
-		s2             *Stage2Result
+		s1             *model.Stage1Result
+		s2             *model.Stage2Result
 		s2Err          error
-		s3             *Stage3Result
+		s3             *model.Stage3Result
 		s3Err          error
 		storeErr       error
-		wantStatus     ExtractionStatus
+		wantStatus     model.ExtractionStatus
 		wantError      bool
 		wantSkill      bool
 		wantStoreCalled bool
@@ -159,33 +160,33 @@ func TestPipelineExtract(t *testing.T) {
 			s1:         passStage1(),
 			s2:         passStage2(),
 			s3:         passStage3(),
-			wantStatus: StatusExtracted,
+			wantStatus: model.StatusExtracted,
 			wantSkill:  true,
 			wantStoreCalled: true,
 		},
 		{
 			name:       "reject at stage1",
 			s1:         failStage1("too short"),
-			wantStatus: StatusRejected,
+			wantStatus: model.StatusRejected,
 		},
 		{
 			name:       "reject at stage2",
 			s1:         passStage1(),
 			s2:         failStage2("novelty too low"),
-			wantStatus: StatusRejected,
+			wantStatus: model.StatusRejected,
 		},
 		{
 			name:       "reject at stage3",
 			s1:         passStage1(),
 			s2:         passStage2(),
 			s3:         failStage3(),
-			wantStatus: StatusRejected,
+			wantStatus: model.StatusRejected,
 		},
 		{
 			name:       "error at stage2",
 			s1:         passStage1(),
 			s2Err:      errors.New("embed failed"),
-			wantStatus: StatusError,
+			wantStatus: model.StatusError,
 			wantError:  true,
 		},
 		{
@@ -193,7 +194,7 @@ func TestPipelineExtract(t *testing.T) {
 			s1:         passStage1(),
 			s2:         passStage2(),
 			s3Err:      errors.New("llm timeout"),
-			wantStatus: StatusError,
+			wantStatus: model.StatusError,
 			wantError:  true,
 		},
 		{
@@ -202,7 +203,7 @@ func TestPipelineExtract(t *testing.T) {
 			s2:         passStage2(),
 			s3:         passStage3(),
 			storeErr:   errors.New("disk full"),
-			wantStatus: StatusError,
+			wantStatus: model.StatusError,
 			wantError:  true,
 			wantStoreCalled: true,
 		},
@@ -329,13 +330,13 @@ func TestSkillNameFromClassification(t *testing.T) {
 	tests := []struct {
 		name     string
 		patterns []string
-		category SkillCategory
+		category model.SkillCategory
 		want     string
 	}{
-		{"pattern to kebab", []string{"FIX/Backend/DatabaseConnection"}, CategoryTactical, "fix-backend-database-connection"},
-		{"build pattern", []string{"BUILD/Frontend/ComponentDesign"}, CategoryFoundational, "build-frontend-component-design"},
-		{"no patterns", nil, CategoryTactical, "tactical-skill"},
-		{"empty patterns", []string{}, CategoryContextual, "contextual-skill"},
+		{"pattern to kebab", []string{"FIX/Backend/DatabaseConnection"}, model.CategoryTactical, "fix-backend-database-connection"},
+		{"build pattern", []string{"BUILD/Frontend/ComponentDesign"}, model.CategoryFoundational, "build-frontend-component-design"},
+		{"no patterns", nil, model.CategoryTactical, "tactical-skill"},
+		{"empty patterns", []string{}, model.CategoryContextual, "contextual-skill"},
 		{"no category", nil, "", "unnamed-skill"},
 	}
 
@@ -369,8 +370,8 @@ func TestPipelineSkillFields(t *testing.T) {
 	if s.LibraryID != "lib-1" {
 		t.Errorf("LibraryID = %q, want %q", s.LibraryID, "lib-1")
 	}
-	if s.Category != CategoryTactical {
-		t.Errorf("Category = %q, want %q", s.Category, CategoryTactical)
+	if s.Category != model.CategoryTactical {
+		t.Errorf("Category = %q, want %q", s.Category, model.CategoryTactical)
 	}
 	if s.SourceSessionID != "sess-001" {
 		t.Errorf("SourceSessionID = %q, want %q", s.SourceSessionID, "sess-001")
@@ -481,7 +482,7 @@ func TestPipelineSamplingOnExtract(t *testing.T) {
 	if !rev.called {
 		t.Error("expected sampling on successful extraction")
 	}
-	if result.Status != StatusExtracted {
+	if result.Status != model.StatusExtracted {
 		t.Errorf("status = %q, want extracted", result.Status)
 	}
 }
@@ -547,19 +548,19 @@ func (r *countingReviewer) InsertReviewSample(_ context.Context, _ string, _ []b
 }
 
 func TestBuildSkillMDContent(t *testing.T) {
-	skill := &SkillRecord{
+	skill := &model.SkillRecord{
 		ID:              "test-id",
 		Name:            "fix-database",
 		Version:         1,
-		Category:        CategoryTactical,
+		Category:        model.CategoryTactical,
 		Patterns:        []string{"FIX/Backend/DatabaseConnection"},
-		Quality:         QualityScores{CompositeScore: 3.6, CriticConfidence: 0.85},
+		Quality:         model.QualityScores{CompositeScore: 3.6, CriticConfidence: 0.85},
 		SourceSessionID: "sess-001",
 		ExtractedBy:     "test-v1",
 		CreatedAt:       time.Date(2026, 2, 15, 0, 0, 0, 0, time.UTC),
 	}
 
-	body := string(buildSkillMD(skill, &Stage3Result{
+	body := string(buildSkillMD(skill, &model.Stage3Result{
 		CriticReasoning:          "Effective connection pool recovery pattern",
 		ContradictsBestPractices: true,
 	}, []byte("session content here")))
@@ -583,11 +584,11 @@ func TestBuildSkillMDContent(t *testing.T) {
 }
 
 func TestBuildSkillMDNilStage3(t *testing.T) {
-	skill := &SkillRecord{
+	skill := &model.SkillRecord{
 		ID:        "test-id",
 		Name:      "test-skill",
 		Version:   1,
-		Category:  CategoryTactical,
+		Category:  model.CategoryTactical,
 		CreatedAt: time.Date(2026, 2, 15, 0, 0, 0, 0, time.UTC),
 	}
 	// Should not panic with nil stage3.
@@ -640,19 +641,19 @@ func TestPipelineNeverReturnsError(t *testing.T) {
 }
 
 func TestBuildSkillMD(t *testing.T) {
-	skill := &SkillRecord{
+	skill := &model.SkillRecord{
 		ID:              "01234567-89ab-7def-8000-000000000001",
 		Name:            "fix-backend-database-connection",
 		Version:         1,
-		Category:        CategoryTactical,
+		Category:        model.CategoryTactical,
 		Patterns:        []string{"FIX/Backend/DatabaseConnection"},
-		Quality:         QualityScores{CompositeScore: 3.6, CriticConfidence: 0.85},
+		Quality:         model.QualityScores{CompositeScore: 3.6, CriticConfidence: 0.85},
 		SourceSessionID: "sess-001",
 		ExtractedBy:     "test-v1",
 		CreatedAt:       time.Date(2026, 2, 15, 0, 0, 0, 0, time.UTC),
 	}
 
-	body := string(buildSkillMD(skill, &Stage3Result{
+	body := string(buildSkillMD(skill, &model.Stage3Result{
 		CriticReasoning:          "The solution demonstrates a clean pattern for database connection pooling recovery.",
 		ContradictsBestPractices: false,
 	}, []byte("fix database connection pooling issue by implementing retry logic")))

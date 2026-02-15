@@ -17,6 +17,7 @@ import (
 	"github.com/mycelium-dev/mycelium/internal/config"
 	"github.com/mycelium-dev/mycelium/internal/embedding"
 	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 )
 
@@ -120,10 +121,10 @@ func runExtract(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println(string(out))
 
-	if result.Status == extraction.StatusRejected {
+	if result.Status == model.StatusRejected {
 		return &exitError{code: 2, msg: "extraction rejected"}
 	}
-	if result.Status == extraction.StatusError {
+	if result.Status == model.StatusError {
 		return &exitError{code: 3, msg: "extraction error"}
 	}
 
@@ -141,10 +142,10 @@ func (e *exitError) ExitCode() int { return e.code }
 
 // parseSessionFromLog extracts metadata from a session log file.
 // Looks for common patterns: timestamps, tool calls, errors, model info.
-func parseSessionFromLog(content []byte, libraryID string) extraction.SessionRecord {
+func parseSessionFromLog(content []byte, libraryID string) model.SessionRecord {
 	lines := strings.Split(string(content), "\n")
 
-	session := extraction.SessionRecord{
+	session := model.SessionRecord{
 		ID:        uuid.Must(uuid.NewV7()).String(),
 		LibraryID: libraryID,
 	}

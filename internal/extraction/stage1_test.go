@@ -1,6 +1,7 @@
 package extraction
 
 import (
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"log/slog"
 	"math"
 	"strings"
@@ -15,8 +16,8 @@ func defaultTestConfig() config.ExtractionConfig {
 	return c.Extraction
 }
 
-func passingSession() SessionRecord {
-	return SessionRecord{
+func passingSession() model.SessionRecord {
+	return model.SessionRecord{
 		ID:                "test-session-1",
 		StartedAt:         time.Now().Add(-10 * time.Minute),
 		EndedAt:           time.Now(),
@@ -36,7 +37,7 @@ func passingSession() SessionRecord {
 func TestStage1Filter(t *testing.T) {
 	tests := []struct {
 		name           string
-		mutate         func(*SessionRecord)
+		mutate         func(*model.SessionRecord)
 		cfg            *config.ExtractionConfig
 		passed         bool
 		durationOK     bool
@@ -55,7 +56,7 @@ func TestStage1Filter(t *testing.T) {
 		},
 		{
 			name:           "duration too short",
-			mutate:         func(s *SessionRecord) { s.DurationMinutes = 1 },
+			mutate:         func(s *model.SessionRecord) { s.DurationMinutes = 1 },
 			durationOK:     false,
 			toolCallCountOK: true,
 			errorRateOK:    true,
@@ -64,7 +65,7 @@ func TestStage1Filter(t *testing.T) {
 		},
 		{
 			name:           "duration too long",
-			mutate:         func(s *SessionRecord) { s.DurationMinutes = 200 },
+			mutate:         func(s *model.SessionRecord) { s.DurationMinutes = 200 },
 			durationOK:     false,
 			toolCallCountOK: true,
 			errorRateOK:    true,
@@ -73,7 +74,7 @@ func TestStage1Filter(t *testing.T) {
 		},
 		{
 			name:           "too few tool calls",
-			mutate:         func(s *SessionRecord) { s.ToolCallCount = 2; s.ErrorCount = 0; s.ErrorRate = 0 },
+			mutate:         func(s *model.SessionRecord) { s.ToolCallCount = 2; s.ErrorCount = 0; s.ErrorRate = 0 },
 			durationOK:     true,
 			toolCallCountOK: false,
 			errorRateOK:    true,
@@ -82,7 +83,7 @@ func TestStage1Filter(t *testing.T) {
 		},
 		{
 			name:           "error rate too high",
-			mutate:         func(s *SessionRecord) { s.ErrorRate = 0.8; s.ErrorCount = 4 },
+			mutate:         func(s *model.SessionRecord) { s.ErrorRate = 0.8; s.ErrorCount = 4 },
 			durationOK:     true,
 			toolCallCountOK: true,
 			errorRateOK:    false,
@@ -91,7 +92,7 @@ func TestStage1Filter(t *testing.T) {
 		},
 		{
 			name:           "no successful exec",
-			mutate:         func(s *SessionRecord) { s.HasSuccessfulExec = false },
+			mutate:         func(s *model.SessionRecord) { s.HasSuccessfulExec = false },
 			durationOK:     true,
 			toolCallCountOK: true,
 			errorRateOK:    true,
@@ -100,7 +101,7 @@ func TestStage1Filter(t *testing.T) {
 		},
 		{
 			name:           "boundary min duration",
-			mutate:         func(s *SessionRecord) { s.DurationMinutes = 2 },
+			mutate:         func(s *model.SessionRecord) { s.DurationMinutes = 2 },
 			passed:         true,
 			durationOK:     true,
 			toolCallCountOK: true,
@@ -109,7 +110,7 @@ func TestStage1Filter(t *testing.T) {
 		},
 		{
 			name:           "boundary max duration",
-			mutate:         func(s *SessionRecord) { s.DurationMinutes = 180 },
+			mutate:         func(s *model.SessionRecord) { s.DurationMinutes = 180 },
 			passed:         true,
 			durationOK:     true,
 			toolCallCountOK: true,
@@ -118,7 +119,7 @@ func TestStage1Filter(t *testing.T) {
 		},
 		{
 			name:           "boundary min tool calls",
-			mutate:         func(s *SessionRecord) { s.ToolCallCount = 3; s.ErrorCount = 0; s.ErrorRate = 0 },
+			mutate:         func(s *model.SessionRecord) { s.ToolCallCount = 3; s.ErrorCount = 0; s.ErrorRate = 0 },
 			passed:         true,
 			durationOK:     true,
 			toolCallCountOK: true,
@@ -127,7 +128,7 @@ func TestStage1Filter(t *testing.T) {
 		},
 		{
 			name:           "boundary max error rate",
-			mutate:         func(s *SessionRecord) { s.ErrorRate = 0.7; s.ErrorCount = 3 },
+			mutate:         func(s *model.SessionRecord) { s.ErrorRate = 0.7; s.ErrorCount = 3 },
 			passed:         true,
 			durationOK:     true,
 			toolCallCountOK: true,
@@ -136,7 +137,7 @@ func TestStage1Filter(t *testing.T) {
 		},
 		{
 			name: "zero tool calls fails min check",
-			mutate: func(s *SessionRecord) {
+			mutate: func(s *model.SessionRecord) {
 				s.ToolCallCount = 0
 				s.ErrorCount = 0
 				s.ErrorRate = 0
@@ -149,7 +150,7 @@ func TestStage1Filter(t *testing.T) {
 		},
 		{
 			name: "multiple failures",
-			mutate: func(s *SessionRecord) {
+			mutate: func(s *model.SessionRecord) {
 				s.DurationMinutes = 0.5
 				s.ToolCallCount = 1
 				s.ErrorCount = 1
@@ -180,7 +181,7 @@ func TestStage1Filter(t *testing.T) {
 		// Edge cases
 		{
 			name:           "negative duration",
-			mutate:         func(s *SessionRecord) { s.DurationMinutes = -5 },
+			mutate:         func(s *model.SessionRecord) { s.DurationMinutes = -5 },
 			durationOK:     false,
 			toolCallCountOK: true,
 			errorRateOK:    true,
@@ -189,7 +190,7 @@ func TestStage1Filter(t *testing.T) {
 		},
 		{
 			name: "negative tool calls",
-			mutate: func(s *SessionRecord) {
+			mutate: func(s *model.SessionRecord) {
 				s.ToolCallCount = -1
 				s.ErrorCount = 0
 				s.ErrorRate = 0
@@ -202,7 +203,7 @@ func TestStage1Filter(t *testing.T) {
 		},
 		{
 			name: "NaN duration",
-			mutate: func(s *SessionRecord) {
+			mutate: func(s *model.SessionRecord) {
 				s.DurationMinutes = math.NaN()
 			},
 			durationOK:     false,
@@ -213,7 +214,7 @@ func TestStage1Filter(t *testing.T) {
 		},
 		{
 			name: "Inf duration",
-			mutate: func(s *SessionRecord) {
+			mutate: func(s *model.SessionRecord) {
 				s.DurationMinutes = math.Inf(1)
 			},
 			durationOK:     false,
@@ -224,7 +225,7 @@ func TestStage1Filter(t *testing.T) {
 		},
 		{
 			name: "NaN error rate",
-			mutate: func(s *SessionRecord) {
+			mutate: func(s *model.SessionRecord) {
 				s.ErrorRate = math.NaN()
 			},
 			durationOK:     true,
@@ -241,7 +242,7 @@ func TestStage1Filter(t *testing.T) {
 				MinToolCalls:       0,
 				MaxErrorRate:       0,
 			},
-			mutate: func(s *SessionRecord) {
+			mutate: func(s *model.SessionRecord) {
 				s.DurationMinutes = 0
 				s.ToolCallCount = 0
 				s.ErrorCount = 0

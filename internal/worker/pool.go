@@ -9,11 +9,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
 // SessionGetter loads a full SessionRecord by ID.
-type SessionGetter func(ctx context.Context, id string) (*extraction.SessionRecord, error)
+type SessionGetter func(ctx context.Context, id string) (*model.SessionRecord, error)
 
 // Pool manages a pool of worker goroutines that claim and process queued sessions.
 type Pool interface {
@@ -36,7 +36,7 @@ type PoolStats struct {
 // workerPool implements Pool.
 type workerPool struct {
 	queue     SessionQueue
-	extractor extraction.Extractor
+	extractor model.Extractor
 	getSession SessionGetter
 	cfg       Config
 	log       *slog.Logger
@@ -55,7 +55,7 @@ type workerPool struct {
 }
 
 // NewPool creates a new worker pool.
-func NewPool(queue SessionQueue, extractor extraction.Extractor, getSession SessionGetter, cfg Config, log *slog.Logger) Pool {
+func NewPool(queue SessionQueue, extractor model.Extractor, getSession SessionGetter, cfg Config, log *slog.Logger) Pool {
 	return &workerPool{
 		queue:      queue,
 		extractor:  extractor,
@@ -201,7 +201,7 @@ func (p *workerPool) process(ctx context.Context, workerID string, entry *QueueE
 		return
 	}
 
-	if result.Status == extraction.StatusExtracted {
+	if result.Status == model.StatusExtracted {
 		p.extracted.Add(1)
 		p.log.Info("session extracted", "worker_id", workerID, "session_id", entry.SessionID)
 	} else {

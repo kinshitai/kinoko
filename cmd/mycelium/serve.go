@@ -14,6 +14,7 @@ import (
 	"github.com/mycelium-dev/mycelium/internal/decay"
 	"github.com/mycelium-dev/mycelium/internal/embedding"
 	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/gitserver"
 	"github.com/mycelium-dev/mycelium/internal/injection"
 	"github.com/mycelium-dev/mycelium/internal/storage"
@@ -41,11 +42,11 @@ func init() {
 type SessionHooks struct {
 	// OnSessionStart is called when a new agent session begins.
 	// It runs the injection pipeline to select relevant skills.
-	OnSessionStart func(ctx context.Context, req extraction.InjectionRequest) (*extraction.InjectionResponse, error)
+	OnSessionStart func(ctx context.Context, req model.InjectionRequest) (*model.InjectionResponse, error)
 
 	// OnSessionEnd is called when an agent session completes.
 	// It runs the extraction pipeline on the session log.
-	OnSessionEnd func(ctx context.Context, session extraction.SessionRecord, logContent []byte) (*extraction.ExtractionResult, error)
+	OnSessionEnd func(ctx context.Context, session model.SessionRecord, logContent []byte) (*model.ExtractionResult, error)
 }
 
 // buildSessionHooks wires the extraction and injection pipelines into session
@@ -89,7 +90,7 @@ func buildSessionHooks(cfg *config.Config, store *storage.SQLiteStore, logger *s
 			inj = injection.New(embedder, store, llmClient, store, logger)
 		}
 
-		hooks.OnSessionStart = func(ctx context.Context, req extraction.InjectionRequest) (*extraction.InjectionResponse, error) {
+		hooks.OnSessionStart = func(ctx context.Context, req model.InjectionRequest) (*model.InjectionResponse, error) {
 			resp, err := inj.Inject(ctx, req)
 			if err != nil {
 				logger.Error("injection failed", "error", err)
@@ -100,16 +101,16 @@ func buildSessionHooks(cfg *config.Config, store *storage.SQLiteStore, logger *s
 		}
 		logger.Info("injection hook registered")
 	} else {
-		hooks.OnSessionStart = func(_ context.Context, _ extraction.InjectionRequest) (*extraction.InjectionResponse, error) {
-			return &extraction.InjectionResponse{}, nil
+		hooks.OnSessionStart = func(_ context.Context, _ model.InjectionRequest) (*model.InjectionResponse, error) {
+			return &model.InjectionResponse{}, nil
 		}
 		logger.Warn("injection hook disabled: no embedding API key")
 	}
 
 	// Wire extraction hook (post-session) — enqueue instead of synchronous extraction.
 	// The queue parameter is injected by the caller (nil-safe: if nil, hook is a no-op).
-	hooks.OnSessionEnd = func(_ context.Context, _ extraction.SessionRecord, _ []byte) (*extraction.ExtractionResult, error) {
-		return &extraction.ExtractionResult{Status: extraction.StatusRejected}, nil
+	hooks.OnSessionEnd = func(_ context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
+		return &model.ExtractionResult{Status: model.StatusRejected}, nil
 	}
 	logger.Info("extraction hook: enqueue mode (set via setEnqueueHook)")
 
@@ -117,7 +118,7 @@ func buildSessionHooks(cfg *config.Config, store *storage.SQLiteStore, logger *s
 }
 
 // buildPipeline creates an extraction pipeline from config. Returns nil if no LLM key.
-func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, logger *slog.Logger) (extraction.Extractor, error) {
+func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, logger *slog.Logger) (model.Extractor, error) {
 	llmAPIKey := os.Getenv("MYCELIUM_LLM_API_KEY")
 	if llmAPIKey == "" {
 		llmAPIKey = os.Getenv("OPENAI_API_KEY")
@@ -185,7 +186,7 @@ func startWorkerSystem(
 		return nil, nil, nil, fmt.Errorf("no LLM API key configured; workers require extraction pipeline")
 	}
 
-	getSession := func(ctx context.Context, id string) (*extraction.SessionRecord, error) {
+	getSession := func(ctx context.Context, id string) (*model.SessionRecord, error) {
 		return store.GetSession(ctx, id)
 	}
 
@@ -258,13 +259,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Replace synchronous extraction hook with async enqueue.
 	if queue != nil {
-		hooks.OnSessionEnd = func(ctx context.Context, session extraction.SessionRecord, logContent []byte) (*extraction.ExtractionResult, error) {
+		hooks.OnSessionEnd = func(ctx context.Context, session model.SessionRecord, logContent []byte) (*model.ExtractionResult, error) {
 			if err := queue.Enqueue(ctx, session, logContent); err != nil {
 				logger.Error("enqueue failed", "session_id", session.ID, "error", err)
 				return nil, err
 			}
 			logger.Info("session enqueued", "session_id", session.ID)
-			return &extraction.ExtractionResult{Status: extraction.StatusQueued}, nil
+			return &model.ExtractionResult{Status: model.StatusQueued}, nil
 		}
 	}
 

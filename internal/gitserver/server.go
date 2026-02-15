@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/mycelium-dev/mycelium/internal/config"
-	"github.com/mycelium-dev/mycelium/internal/extraction"
+	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
 // Server wraps the Soft Serve git server with Mycelium-specific functionality
@@ -31,10 +31,10 @@ type Server struct {
 }
 
 // SessionStartHook is called when a new agent session begins to run injection.
-type SessionStartHook func(ctx context.Context, req extraction.InjectionRequest) (*extraction.InjectionResponse, error)
+type SessionStartHook func(ctx context.Context, req model.InjectionRequest) (*model.InjectionResponse, error)
 
 // SessionEndHook is called when an agent session completes to run extraction.
-type SessionEndHook func(ctx context.Context, session extraction.SessionRecord, logContent []byte) (*extraction.ExtractionResult, error)
+type SessionEndHook func(ctx context.Context, session model.SessionRecord, logContent []byte) (*model.ExtractionResult, error)
 
 // SetSessionHooks registers session lifecycle callbacks.
 // The hooks are called during git push events to trigger injection (pre-session)
