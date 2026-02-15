@@ -19,15 +19,6 @@ import (
 	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
-// LLMError is an alias for llm.LLMError.
-type LLMError = llm.LLMError
-
-// LLMCompleteResult is an alias for llm.LLMCompleteResult.
-type LLMCompleteResult = llm.LLMCompleteResult
-
-// LLMClientV2 is an alias for llm.LLMClientV2.
-type LLMClientV2 = llm.LLMClientV2
-
 // maxContentBytes is the truncation limit for session content sent to the LLM.
 const maxContentBytes = 100 * 1024
 
@@ -46,8 +37,8 @@ type clockFunc func() time.Time
 type sleepFunc func(d time.Duration)
 
 type stage3Critic struct {
-	llm   LLMClient
-	llmV2 LLMClientV2 // optional, for token usage + timeout control
+	llmClient llm.LLMClient
+	llmV2     llm.LLMClientV2 // optional, for token usage + timeout control
 	cfg   config.ExtractionConfig
 	log   *slog.Logger
 	cb    *circuitbreaker.Breaker
@@ -59,14 +50,14 @@ type stage3Critic struct {
 
 // NewStage3Critic creates a Stage3Critic.
 func NewStage3Critic(
-	llm LLMClient,
+	llmClient llm.LLMClient,
 	cfg config.ExtractionConfig,
 	log *slog.Logger,
 ) Stage3Critic {
 	c := &stage3Critic{
-		llm: llm,
-		cfg: cfg,
-		log: log,
+		llmClient: llmClient,
+		cfg:       cfg,
+		log:       log,
 		cb: circuitbreaker.New(circuitbreaker.Config{
 			Threshold:    5,
 			BaseDuration: 5 * time.Minute,
@@ -75,7 +66,7 @@ func NewStage3Critic(
 		clock: time.Now,
 		sleep: time.Sleep,
 	}
-	if v2, ok := llm.(LLMClientV2); ok {
+	if v2, ok := llmClient.(llm.LLMClientV2); ok {
 		c.llmV2 = v2
 	}
 	return c
@@ -239,15 +230,6 @@ func allScoresAbove(q model.QualityScores, threshold int) bool {
 		q.InnovationLevel >= threshold
 }
 
-// isRetryable delegates to llm.IsRetryable.
-func isRetryable(err error) bool { return llm.IsRetryable(err) }
-
-// isTimeout delegates to llm.IsTimeout.
-func isTimeout(err error) bool { return llm.IsTimeout(err) }
-
-// isRateLimit delegates to llm.IsRateLimit.
-func isRateLimit(err error) bool { return llm.IsRateLimit(err) }
-
 // retryCallResult holds the result of callWithRetry.
 type retryCallResult struct {
 	content    string
@@ -274,7 +256,7 @@ func (c *stage3Critic) callWithRetry(ctx context.Context, prompt string, session
 
 		// Determine timeout: 30s normally, 60s on retry after timeout (spec §5.1).
 		timeout := 30 * time.Second
-		if attempt > 0 && lastErr != nil && isTimeout(lastErr) {
+		if attempt > 0 && lastErr != nil && llm.IsTimeout(lastErr) {
 			timeout = 60 * time.Second
 		}
 
@@ -287,11 +269,11 @@ func (c *stage3Critic) callWithRetry(ctx context.Context, prompt string, session
 		lastErr = err
 
 		// Update max retries for rate limits.
-		if isRateLimit(err) && maxRetries < 5 {
+		if llm.IsRateLimit(err) && maxRetries < 5 {
 			maxRetries = 5
 		}
 
-		if !isRetryable(err) {
+		if !llm.IsRetryable(err) {
 			return nil, err
 		}
 	}
@@ -313,10 +295,10 @@ func (c *stage3Critic) callLLM(ctx context.Context, prompt string, timeout time.
 		}
 		return result.Content, result.TokensIn + result.TokensOut, nil
 	}
-	// Fallback: use basic LLMClient with context timeout.
+	// Fallback: use basic client with context timeout.
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	resp, err := c.llm.Complete(callCtx, prompt)
+	resp, err := c.llmClient.Complete(callCtx, prompt)
 	if err != nil {
 		return "", 0, err
 	}

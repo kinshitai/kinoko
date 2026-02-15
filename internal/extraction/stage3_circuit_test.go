@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/mycelium-dev/mycelium/internal/llm"
 )
 
 // Tests for the stage3 circuit breaker state transitions.
@@ -16,7 +18,7 @@ func TestStage3CB_ClosedToOpenToHalfOpenToClosed(t *testing.T) {
 
 	llm := &mockLLM3{completeFn: func(_ context.Context, _ string) (string, error) {
 		if shouldFail {
-			return "", &LLMError{StatusCode: 503, Message: "down"}
+			return "", &llm.LLMError{StatusCode: 503, Message: "down"}
 		}
 		return extractVerdictJSON(), nil
 	}}
@@ -64,7 +66,7 @@ func TestStage3CB_HalfOpenFailEscalates(t *testing.T) {
 	now := time.Now()
 
 	llm := &mockLLM3{completeFn: func(_ context.Context, _ string) (string, error) {
-		return "", &LLMError{StatusCode: 503, Message: "down"}
+		return "", &llm.LLMError{StatusCode: 503, Message: "down"}
 	}}
 
 	critic := newTestCriticWithClock(llm, func() time.Time { return now })

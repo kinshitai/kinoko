@@ -48,9 +48,6 @@ func init() {
 	}
 }
 
-// LLMClient is an alias for llm.LLMClient kept for internal use within extraction.
-type LLMClient = llm.LLMClient
-
 // SkillQueryResult holds the nearest-neighbor result from a skill store query.
 type SkillQueryResult struct {
 	CosineSim float64
@@ -69,7 +66,7 @@ type Stage2Scorer interface {
 type stage2Scorer struct {
 	embedder embedding.Embedder
 	querier  SkillQuerier
-	llm      LLMClient
+	llm      llm.LLMClient
 	minDist  float64
 	maxDist  float64
 	log      *slog.Logger
@@ -79,14 +76,14 @@ type stage2Scorer struct {
 func NewStage2Scorer(
 	embedder embedding.Embedder,
 	querier SkillQuerier,
-	llm LLMClient,
+	llmClient llm.LLMClient,
 	cfg config.ExtractionConfig,
 	log *slog.Logger,
 ) Stage2Scorer {
 	return &stage2Scorer{
 		embedder: embedder,
 		querier:  querier,
-		llm:      llm,
+		llm:      llmClient,
 		minDist:  cfg.NoveltyMinDistance,
 		maxDist:  cfg.NoveltyMaxDistance,
 		log:      log,

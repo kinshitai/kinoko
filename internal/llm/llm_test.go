@@ -88,6 +88,39 @@ func TestIsRateLimit(t *testing.T) {
 	}
 }
 
+func TestOpenAIClient_Non200_ReturnsLLMError(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		retryable  bool
+		rateLimit  bool
+	}{
+		{"429 is rate limit", 429, true, true},
+		{"500 is retryable", 500, true, false},
+		{"502 is retryable", 502, true, false},
+		{"400 is not retryable", 400, false, false},
+		{"401 is not retryable", 401, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := &LLMError{StatusCode: tt.statusCode, Message: "test"}
+			var target *LLMError
+			if !errors.As(err, &target) {
+				t.Fatal("expected errors.As to match *LLMError")
+			}
+			if target.StatusCode != tt.statusCode {
+				t.Errorf("StatusCode = %d, want %d", target.StatusCode, tt.statusCode)
+			}
+			if got := IsRetryable(err); got != tt.retryable {
+				t.Errorf("IsRetryable() = %v, want %v", got, tt.retryable)
+			}
+			if got := IsRateLimit(err); got != tt.rateLimit {
+				t.Errorf("IsRateLimit() = %v, want %v", got, tt.rateLimit)
+			}
+		})
+	}
+}
+
 func TestIsTimeout(t *testing.T) {
 	tests := []struct {
 		name string

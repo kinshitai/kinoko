@@ -74,7 +74,7 @@ func (c *OpenAIClient) complete(ctx context.Context, prompt string) (string, err
 	if resp.StatusCode != 200 {
 		body := make([]byte, 512)
 		n, _ := resp.Body.Read(body)
-		return "", fmt.Errorf("openai API %d: %s", resp.StatusCode, string(body[:n]))
+		return "", &LLMError{StatusCode: resp.StatusCode, Message: string(body[:n])}
 	}
 
 	var result struct {

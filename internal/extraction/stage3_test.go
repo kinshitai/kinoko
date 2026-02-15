@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mycelium-dev/mycelium/internal/circuitbreaker"
+	"github.com/mycelium-dev/mycelium/internal/llm"
 	"github.com/mycelium-dev/mycelium/internal/config"
 	"github.com/mycelium-dev/mycelium/internal/model"
 )
@@ -30,14 +31,14 @@ func (m *mockLLM3) Complete(ctx context.Context, prompt string) (string, error) 
 // mockLLMV2 implements LLMClientV2 for testing token usage and timeouts.
 type mockLLMV2 struct {
 	completeFn            func(ctx context.Context, prompt string) (string, error)
-	completeWithTimeoutFn func(ctx context.Context, prompt string, timeout time.Duration) (*LLMCompleteResult, error)
+	completeWithTimeoutFn func(ctx context.Context, prompt string, timeout time.Duration) (*llm.LLMCompleteResult, error)
 }
 
 func (m *mockLLMV2) Complete(ctx context.Context, prompt string) (string, error) {
 	return m.completeFn(ctx, prompt)
 }
 
-func (m *mockLLMV2) CompleteWithTimeout(ctx context.Context, prompt string, timeout time.Duration) (*LLMCompleteResult, error) {
+func (m *mockLLMV2) CompleteWithTimeout(ctx context.Context, prompt string, timeout time.Duration) (*llm.LLMCompleteResult, error) {
 	if m.completeWithTimeoutFn != nil {
 		return m.completeWithTimeoutFn(ctx, prompt, timeout)
 	}
@@ -45,16 +46,16 @@ func (m *mockLLMV2) CompleteWithTimeout(ctx context.Context, prompt string, time
 	if err != nil {
 		return nil, err
 	}
-	return &LLMCompleteResult{Content: resp, TokensIn: 100, TokensOut: 50}, nil
+	return &llm.LLMCompleteResult{Content: resp, TokensIn: 100, TokensOut: 50}, nil
 }
 
-func s3okLLM(response string) LLMClient {
+func s3okLLM(response string) llm.LLMClient {
 	return &mockLLM3{completeFn: func(_ context.Context, _ string) (string, error) {
 		return response, nil
 	}}
 }
 
-func s3errLLM(err error) LLMClient {
+func s3errLLM(err error) llm.LLMClient {
 	return &mockLLM3{completeFn: func(_ context.Context, _ string) (string, error) {
 		return "", err
 	}}
@@ -423,7 +424,7 @@ func TestStage3Critic(t *testing.T) {
 		// Error propagation
 		{
 			name:    "LLM returns error",
-			llmErr:  &LLMError{StatusCode: 503, Message: "service unavailable"},
+			llmErr:  &llm.LLMError{StatusCode: 503, Message: "service unavailable"},
 			stage2:  passingStage2(),
 			content: []byte("session"),
 			wantErr: true,
@@ -476,7 +477,7 @@ func TestStage3Critic(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var llm LLMClient
+			var llm llm.LLMClient
 			if tt.llmErr != nil {
 				llm = s3errLLM(tt.llmErr)
 			} else {
@@ -528,10 +529,10 @@ func TestStage3Critic_Retry(t *testing.T) {
 		wantPassed bool
 	}{
 		{"succeeds first try", 0, nil, 1, false, true},
-		{"fails once then succeeds", 1, &LLMError{StatusCode: 503, Message: "unavailable"}, 2, false, true},
-		{"fails 3 then succeeds", 3, &LLMError{StatusCode: 500, Message: "internal"}, 4, false, true},
-		{"fails 4 exceeds max retries", 4, &LLMError{StatusCode: 502, Message: "bad gateway"}, 4, true, false},
-		{"rate limit 429 gets 5 retries", 5, &LLMError{StatusCode: 429, Message: "rate limit"}, 6, false, true},
+		{"fails once then succeeds", 1, &llm.LLMError{StatusCode: 503, Message: "unavailable"}, 2, false, true},
+		{"fails 3 then succeeds", 3, &llm.LLMError{StatusCode: 500, Message: "internal"}, 4, false, true},
+		{"fails 4 exceeds max retries", 4, &llm.LLMError{StatusCode: 502, Message: "bad gateway"}, 4, true, false},
+		{"rate limit 429 gets 5 retries", 5, &llm.LLMError{StatusCode: 429, Message: "rate limit"}, 6, false, true},
 	}
 
 	for _, tt := range tests {
@@ -573,7 +574,7 @@ func TestStage3Critic_Retry(t *testing.T) {
 
 func TestStage3Critic_CircuitBreaker(t *testing.T) {
 	t.Run("opens after 5 consecutive failures", func(t *testing.T) {
-		llm := s3errLLM(&LLMError{StatusCode: 503, Message: "unavailable"})
+		llm := s3errLLM(&llm.LLMError{StatusCode: 503, Message: "unavailable"})
 		critic := newTestCritic(llm)
 
 		// 5 calls fail (each retries internally, but all fail)
@@ -599,7 +600,7 @@ func TestStage3Critic_CircuitBreaker(t *testing.T) {
 		llm := &mockLLM3{completeFn: func(_ context.Context, _ string) (string, error) {
 			callCount++
 			if shouldFail {
-				return "", &LLMError{StatusCode: 503, Message: "unavailable"}
+				return "", &llm.LLMError{StatusCode: 503, Message: "unavailable"}
 			}
 			return extractVerdictJSON(), nil
 		}}
@@ -639,7 +640,7 @@ func TestStage3Critic_CircuitBreaker(t *testing.T) {
 			if succeedNext {
 				return extractVerdictJSON(), nil
 			}
-			return "", &LLMError{StatusCode: 503, Message: "unavailable"}
+			return "", &llm.LLMError{StatusCode: 503, Message: "unavailable"}
 		}}
 
 		critic := newTestCritic(llm)
@@ -887,45 +888,11 @@ func TestTruncateContent(t *testing.T) {
 	}
 }
 
-// --- P1: isRetryable correctness ---
-
-func TestIsRetryable(t *testing.T) {
-	tests := []struct {
-		name string
-		err  error
-		want bool
-	}{
-		{"nil", nil, false},
-		{"500 LLMError", &LLMError{StatusCode: 500, Message: "internal"}, true},
-		{"502 LLMError", &LLMError{StatusCode: 502, Message: "bad gateway"}, true},
-		{"503 LLMError", &LLMError{StatusCode: 503, Message: "unavailable"}, true},
-		{"504 LLMError", &LLMError{StatusCode: 504, Message: "gateway timeout"}, true},
-		{"429 LLMError", &LLMError{StatusCode: 429, Message: "rate limit"}, true},
-		{"401 LLMError not retryable", &LLMError{StatusCode: 401, Message: "unauthorized"}, false},
-		{"400 LLMError not retryable", &LLMError{StatusCode: 400, Message: "bad request"}, false},
-		{"403 LLMError not retryable", &LLMError{StatusCode: 403, Message: "forbidden"}, false},
-		{"plain string with 5 not retryable", errors.New("stage2 did not pass 5 checks"), false},
-		{"plain string with 500 not retryable", errors.New("error code 500"), false},
-		{"timeout string retryable", errors.New("connection timeout"), true},
-		{"unavailable string retryable", errors.New("service unavailable"), true},
-		{"context deadline exceeded", context.DeadlineExceeded, true},
-		{"wrapped LLMError", fmt.Errorf("call failed: %w", &LLMError{StatusCode: 503, Message: "down"}), true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := isRetryable(tt.err)
-			if got != tt.want {
-				t.Errorf("isRetryable(%v) = %v, want %v", tt.err, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestNonRetryableErrorSkipsRetry(t *testing.T) {
 	callCount := 0
 	llm := &mockLLM3{completeFn: func(_ context.Context, _ string) (string, error) {
 		callCount++
-		return "", &LLMError{StatusCode: 401, Message: "unauthorized"}
+		return "", &llm.LLMError{StatusCode: 401, Message: "unauthorized"}
 	}}
 	critic := newTestCritic(llm)
 	_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2())
@@ -956,8 +923,8 @@ func TestStage3Critic_TokensUsed(t *testing.T) {
 			completeFn: func(_ context.Context, _ string) (string, error) {
 				return extractVerdictJSON(), nil
 			},
-			completeWithTimeoutFn: func(_ context.Context, _ string, _ time.Duration) (*LLMCompleteResult, error) {
-				return &LLMCompleteResult{Content: extractVerdictJSON(), TokensIn: 200, TokensOut: 80}, nil
+			completeWithTimeoutFn: func(_ context.Context, _ string, _ time.Duration) (*llm.LLMCompleteResult, error) {
+				return &llm.LLMCompleteResult{Content: extractVerdictJSON(), TokensIn: 200, TokensOut: 80}, nil
 			},
 		}
 		c := NewStage3Critic(llm, s3testConfig(), s3testLogger()).(*stage3Critic)
@@ -981,12 +948,12 @@ func TestStage3Critic_TimeoutEscalation(t *testing.T) {
 		completeFn: func(_ context.Context, _ string) (string, error) {
 			return "", errors.New("timeout")
 		},
-		completeWithTimeoutFn: func(_ context.Context, _ string, timeout time.Duration) (*LLMCompleteResult, error) {
+		completeWithTimeoutFn: func(_ context.Context, _ string, timeout time.Duration) (*llm.LLMCompleteResult, error) {
 			timeouts = append(timeouts, timeout)
 			if len(timeouts) < 3 {
 				return nil, errors.New("timeout")
 			}
-			return &LLMCompleteResult{Content: extractVerdictJSON(), TokensIn: 50, TokensOut: 20}, nil
+			return &llm.LLMCompleteResult{Content: extractVerdictJSON(), TokensIn: 50, TokensOut: 20}, nil
 		},
 	}
 
@@ -1061,7 +1028,7 @@ func TestStage3Critic_HalfOpenFailureDoublesDuration(t *testing.T) {
 
 	llm := &mockLLM3{completeFn: func(_ context.Context, _ string) (string, error) {
 		if shouldFail {
-			return "", &LLMError{StatusCode: 503, Message: "unavailable"}
+			return "", &llm.LLMError{StatusCode: 503, Message: "unavailable"}
 		}
 		return extractVerdictJSON(), nil
 	}}
@@ -1305,7 +1272,7 @@ func TestStage3Critic_TruncationVerified(t *testing.T) {
 
 func boolPtr(b bool) *bool { return &b }
 
-func newTestCritic(llm LLMClient) Stage3Critic {
+func newTestCritic(llm llm.LLMClient) Stage3Critic {
 	c := NewStage3Critic(llm, s3testConfig(), s3testLogger()).(*stage3Critic)
 	c.sleep = func(d time.Duration) {} // no-op sleep for tests
 	return c
@@ -1318,7 +1285,7 @@ type clockAdapter struct {
 
 func (a clockAdapter) Now() time.Time { return a.fn() }
 
-func newTestCriticWithClock(llm LLMClient, clock func() time.Time) *stage3Critic {
+func newTestCriticWithClock(llm llm.LLMClient, clock func() time.Time) *stage3Critic {
 	c := NewStage3Critic(llm, s3testConfig(), s3testLogger()).(*stage3Critic)
 	c.clock = clock
 	c.sleep = func(d time.Duration) {}

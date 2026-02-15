@@ -254,5 +254,4 @@ func (sq *storeQuerier) QueryNearest(ctx context.Context, emb []float32, library
 	return &extraction.SkillQueryResult{CosineSim: results[0].CosineSim}, nil
 }
 
-// openAILLMClient and openAIComplete moved to internal/llm package.
 
