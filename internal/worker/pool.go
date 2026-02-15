@@ -147,11 +147,17 @@ func (p *workerPool) run(ctx context.Context, workerID string) {
 }
 
 func (p *workerPool) process(ctx context.Context, workerID string, entry *QueueEntry) {
+	// Use a detached context for all DB operations during processing.
+	// The pool context (ctx) may be cancelled during graceful shutdown,
+	// but in-flight work must still be able to Complete/Fail/read sessions.
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer dbCancel()
+
 	// Read log file from disk.
 	content, err := os.ReadFile(entry.LogContentPath)
 	if err != nil {
 		p.log.Error("file read failed", "worker_id", workerID, "session_id", entry.SessionID, "path", entry.LogContentPath, "error", err)
-		if failErr := p.queue.FailPermanent(ctx, entry.SessionID, fmt.Errorf("read log file: %w", err)); failErr != nil {
+		if failErr := p.queue.FailPermanent(dbCtx, entry.SessionID, fmt.Errorf("read log file: %w", err)); failErr != nil {
 			p.log.Error("fail permanent error", "worker_id", workerID, "session_id", entry.SessionID, "error", failErr)
 		}
 		p.failed.Add(1)
@@ -159,30 +165,28 @@ func (p *workerPool) process(ctx context.Context, workerID string, entry *QueueE
 	}
 
 	// Load full session record. Failures are transient (DB/network may recover).
-	session, err := p.getSession(ctx, entry.SessionID)
+	session, err := p.getSession(dbCtx, entry.SessionID)
 	if err != nil {
 		p.log.Error("get session failed", "worker_id", workerID, "session_id", entry.SessionID, "error", err)
-		if failErr := p.queue.Fail(ctx, entry.SessionID, fmt.Errorf("get session: %w", err)); failErr != nil {
+		if failErr := p.queue.Fail(dbCtx, entry.SessionID, fmt.Errorf("get session: %w", err)); failErr != nil {
 			p.log.Error("fail error", "worker_id", workerID, "session_id", entry.SessionID, "error", failErr)
 		}
 		p.errors.Add(1)
 		return
 	}
 
-	// Run extraction pipeline with a detached context so that pool
+	// Run extraction pipeline with the detached context so that pool
 	// cancellation does not abort in-flight extractions.
-	extractCtx, extractCancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer extractCancel()
-	result, err := p.extractor.Extract(extractCtx, *session, content)
+	result, err := p.extractor.Extract(dbCtx, *session, content)
 	if err != nil {
 		p.log.Error("extraction failed", "worker_id", workerID, "session_id", entry.SessionID, "error", err)
 		if entry.RetryCount+1 >= p.cfg.MaxRetries {
-			if failErr := p.queue.FailPermanent(ctx, entry.SessionID, err); failErr != nil {
+			if failErr := p.queue.FailPermanent(dbCtx, entry.SessionID, err); failErr != nil {
 				p.log.Error("fail permanent error", "worker_id", workerID, "session_id", entry.SessionID, "error", failErr)
 			}
 			p.failed.Add(1)
 		} else {
-			if failErr := p.queue.Fail(ctx, entry.SessionID, err); failErr != nil {
+			if failErr := p.queue.Fail(dbCtx, entry.SessionID, err); failErr != nil {
 				p.log.Error("fail error", "worker_id", workerID, "session_id", entry.SessionID, "error", failErr)
 			}
 			p.errors.Add(1)
@@ -191,7 +195,7 @@ func (p *workerPool) process(ctx context.Context, workerID string, entry *QueueE
 	}
 
 	// Complete.
-	if completeErr := p.queue.Complete(ctx, entry.SessionID, result); completeErr != nil {
+	if completeErr := p.queue.Complete(dbCtx, entry.SessionID, result); completeErr != nil {
 		p.log.Error("complete failed", "worker_id", workerID, "session_id", entry.SessionID, "error", completeErr)
 		p.errors.Add(1)
 		return
