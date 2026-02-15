@@ -5,12 +5,31 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/mycelium-dev/mycelium/internal/embedding"
 	"github.com/mycelium-dev/mycelium/internal/extraction"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 )
+
+// maxPatterns caps the number of classified patterns forwarded to the query.
+const maxPatterns = 3
+
+// defaultMaxSkills is the fallback when InjectionRequest.MaxSkills <= 0.
+const defaultMaxSkills = 3
+
+// defaultMinDecay filters out skills at or below the deprecation threshold (§5.5).
+const defaultMinDecay = 0.05
+
+// defaultCandidateLimit bounds the number of rows loaded from the store.
+const defaultCandidateLimit = 50
+
+// InjectionEventWriter persists injection events for the feedback loop.
+type InjectionEventWriter interface {
+	WriteInjectionEvent(ctx context.Context, ev storage.InjectionEventRecord) error
+}
 
 // Injector selects relevant skills to inject into an agent session.
 type Injector interface {
@@ -19,34 +38,38 @@ type Injector interface {
 
 // injector implements Injector.
 type injector struct {
-	embedder embedding.Embedder
-	store    storage.SkillStore
-	llm      extraction.LLMClient
-	log      *slog.Logger
+	embedder    embedding.Embedder
+	store       storage.SkillStore
+	llm         extraction.LLMClient
+	eventWriter InjectionEventWriter
+	log         *slog.Logger
 }
 
 // New creates an Injector. embedder may be nil (fallback mode permanently).
+// eventWriter may be nil (injection events will not be logged — not recommended).
 func New(
 	embedder embedding.Embedder,
 	store storage.SkillStore,
 	llm extraction.LLMClient,
+	eventWriter InjectionEventWriter,
 	log *slog.Logger,
 ) Injector {
 	if log == nil {
 		log = slog.Default()
 	}
 	return &injector{
-		embedder: embedder,
-		store:    store,
-		llm:      llm,
-		log:      log.With("component", "injector"),
+		embedder:    embedder,
+		store:       store,
+		llm:         llm,
+		eventWriter: eventWriter,
+		log:         log.With("component", "injector"),
 	}
 }
 
 func (inj *injector) Inject(ctx context.Context, req extraction.InjectionRequest) (*extraction.InjectionResponse, error) {
 	maxSkills := req.MaxSkills
 	if maxSkills <= 0 {
-		maxSkills = 3
+		maxSkills = defaultMaxSkills
 	}
 
 	// Step 1: Classify prompt.
@@ -73,14 +96,14 @@ func (inj *injector) Inject(ctx context.Context, req extraction.InjectionRequest
 		inj.log.Info("injection running in degraded mode (no embeddings)")
 	}
 
-	// Step 3: Query skill store.
+	// Step 3: Query skill store with bounded candidates and dead-skill filter.
 	query := storage.SkillQuery{
 		Patterns:   classification.Patterns,
 		Embedding:  promptEmbedding,
 		LibraryIDs: req.LibraryIDs,
 		MinQuality: 0,
-		MinDecay:   0,
-		Limit:      0, // get all candidates, we re-rank
+		MinDecay:   defaultMinDecay,
+		Limit:      defaultCandidateLimit,
 	}
 
 	candidates, err := inj.store.Query(ctx, query)
@@ -95,40 +118,74 @@ func (inj *injector) Inject(ctx context.Context, req extraction.InjectionRequest
 		}, nil
 	}
 
-	// Step 4: Re-rank with appropriate weights.
-	scored := make([]extraction.ScoredSkill, len(candidates))
-	for i, c := range candidates {
-		var composite float64
-		if degraded {
-			composite = 0.7*c.PatternOverlap + 0.3*c.HistoricalRate
-		} else {
-			composite = 0.5*c.PatternOverlap + 0.3*c.CosineSim + 0.2*c.HistoricalRate
+	// Step 4: Re-rank in degraded mode; otherwise use store's composite.
+	if degraded {
+		for i := range candidates {
+			c := &candidates[i]
+			c.CompositeScore = 0.7*c.PatternOverlap + 0.3*c.HistoricalRate
 		}
-		scored[i] = extraction.ScoredSkill{
-			Skill:          c.Skill,
+		slices.SortFunc(candidates, func(a, b storage.ScoredSkill) int {
+			if a.CompositeScore > b.CompositeScore {
+				return -1
+			}
+			if a.CompositeScore < b.CompositeScore {
+				return 1
+			}
+			return 0
+		})
+	}
+	// In normal mode the store already sorted by composite — no recomputation needed.
+
+	// Step 5: Limit to MaxSkills.
+	if len(candidates) > maxSkills {
+		candidates = candidates[:maxSkills]
+	}
+
+	// Step 6: Build response and write injection events.
+	now := time.Now().UTC()
+	skills := make([]extraction.InjectedSkill, len(candidates))
+	for i, c := range candidates {
+		skills[i] = extraction.InjectedSkill{
+			SkillID:        c.Skill.ID,
 			PatternOverlap: c.PatternOverlap,
 			CosineSim:      c.CosineSim,
 			HistoricalRate: c.HistoricalRate,
-			CompositeScore: composite,
+			CompositeScore: c.CompositeScore,
+			RankPosition:   i + 1,
+		}
+
+		// Write injection event for the feedback loop (C3).
+		if inj.eventWriter != nil && req.SessionID != "" {
+			ev := storage.InjectionEventRecord{
+				ID:             fmt.Sprintf("%s-%s-%d", req.SessionID, c.Skill.ID, i),
+				SessionID:      req.SessionID,
+				SkillID:        c.Skill.ID,
+				RankPosition:   i + 1,
+				MatchScore:     c.CompositeScore,
+				PatternOverlap: c.PatternOverlap,
+				CosineSim:      c.CosineSim,
+				HistoricalRate: c.HistoricalRate,
+				InjectedAt:     now,
+			}
+			if writeErr := inj.eventWriter.WriteInjectionEvent(ctx, ev); writeErr != nil {
+				inj.log.Error("failed to write injection event", "skill_id", c.Skill.ID, "error", writeErr)
+				// Non-fatal: don't break injection because logging failed.
+			}
 		}
 	}
 
-	// Sort descending by composite score.
-	sortScoredSkills(scored)
-
-	// Step 5: Limit to MaxSkills.
-	if len(scored) > maxSkills {
-		scored = scored[:maxSkills]
-	}
-
 	return &extraction.InjectionResponse{
-		Skills:         scored,
+		Skills:         skills,
 		Classification: classification,
 	}, nil
 }
 
 // classifyPrompt uses the LLM to classify the user prompt.
 func (inj *injector) classifyPrompt(ctx context.Context, prompt string) (extraction.PromptClassification, error) {
+	if prompt == "" {
+		return extraction.PromptClassification{}, fmt.Errorf("empty prompt")
+	}
+
 	llmPrompt := buildClassificationPrompt(prompt)
 	resp, err := inj.llm.Complete(ctx, llmPrompt)
 	if err != nil {
@@ -146,15 +203,18 @@ func (inj *injector) classifyPrompt(ctx context.Context, prompt string) (extract
 		result.Intent = "BUILD" // default
 	}
 
-	// Validate patterns against taxonomy.
+	// Validate domain (M5).
+	result.Domain = extraction.ValidateDomain(result.Domain)
+
+	// Validate patterns against taxonomy (C1).
 	var validPats []string
 	for _, p := range result.Patterns {
 		if extraction.ValidPattern(p) {
 			validPats = append(validPats, p)
 		}
 	}
-	if len(validPats) > 3 {
-		validPats = validPats[:3]
+	if len(validPats) > maxPatterns {
+		validPats = validPats[:maxPatterns]
 	}
 
 	return extraction.PromptClassification{
@@ -186,19 +246,20 @@ func parseClassificationResponse(resp string, out *classificationResponse) error
 }
 
 func buildClassificationPrompt(userPrompt string) string {
+	taxonomyStr := strings.Join(extraction.Taxonomy, ", ")
 	return fmt.Sprintf(`Classify this user prompt. Respond with ONLY a JSON object.
 
 Determine:
 - intent: one of BUILD, FIX, OPTIMIZE, INTEGRATE, CONFIGURE, LEARN
-- domain: brief domain description (e.g. "Go backend", "React frontend")
+- domain: one of Frontend, Backend, DevOps, Data, Security, Performance
 - patterns: 1-3 matching problem patterns from this taxonomy:
-  BUILD/Frontend/ComponentDesign, BUILD/Frontend/StateManagement, BUILD/Backend/APIDesign, BUILD/Backend/DataModeling, BUILD/DevOps/CIPipeline, BUILD/DevOps/ContainerSetup, FIX/Frontend/RenderingBug, FIX/Backend/DatabaseConnection, FIX/Backend/AuthFlow, FIX/DevOps/DeploymentFailure, FIX/Performance/MemoryLeak, FIX/Performance/SlowQuery, OPTIMIZE/Performance/Caching, OPTIMIZE/Performance/BundleSize, OPTIMIZE/Backend/QueryOptimization, INTEGRATE/Backend/ThirdPartyAPI, INTEGRATE/DevOps/CloudService, CONFIGURE/DevOps/InfraAsCode, CONFIGURE/Security/AccessControl, LEARN/Data/DataPipeline
+  %s
 
 JSON format:
 {"intent":"...","domain":"...","patterns":["..."]}
 
 User prompt:
-%s`, userPrompt)
+%s`, taxonomyStr, userPrompt)
 }
 
 var validIntents = map[string]bool{
@@ -208,13 +269,4 @@ var validIntents = map[string]bool{
 	"INTEGRATE": true,
 	"CONFIGURE": true,
 	"LEARN":     true,
-}
-
-// sortScoredSkills sorts descending by CompositeScore.
-func sortScoredSkills(skills []extraction.ScoredSkill) {
-	for i := 1; i < len(skills); i++ {
-		for j := i; j > 0 && skills[j].CompositeScore > skills[j-1].CompositeScore; j-- {
-			skills[j], skills[j-1] = skills[j-1], skills[j]
-		}
-	}
 }

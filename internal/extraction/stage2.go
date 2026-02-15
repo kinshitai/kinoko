@@ -12,28 +12,39 @@ import (
 	"github.com/mycelium-dev/mycelium/internal/embedding"
 )
 
-// validPatterns is the curated taxonomy from the spec (Appendix B).
-var validPatterns = map[string]bool{
-	"BUILD/Frontend/ComponentDesign":     true,
-	"BUILD/Frontend/StateManagement":     true,
-	"BUILD/Backend/APIDesign":            true,
-	"BUILD/Backend/DataModeling":         true,
-	"BUILD/DevOps/CIPipeline":            true,
-	"BUILD/DevOps/ContainerSetup":        true,
-	"FIX/Frontend/RenderingBug":          true,
-	"FIX/Backend/DatabaseConnection":     true,
-	"FIX/Backend/AuthFlow":               true,
-	"FIX/DevOps/DeploymentFailure":       true,
-	"FIX/Performance/MemoryLeak":         true,
-	"FIX/Performance/SlowQuery":          true,
-	"OPTIMIZE/Performance/Caching":       true,
-	"OPTIMIZE/Performance/BundleSize":    true,
-	"OPTIMIZE/Backend/QueryOptimization": true,
-	"INTEGRATE/Backend/ThirdPartyAPI":    true,
-	"INTEGRATE/DevOps/CloudService":      true,
-	"CONFIGURE/DevOps/InfraAsCode":       true,
-	"CONFIGURE/Security/AccessControl":   true,
-	"LEARN/Data/DataPipeline":            true,
+// Taxonomy is the canonical list of problem patterns from Appendix B.
+// Exported so the injection package can share the same list for prompt building.
+var Taxonomy = []string{
+	"BUILD/Frontend/ComponentDesign",
+	"BUILD/Frontend/StateManagement",
+	"BUILD/Backend/APIDesign",
+	"BUILD/Backend/DataModeling",
+	"BUILD/DevOps/CIPipeline",
+	"BUILD/DevOps/ContainerSetup",
+	"FIX/Frontend/RenderingBug",
+	"FIX/Backend/DatabaseConnection",
+	"FIX/Backend/AuthFlow",
+	"FIX/DevOps/DeploymentFailure",
+	"FIX/Performance/MemoryLeak",
+	"FIX/Performance/SlowQuery",
+	"OPTIMIZE/Performance/Caching",
+	"OPTIMIZE/Performance/BundleSize",
+	"OPTIMIZE/Backend/QueryOptimization",
+	"INTEGRATE/Backend/ThirdPartyAPI",
+	"INTEGRATE/DevOps/CloudService",
+	"CONFIGURE/DevOps/InfraAsCode",
+	"CONFIGURE/Security/AccessControl",
+	"LEARN/Data/DataPipeline",
+}
+
+// validPatterns is built from Taxonomy for O(1) lookups.
+var validPatterns map[string]bool
+
+func init() {
+	validPatterns = make(map[string]bool, len(Taxonomy))
+	for _, p := range Taxonomy {
+		validPatterns[p] = true
+	}
 }
 
 // LLMClient is a lightweight LLM interface for rubric scoring.

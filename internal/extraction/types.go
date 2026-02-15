@@ -176,18 +176,20 @@ type InjectionRequest struct {
 }
 
 // InjectionResponse is the output of the Injector.
+// Skills use storage.ScoredSkill to avoid type duplication.
 type InjectionResponse struct {
-	Skills         []ScoredSkill
+	Skills         []InjectedSkill
 	Classification PromptClassification
 }
 
-// ScoredSkill is a skill with match scores (used in injection responses).
-type ScoredSkill struct {
-	Skill          SkillRecord
+// InjectedSkill wraps a storage.ScoredSkill with the rank position used in injection.
+type InjectedSkill struct {
+	SkillID        string
 	PatternOverlap float64
 	CosineSim      float64
 	HistoricalRate float64
 	CompositeScore float64
+	RankPosition   int
 }
 
 // PromptClassification describes how a prompt was parsed for injection.
@@ -195,4 +197,22 @@ type PromptClassification struct {
 	Intent   string
 	Domain   string
 	Patterns []string
+}
+
+// ValidDomains is the set of recognised domains per spec §2.1.
+var ValidDomains = map[string]bool{
+	"Frontend":    true,
+	"Backend":     true,
+	"DevOps":      true,
+	"Data":        true,
+	"Security":    true,
+	"Performance": true,
+}
+
+// ValidateDomain returns the domain if known, or "Backend" as default.
+func ValidateDomain(d string) string {
+	if ValidDomains[d] {
+		return d
+	}
+	return "Backend"
 }
