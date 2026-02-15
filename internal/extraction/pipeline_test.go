@@ -3,6 +3,7 @@ package extraction
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -210,7 +211,7 @@ func TestPipelineExtract(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := &mockWriter{err: tt.storeErr}
-			p := NewPipeline(PipelineConfig{
+			p, _ := NewPipeline(PipelineConfig{
 				Stage1: &mockStage1{result: tt.s1},
 				Stage2: &mockStage2{result: tt.s2, err: tt.s2Err},
 				Stage3: &mockStage3{result: tt.s3, err: tt.s3Err},
@@ -246,7 +247,7 @@ func TestPipelineExtract(t *testing.T) {
 }
 
 func TestPipelineTiming(t *testing.T) {
-	p := NewPipeline(PipelineConfig{
+	p, _ := NewPipeline(PipelineConfig{
 		Stage1: &mockStage1{result: passStage1()},
 		Stage2: &mockStage2{result: passStage2()},
 		Stage3: &mockStage3{result: passStage3()},
@@ -273,18 +274,18 @@ func TestPipelineSampling(t *testing.T) {
 		randVal    int
 		wantSample bool
 	}{
-		{"sampled at 1%", 0.01, 50, true},        // 50 < 200 (0.01*2*10000)
-		{"not sampled at 1%", 0.01, 500, false},   // 500 >= 200
-		{"always sampled", 1.0, 9999, true},       // 9999 < 10000
-		{"never sampled", 0.0, 0, false},          // rate=0
-		{"boundary sampled", 0.01, 199, true},      // 199 < 200 (stratified 2x)
-		{"boundary not sampled", 0.01, 200, false}, // 200 >= 200 (stratified 2x)
+		{"sampled at 1%", 0.01, 50, true},       // 50 < 100 (0.01*10000)
+		{"not sampled at 1%", 0.01, 500, false},  // 500 >= 100
+		{"always sampled", 1.0, 9999, true},      // 9999 < 10000
+		{"never sampled", 0.0, 0, false},         // rate=0
+		{"boundary sampled", 0.01, 99, true},     // 99 < 100
+		{"boundary not sampled", 0.01, 100, false}, // 100 >= 100
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rev := &mockReviewer{}
-			p := NewPipeline(PipelineConfig{
+			p, _ := NewPipeline(PipelineConfig{
 				Stage1:     &mockStage1{result: failStage1("test")},
 				Stage2:     &mockStage2{},
 				Stage3:     &mockStage3{},
@@ -305,7 +306,7 @@ func TestPipelineSampling(t *testing.T) {
 }
 
 func TestPipelineSkillNameFromClassification(t *testing.T) {
-	p := NewPipeline(PipelineConfig{
+	p, _ := NewPipeline(PipelineConfig{
 		Stage1: &mockStage1{result: passStage1()},
 		Stage2: &mockStage2{result: passStage2()},
 		Stage3: &mockStage3{result: passStage3()},
@@ -350,7 +351,7 @@ func TestSkillNameFromClassification(t *testing.T) {
 
 func TestPipelineSkillFields(t *testing.T) {
 	w := &mockWriter{}
-	p := NewPipeline(PipelineConfig{
+	p, _ := NewPipeline(PipelineConfig{
 		Stage1:    &mockStage1{result: passStage1()},
 		Stage2:    &mockStage2{result: passStage2()},
 		Stage3:    &mockStage3{result: passStage3()},
@@ -400,7 +401,7 @@ func TestPipelineSkillFields(t *testing.T) {
 }
 
 func TestPipelineSessionID(t *testing.T) {
-	p := NewPipeline(PipelineConfig{
+	p, _ := NewPipeline(PipelineConfig{
 		Stage1: &mockStage1{result: failStage1("nope")},
 		Stage2: &mockStage2{},
 		Stage3: &mockStage3{},
@@ -418,7 +419,7 @@ func TestPipelineSessionID(t *testing.T) {
 
 func TestPipelineStageResults(t *testing.T) {
 	// Rejected at stage2 should have stage1 and stage2 results but no stage3.
-	p := NewPipeline(PipelineConfig{
+	p, _ := NewPipeline(PipelineConfig{
 		Stage1: &mockStage1{result: passStage1()},
 		Stage2: &mockStage2{result: failStage2("too similar")},
 		Stage3: &mockStage3{},
@@ -440,7 +441,7 @@ func TestPipelineStageResults(t *testing.T) {
 
 func TestPipelineSamplingOnExtract(t *testing.T) {
 	rev := &mockReviewer{}
-	p := NewPipeline(PipelineConfig{
+	p, _ := NewPipeline(PipelineConfig{
 		Stage1:     &mockStage1{result: passStage1()},
 		Stage2:     &mockStage2{result: passStage2()},
 		Stage3:     &mockStage3{result: passStage3()},
@@ -460,6 +461,130 @@ func TestPipelineSamplingOnExtract(t *testing.T) {
 	}
 }
 
+func TestPipelineStratifiedSamplingBalance(t *testing.T) {
+	// Simulate 90 rejected, 10 extracted sessions.
+	// With stratified sampling, the reviewer should see roughly equal counts.
+	rev := &countingReviewer{}
+	callCount := 0
+	p, _ := NewPipeline(PipelineConfig{
+		Stage1:     &mockStage1{result: passStage1()},
+		Stage2:     &mockStage2{result: passStage2()},
+		Stage3:     &mockStage3{result: passStage3()},
+		Writer:     &mockWriter{},
+		Reviewer:   rev,
+		Log:        testLog(),
+		SampleRate: 0.5, // high rate so we actually get samples
+		RandIntn:   func(n int) int { callCount++; return callCount % n },
+	})
+
+	sess := pipelineTestSession()
+
+	// Interleave: 1 extracted per 9 rejected (10% base rate, like reality).
+	extIdx := 0
+	rejIdx := 0
+	for i := 0; i < 100; i++ {
+		if i%10 == 0 && extIdx < 10 {
+			sess.ID = fmt.Sprintf("ext-%d", extIdx)
+			p.stage1 = &mockStage1{result: passStage1()}
+			p.stage3 = &mockStage3{result: passStage3()}
+			extIdx++
+		} else {
+			sess.ID = fmt.Sprintf("rej-%d", rejIdx)
+			p.stage1 = &mockStage1{result: failStage1("nope")}
+			rejIdx++
+		}
+		p.Extract(context.Background(), sess, []byte("content"))
+	}
+
+	// Extracted samples should be >= rejected samples (since extracted pool
+	// is always underrepresented, all extracted get sampled).
+	if p.extractedSamples == 0 {
+		t.Error("no extracted samples collected")
+	}
+	if p.rejectedSamples == 0 {
+		t.Error("no rejected samples collected")
+	}
+	// The ratio should be much closer to 50/50 than the input 10/90.
+	total := p.extractedSamples + p.rejectedSamples
+	extractedPct := float64(p.extractedSamples) / float64(total)
+	if extractedPct < 0.2 {
+		t.Errorf("extracted = %d/%d (%.0f%%), want >= 20%% (stratified)", p.extractedSamples, total, extractedPct*100)
+	}
+}
+
+type countingReviewer struct {
+	count int
+}
+
+func (r *countingReviewer) InsertReviewSample(_ context.Context, _ string, _ []byte) error {
+	r.count++
+	return nil
+}
+
+func TestBuildSkillMDContent(t *testing.T) {
+	skill := &SkillRecord{
+		ID:              "test-id",
+		Name:            "fix-database",
+		Version:         1,
+		Category:        CategoryTactical,
+		Patterns:        []string{"FIX/Backend/DatabaseConnection"},
+		Quality:         QualityScores{CompositeScore: 3.6, CriticConfidence: 0.85},
+		SourceSessionID: "sess-001",
+		ExtractedBy:     "test-v1",
+		CreatedAt:       time.Date(2026, 2, 15, 0, 0, 0, 0, time.UTC),
+	}
+
+	body := string(buildSkillMD(skill, &Stage3Result{
+		CriticReasoning:          "Effective connection pool recovery pattern",
+		ContradictsBestPractices: true,
+	}, []byte("session content here")))
+
+	// Body should contain real content, not just placeholders.
+	if strings.Contains(body, "<!-- ") {
+		t.Error("body still contains HTML comment placeholders")
+	}
+	if !strings.Contains(body, "Effective connection pool recovery pattern") {
+		t.Error("body missing critic reasoning in Why It Works")
+	}
+	if !strings.Contains(body, "session content here") {
+		t.Error("body missing session content in Solution")
+	}
+	if !strings.Contains(body, "contradict established best practices") {
+		t.Error("body missing contradiction warning in Pitfalls")
+	}
+	if !strings.Contains(body, "FIX/Backend/DatabaseConnection") {
+		t.Error("body missing pattern in When to Use")
+	}
+}
+
+func TestBuildSkillMDNilStage3(t *testing.T) {
+	skill := &SkillRecord{
+		ID:        "test-id",
+		Name:      "test-skill",
+		Version:   1,
+		Category:  CategoryTactical,
+		CreatedAt: time.Date(2026, 2, 15, 0, 0, 0, 0, time.UTC),
+	}
+	// Should not panic with nil stage3.
+	body := buildSkillMD(skill, nil, []byte("content"))
+	if len(body) == 0 {
+		t.Error("empty body")
+	}
+}
+
+func TestNewPipelineNilDeps(t *testing.T) {
+	_, err := NewPipeline(PipelineConfig{
+		Stage1: &mockStage1{result: passStage1()},
+		Stage2: &mockStage2{result: passStage2()},
+		// Stage3 missing
+		Writer: &mockWriter{},
+		Log:    testLog(),
+	})
+	if err == nil {
+		t.Error("expected error for nil Stage3")
+	}
+}
+
 // Ensure Extract never returns a non-nil error (errors go into result.Error).
 func TestPipelineNeverReturnsError(t *testing.T) {
 	tests := []struct {
@@ -473,7 +598,7 @@ func TestPipelineNeverReturnsError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := NewPipeline(PipelineConfig{
+			p, _ := NewPipeline(PipelineConfig{
 				Stage1: &mockStage1{result: passStage1()},
 				Stage2: &mockStage2{result: passStage2(), err: tt.s2Err},
 				Stage3: &mockStage3{result: passStage3(), err: tt.s3Err},
@@ -502,7 +627,10 @@ func TestBuildSkillMD(t *testing.T) {
 		CreatedAt:       time.Date(2026, 2, 15, 0, 0, 0, 0, time.UTC),
 	}
 
-	body := string(buildSkillMD(skill))
+	body := string(buildSkillMD(skill, &Stage3Result{
+		CriticReasoning:          "The solution demonstrates a clean pattern for database connection pooling recovery.",
+		ContradictsBestPractices: false,
+	}, []byte("fix database connection pooling issue by implementing retry logic")))
 
 	// Check front matter fields
 	for _, want := range []string{
@@ -538,7 +666,7 @@ func TestBuildSkillMD(t *testing.T) {
 // Verify timing is non-negative even for rejected sessions.
 func TestPipelineTimingOnReject(t *testing.T) {
 	_ = time.Now() // warm up
-	p := NewPipeline(PipelineConfig{
+	p, _ := NewPipeline(PipelineConfig{
 		Stage1: &mockStage1{result: failStage1("nope")},
 		Stage2: &mockStage2{},
 		Stage3: &mockStage3{},

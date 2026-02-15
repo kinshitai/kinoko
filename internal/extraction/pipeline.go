@@ -40,6 +40,10 @@ type Pipeline struct {
 	sampleRate float64 // 0.0–1.0, e.g. 0.01 for 1%
 	randIntn   RandIntn
 	extractor  string // pipeline version identifier
+
+	// Stratified sampling counters: maintain ~50/50 extracted vs rejected.
+	extractedSamples int
+	rejectedSamples  int
 }
 
 // PipelineConfig holds constructor parameters for Pipeline.
@@ -56,7 +60,23 @@ type PipelineConfig struct {
 }
 
 // NewPipeline creates a Pipeline. If RandIntn is nil, crypto/rand is used.
-func NewPipeline(cfg PipelineConfig) *Pipeline {
+// Returns an error if required dependencies (Stage1, Stage2, Stage3, Writer, Log) are nil.
+func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
+	if cfg.Stage1 == nil {
+		return nil, fmt.Errorf("pipeline: Stage1 is required")
+	}
+	if cfg.Stage2 == nil {
+		return nil, fmt.Errorf("pipeline: Stage2 is required")
+	}
+	if cfg.Stage3 == nil {
+		return nil, fmt.Errorf("pipeline: Stage3 is required")
+	}
+	if cfg.Writer == nil {
+		return nil, fmt.Errorf("pipeline: Writer is required")
+	}
+	if cfg.Log == nil {
+		return nil, fmt.Errorf("pipeline: Log is required")
+	}
 	r := cfg.RandIntn
 	if r == nil {
 		r = cryptoRandIntn
@@ -75,11 +95,15 @@ func NewPipeline(cfg PipelineConfig) *Pipeline {
 		sampleRate: cfg.SampleRate,
 		randIntn:   r,
 		extractor:  ext,
-	}
+	}, nil
 }
 
 func cryptoRandIntn(n int) int {
-	v, _ := rand.Int(rand.Reader, big.NewInt(int64(n)))
+	v, err := rand.Int(rand.Reader, big.NewInt(int64(n)))
+	if err != nil {
+		// Entropy exhaustion is catastrophic; fail loudly rather than silently biasing.
+		panic(fmt.Sprintf("crypto/rand failed: %v", err))
+	}
 	return int(v.Int64())
 }
 
@@ -207,7 +231,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 		UpdatedAt:       now,
 	}
 
-	body := buildSkillMD(skill)
+	body := buildSkillMD(skill, s3, content)
 
 	storeStart := time.Now()
 	if err := p.writer.Put(ctx, skill, body); err != nil {
@@ -243,32 +267,48 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 }
 
 // maybeSample writes to human_review_samples with stratified sampling per §3.4.
-// The effective per-pool rate is doubled so that each pool (extracted, rejected/error)
-// contributes 50% of the total sample budget.
+// Maintains ~50/50 split between extracted and rejected pools by always sampling
+// from whichever pool is underrepresented, and probabilistically from the other.
 func (p *Pipeline) maybeSample(ctx context.Context, sessionID string, result *ExtractionResult) {
 	if p.reviewer == nil || p.sampleRate <= 0 {
 		return
 	}
 
-	// Stratified: 50% from extracted, 50% from rejected/error.
-	// Double the rate per pool so overall rate stays at sampleRate.
-	poolRate := p.sampleRate * 2.0
-	if poolRate > 1.0 {
-		poolRate = 1.0
-	}
-
-	threshold := int(poolRate * 10000)
-	if threshold <= 0 {
-		return
-	}
-	roll := p.randIntn(10000)
-	if roll >= threshold {
-		return
-	}
-
+	isExtracted := result.Status == StatusExtracted
 	pool := "rejected"
-	if result.Status == StatusExtracted {
+	if isExtracted {
 		pool = "extracted"
+	}
+
+	// Stratified sampling: maintain ~50/50 between extracted and rejected pools.
+	// Underrepresented pool: always sample.
+	// Overrepresented pool: only sample at base rate.
+	// Equal counts: sample at base rate.
+	underrepresented := false
+	overrepresented := false
+	if isExtracted {
+		underrepresented = p.extractedSamples < p.rejectedSamples
+		overrepresented = p.extractedSamples > p.rejectedSamples
+	} else {
+		underrepresented = p.rejectedSamples < p.extractedSamples
+		overrepresented = p.rejectedSamples > p.extractedSamples
+	}
+
+	if overrepresented {
+		// Skip — let the other pool catch up.
+		return
+	}
+
+	if !underrepresented {
+		// Equal counts — use probabilistic sampling at base rate.
+		threshold := int(p.sampleRate * 10000)
+		if threshold <= 0 {
+			return
+		}
+		roll := p.randIntn(10000)
+		if roll >= threshold {
+			return
+		}
 	}
 
 	data, err := json.Marshal(result)
@@ -282,7 +322,15 @@ func (p *Pipeline) maybeSample(ctx context.Context, sessionID string, result *Ex
 		return
 	}
 
-	p.log.Info("human review sampled", "session_id", sessionID, "status", result.Status, "pool", pool)
+	// Update counters after successful insert.
+	if isExtracted {
+		p.extractedSamples++
+	} else {
+		p.rejectedSamples++
+	}
+
+	p.log.Info("human review sampled", "session_id", sessionID, "status", result.Status, "pool", pool,
+		"extracted_samples", p.extractedSamples, "rejected_samples", p.rejectedSamples)
 }
 
 // skillNameFromClassification derives a kebab-case skill name from classified
@@ -344,8 +392,20 @@ func kebab(s string) string {
 	return strings.Trim(out.String(), "-")
 }
 
+// titleCase converts a space-separated string to title case without using deprecated strings.Title.
+func titleCase(s string) string {
+	words := strings.Fields(s)
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
+}
+
 // buildSkillMD generates a proper SKILL.md with YAML front matter and structured body.
-func buildSkillMD(skill *SkillRecord) []byte {
+// It populates sections from the Stage 3 critic reasoning and session content.
+func buildSkillMD(skill *SkillRecord, stage3 *Stage3Result, content []byte) []byte {
 	var b strings.Builder
 
 	// YAML front matter
@@ -367,18 +427,49 @@ func buildSkillMD(skill *SkillRecord) []byte {
 	fmt.Fprintf(&b, "created: %s\n", skill.CreatedAt.Format(time.DateOnly))
 	fmt.Fprintf(&b, "---\n\n")
 
-	// Structured body — title from name
+	// Title from name
 	title := strings.ReplaceAll(skill.Name, "-", " ")
-	title = strings.Title(title) //nolint:staticcheck
+	title = titleCase(title)
 	fmt.Fprintf(&b, "# %s\n\n", title)
+
+	// Populate body from Stage 3 critic analysis and session content.
+	// The critic already read the full session, so its reasoning is the
+	// most distilled knowledge we have without a separate summarisation stage.
+
+	reasoning := ""
+	if stage3 != nil {
+		reasoning = stage3.CriticReasoning
+	}
+
+	// When to Use — derived from patterns and category
 	fmt.Fprintf(&b, "## When to Use\n\n")
-	fmt.Fprintf(&b, "<!-- Trigger conditions for this skill -->\n\n")
+	if len(skill.Patterns) > 0 {
+		fmt.Fprintf(&b, "Applicable when encountering: %s\n\n", strings.Join(skill.Patterns, ", "))
+	}
+	fmt.Fprintf(&b, "Category: %s\n\n", skill.Category)
+
+	// Solution — session content summary (truncated for readability)
 	fmt.Fprintf(&b, "## Solution\n\n")
-	fmt.Fprintf(&b, "<!-- Core knowledge extracted from the session -->\n\n")
+	if len(content) > 0 {
+		// Include a meaningful excerpt: first 4KB of session content.
+		excerpt := content
+		if len(excerpt) > 4096 {
+			excerpt = excerpt[:4096]
+		}
+		fmt.Fprintf(&b, "```\n%s\n```\n\n", string(excerpt))
+	}
+
+	// Why It Works — from critic reasoning
 	fmt.Fprintf(&b, "## Why It Works\n\n")
-	fmt.Fprintf(&b, "<!-- Reasoning that enables adaptation -->\n\n")
+	if reasoning != "" {
+		fmt.Fprintf(&b, "%s\n\n", reasoning)
+	}
+
+	// Pitfalls — note if critic flagged contradictions
 	fmt.Fprintf(&b, "## Pitfalls\n\n")
-	fmt.Fprintf(&b, "<!-- Failed approaches and anti-patterns -->\n\n")
+	if stage3 != nil && stage3.ContradictsBestPractices {
+		fmt.Fprintf(&b, "**Warning:** This skill may contradict established best practices. Review carefully before applying.\n\n")
+	}
 
 	return []byte(b.String())
 }
