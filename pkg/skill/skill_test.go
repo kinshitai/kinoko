@@ -586,3 +586,232 @@ func TestRenderValidation(t *testing.T) {
 		t.Errorf("Expected validation error, got '%s'", err.Error())
 	}
 }
+
+func TestLargeSkillParsing(t *testing.T) {
+	// Create a skill with a large body (> 64KB) to test buffer limits
+	// This tests that the buffer size fix works correctly
+	
+	// Create a large content block (approximately 100KB)
+	largeContentBlock := strings.Repeat("This is a very long line of example code or documentation that repeats many times to create a large skill body that exceeds the default 64KB buffer limit of bufio.Scanner. ", 500)
+	
+	largeSkill := `---
+name: large-skill
+version: 1
+author: test-author
+confidence: 0.8
+created: 2026-02-15
+---
+
+# Large Skill for Buffer Testing
+
+## When to Use
+When you need to test that large skills can be parsed without hitting buffer limits.
+
+## Solution
+This skill contains a very large amount of content to ensure the parser can handle files larger than the default 64KB scanner buffer.
+
+### Large Code Example
+` + largeContentBlock + `
+
+### More Content
+` + largeContentBlock + `
+
+### Even More Content  
+` + largeContentBlock + `
+
+### Final Large Section
+` + largeContentBlock + `
+
+## Gotchas
+- Large files should not be truncated
+- Parser should handle files larger than 64KB
+- Buffer limits should not silently corrupt content
+
+## See Also
+- [[buffer-management]]
+`
+
+	// Parse the large skill
+	skill, err := Parse(strings.NewReader(largeSkill))
+	if err != nil {
+		t.Fatalf("Failed to parse large skill: %v", err)
+	}
+
+	// Verify basic parsing worked
+	if skill.Name != "large-skill" {
+		t.Errorf("Expected name 'large-skill', got '%s'", skill.Name)
+	}
+	if skill.Author != "test-author" {
+		t.Errorf("Expected author 'test-author', got '%s'", skill.Author)
+	}
+	if skill.Confidence != 0.8 {
+		t.Errorf("Expected confidence 0.8, got %f", skill.Confidence)
+	}
+
+	// Verify the body contains the large content blocks
+	if !strings.Contains(skill.Body, "Large Skill for Buffer Testing") {
+		t.Error("Body should contain title content")
+	}
+	
+	// Verify that all the large content blocks are present (not truncated)
+	occurrences := strings.Count(skill.Body, "This is a very long line of example code")
+	expectedOccurrences := 4 * 500 // 4 blocks × 500 repetitions each
+	if occurrences != expectedOccurrences {
+		t.Errorf("Expected %d occurrences of repeated content, got %d (content may be truncated)", 
+			expectedOccurrences, occurrences)
+	}
+
+	// Verify the body is actually large (> 64KB)
+	if len(skill.Body) <= 64*1024 {
+		t.Errorf("Body should be larger than 64KB, got %d bytes", len(skill.Body))
+	}
+}
+
+func TestDateParsingEdgeCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		createdDate string
+		updatedDate string
+		expectError bool
+		errorMsg    string
+	}{
+		// Leap year tests
+		{
+			name:        "valid leap year date",
+			createdDate: "2024-02-29",
+			expectError: false,
+		},
+		{
+			name:        "invalid leap year date",
+			createdDate: "2023-02-29",
+			expectError: true,
+			errorMsg:    "invalid created date format",
+		},
+		{
+			name:        "century leap year (divisible by 400)",
+			createdDate: "2000-02-29",
+			expectError: false,
+		},
+		{
+			name:        "century non-leap year (divisible by 100 but not 400)", 
+			createdDate: "1900-02-29",
+			expectError: true,
+			errorMsg:    "invalid created date format",
+		},
+		
+		// Boundary date tests
+		{
+			name:        "invalid month - too high",
+			createdDate: "2024-13-01", 
+			expectError: true,
+			errorMsg:    "invalid created date format",
+		},
+		{
+			name:        "invalid day for month",
+			createdDate: "2024-02-30",
+			expectError: true, 
+			errorMsg:    "invalid created date format",
+		},
+		{
+			name:        "invalid month - zero",
+			createdDate: "2024-00-15",
+			expectError: true,
+			errorMsg:    "invalid created date format",
+		},
+		{
+			name:        "invalid day - zero",
+			createdDate: "2024-01-00",
+			expectError: true,
+			errorMsg:    "invalid created date format",
+		},
+		{
+			name:        "valid boundary - december 31",
+			createdDate: "2024-12-31",
+			expectError: false,
+		},
+		{
+			name:        "valid boundary - january 1",
+			createdDate: "2024-01-01",
+			expectError: false,
+		},
+		
+		// Updated date validation
+		{
+			name:        "updated before created",
+			createdDate: "2024-02-15",
+			updatedDate: "2024-02-14", 
+			expectError: true,
+			errorMsg:    "updated date cannot be before created date",
+		},
+		{
+			name:        "updated same as created",
+			createdDate: "2024-02-15",
+			updatedDate: "2024-02-15",
+			expectError: false,
+		},
+		
+		// Format validation
+		{
+			name:        "wrong date format - with time",
+			createdDate: "2024-02-15T10:30:00Z",
+			expectError: true,
+			errorMsg:    "invalid created date format",
+		},
+		{
+			name:        "wrong date format - american style",
+			createdDate: "02/15/2024",
+			expectError: true,
+			errorMsg:    "invalid created date format",
+		},
+		{
+			name:        "wrong date format - missing leading zero",
+			createdDate: "2024-2-5",
+			expectError: true,
+			errorMsg:    "invalid created date format",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Build skill content
+			skillContent := `---
+name: date-test
+version: 1
+author: test-author
+confidence: 0.7
+created: ` + tt.createdDate
+
+			if tt.updatedDate != "" {
+				skillContent += "\nupdated: " + tt.updatedDate
+			}
+
+			skillContent += `
+---
+
+# Date Test
+
+## When to Use
+When testing date parsing edge cases.
+
+## Solution
+Test various date formats and boundary conditions.
+`
+
+			_, err := Parse(strings.NewReader(skillContent))
+			
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("Expected error for %s, got none", tt.name)
+					return
+				}
+				if tt.errorMsg != "" && !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Errorf("Expected error containing '%s', got '%s'", tt.errorMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error for %s, got: %v", tt.name, err)
+				}
+			}
+		})
+	}
+}

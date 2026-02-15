@@ -73,6 +73,11 @@ func ParseFile(path string) (*Skill, error) {
 // parseContent parses SKILL.md content from bytes
 func parseContent(content []byte) (*Skill, error) {
 	scanner := bufio.NewScanner(bytes.NewReader(content))
+	
+	// Set a larger buffer to handle large skill files (1MB should be sufficient)
+	// Default bufio.Scanner buffer is only 64KB which can truncate large skills
+	buf := make([]byte, 0, 1024*1024) // 1MB buffer
+	scanner.Buffer(buf, 1024*1024)
 
 	// Look for opening front matter delimiter
 	if !scanner.Scan() || scanner.Text() != frontMatterDelimiter {

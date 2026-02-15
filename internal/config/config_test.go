@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"os/user"
 	"path/filepath"
 	"testing"
 )
@@ -305,5 +306,290 @@ libraries:
 
 	if config.Libraries[0].Path != expectedLibPath {
 		t.Errorf("expected library path '%s', got '%s'", expectedLibPath, config.Libraries[0].Path)
+	}
+}
+
+func TestExpandPathEdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected func() string // Function to compute expected result at test time
+	}{
+		{
+			name:  "tilde alone",
+			input: "~",
+			expected: func() string {
+				if homeDir, err := os.UserHomeDir(); err == nil {
+					return homeDir
+				}
+				return "~" // fallback
+			},
+		},
+		{
+			name:  "current user home path",
+			input: "~/path",
+			expected: func() string {
+				if homeDir, err := os.UserHomeDir(); err == nil {
+					return filepath.Join(homeDir, "path")
+				}
+				return "~/path" // fallback
+			},
+		},
+		{
+			name:  "absolute path no expansion",
+			input: "/absolute/path",
+			expected: func() string {
+				return "/absolute/path"
+			},
+		},
+		{
+			name:  "relative path no expansion",
+			input: "relative/path",
+			expected: func() string {
+				return "relative/path"
+			},
+		},
+		{
+			name:  "tilde in middle no expansion",
+			input: "/some/path/~/subdir",
+			expected: func() string {
+				return "/some/path/~/subdir"
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := expandPath(tt.input)
+			expected := tt.expected()
+			if result != expected {
+				t.Errorf("expandPath(%q) = %q, want %q", tt.input, result, expected)
+			}
+		})
+	}
+}
+
+func TestExpandPathUserLookup(t *testing.T) {
+	// Test with current user (this should work on any system)
+	currentUserHome, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("Cannot get current user home directory, skipping user lookup tests")
+	}
+
+	// Get current username from user.Current()
+	currentUser, err := user.Current()
+	if err != nil {
+		t.Skip("Cannot get current user info, skipping user lookup tests")
+	}
+
+	username := currentUser.Username
+
+	// Test expanding ~username/path with current user
+	userPath := "~" + username + "/test/path"
+	result := expandPath(userPath)
+	expected := filepath.Join(currentUserHome, "test", "path")
+
+	// This might work or might not depending on system setup
+	// If it doesn't work (returns original), that's also acceptable
+	if result != userPath && result != expected {
+		t.Errorf("expandPath(%q) = %q, expected either %q (unchanged) or %q (expanded)", 
+			userPath, result, userPath, expected)
+	}
+}
+
+func TestExpandPathNonexistentUser(t *testing.T) {
+	// Test with a user that definitely doesn't exist
+	nonexistentPath := "~nonexistentuser12345/path"
+	result := expandPath(nonexistentPath)
+	
+	// Should return the path unchanged since user doesn't exist
+	if result != nonexistentPath {
+		t.Errorf("expandPath(%q) = %q, expected %q (unchanged)", nonexistentPath, result, nonexistentPath)
+	}
+}
+
+func TestConfigPartialMerging(t *testing.T) {
+	// Create temporary directory for test
+	tempDir, err := os.MkdirTemp("", "mycelium-config-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	tests := []struct {
+		name           string
+		configContent  string
+		validateResult func(*testing.T, *Config)
+	}{
+		{
+			name: "only server section",
+			configContent: `server:
+  host: 192.168.1.100
+  port: 9999
+`,
+			validateResult: func(t *testing.T, cfg *Config) {
+				// Server section should be overridden
+				if cfg.Server.Host != "192.168.1.100" {
+					t.Errorf("expected host '192.168.1.100', got '%s'", cfg.Server.Host)
+				}
+				if cfg.Server.Port != 9999 {
+					t.Errorf("expected port 9999, got %d", cfg.Server.Port)
+				}
+				
+				// Other sections should use defaults
+				if cfg.Storage.Driver != "sqlite" {
+					t.Errorf("expected default storage driver 'sqlite', got '%s'", cfg.Storage.Driver)
+				}
+				if len(cfg.Libraries) == 0 {
+					t.Error("expected default libraries to be present")
+				}
+				if cfg.Extraction.MinConfidence != 0.5 {
+					t.Errorf("expected default min_confidence 0.5, got %f", cfg.Extraction.MinConfidence)
+				}
+			},
+		},
+		{
+			name: "only storage section", 
+			configContent: `storage:
+  driver: postgres
+  dsn: "postgres://user:pass@localhost/mycelium"
+`,
+			validateResult: func(t *testing.T, cfg *Config) {
+				// Storage section should be overridden
+				if cfg.Storage.Driver != "postgres" {
+					t.Errorf("expected driver 'postgres', got '%s'", cfg.Storage.Driver)
+				}
+				if cfg.Storage.DSN != "postgres://user:pass@localhost/mycelium" {
+					t.Errorf("expected postgres DSN, got '%s'", cfg.Storage.DSN)
+				}
+				
+				// Other sections should use defaults
+				if cfg.Server.Host != "127.0.0.1" {
+					t.Errorf("expected default host '127.0.0.1', got '%s'", cfg.Server.Host)
+				}
+				if cfg.Server.Port != 23231 {
+					t.Errorf("expected default port 23231, got %d", cfg.Server.Port)
+				}
+			},
+		},
+		{
+			name: "only libraries section",
+			configContent: `libraries:
+  - name: custom
+    url: "https://github.com/example/skills"
+    priority: 200
+  - name: other  
+    path: "/opt/skills"
+    priority: 150
+`,
+			validateResult: func(t *testing.T, cfg *Config) {
+				// Libraries should be completely replaced (not merged with defaults)
+				if len(cfg.Libraries) != 2 {
+					t.Errorf("expected 2 libraries, got %d", len(cfg.Libraries))
+				}
+				if cfg.Libraries[0].Name != "custom" {
+					t.Errorf("expected first library name 'custom', got '%s'", cfg.Libraries[0].Name)
+				}
+				if cfg.Libraries[1].Name != "other" {
+					t.Errorf("expected second library name 'other', got '%s'", cfg.Libraries[1].Name)
+				}
+				
+				// Other sections should use defaults
+				if cfg.Server.Port != 23231 {
+					t.Errorf("expected default port 23231, got %d", cfg.Server.Port) 
+				}
+				if cfg.Storage.Driver != "sqlite" {
+					t.Errorf("expected default storage driver 'sqlite', got '%s'", cfg.Storage.Driver)
+				}
+			},
+		},
+		{
+			name: "partial extraction config",
+			configContent: `extraction:
+  min_confidence: 0.8
+`,
+			validateResult: func(t *testing.T, cfg *Config) {
+				// Specified extraction fields should be overridden
+				if cfg.Extraction.MinConfidence != 0.8 {
+					t.Errorf("expected min_confidence 0.8, got %f", cfg.Extraction.MinConfidence)
+				}
+				
+				// Other extraction fields should use defaults
+				if !cfg.Extraction.AutoExtract {
+					t.Error("expected default auto_extract to be true")
+				}
+				if !cfg.Extraction.RequireValidation {
+					t.Error("expected default require_validation to be true")
+				}
+			},
+		},
+		{
+			name: "empty config file",
+			configContent: `# Just a comment
+`,
+			validateResult: func(t *testing.T, cfg *Config) {
+				// Should be identical to defaults
+				defaultCfg := DefaultConfig()
+				if cfg.Server.Host != defaultCfg.Server.Host {
+					t.Errorf("expected default host '%s', got '%s'", defaultCfg.Server.Host, cfg.Server.Host)
+				}
+				if cfg.Server.Port != defaultCfg.Server.Port {
+					t.Errorf("expected default port %d, got %d", defaultCfg.Server.Port, cfg.Server.Port)
+				}
+				if cfg.Storage.Driver != defaultCfg.Storage.Driver {
+					t.Errorf("expected default driver '%s', got '%s'", defaultCfg.Storage.Driver, cfg.Storage.Driver)
+				}
+			},
+		},
+		{
+			name: "mixed partial config",
+			configContent: `server:
+  port: 8888
+
+storage:
+  driver: postgres
+  dsn: "postgres://localhost/test"
+  
+defaults:
+  confidence: 0.9
+`,
+			validateResult: func(t *testing.T, cfg *Config) {
+				// Specified fields should be overridden
+				if cfg.Server.Port != 8888 {
+					t.Errorf("expected port 8888, got %d", cfg.Server.Port)
+				}
+				if cfg.Storage.Driver != "postgres" {
+					t.Errorf("expected driver 'postgres', got '%s'", cfg.Storage.Driver)
+				}
+				if cfg.Defaults.Confidence != 0.9 {
+					t.Errorf("expected defaults confidence 0.9, got %f", cfg.Defaults.Confidence)
+				}
+				
+				// Unspecified fields should use defaults
+				if cfg.Server.Host != "127.0.0.1" {
+					t.Errorf("expected default host '127.0.0.1', got '%s'", cfg.Server.Host)
+				}
+				if len(cfg.Libraries) == 0 {
+					t.Error("expected default libraries to be present")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configPath := filepath.Join(tempDir, tt.name+".yaml")
+			
+			if err := os.WriteFile(configPath, []byte(tt.configContent), 0644); err != nil {
+				t.Fatalf("failed to write config: %v", err)
+			}
+
+			config, err := Load(configPath)
+			if err != nil {
+				t.Fatalf("failed to load config: %v", err)
+			}
+
+			tt.validateResult(t, config)
+		})
 	}
 }

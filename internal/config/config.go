@@ -109,23 +109,56 @@ func DefaultConfig() *Config {
 }
 
 // expandPath expands ~ to the user's home directory
+// Handles both ~/path (current user) and ~username/path (specific user)
 func expandPath(path string) string {
 	if !strings.HasPrefix(path, "~") {
 		return path
 	}
 	
-	// Get current user to find home directory
-	currentUser, err := user.Current()
-	if err != nil {
-		// Fallback to os.UserHomeDir
+	// Handle just "~" alone
+	if path == "~" {
 		if homeDir, err := os.UserHomeDir(); err == nil {
-			return strings.Replace(path, "~", homeDir, 1)
+			return homeDir
 		}
-		// If all fails, return as-is
 		return path
 	}
 	
-	return strings.Replace(path, "~", currentUser.HomeDir, 1)
+	// Find where the user part ends (at first slash or end of string)
+	var userPart, remainingPath string
+	if slashIndex := strings.Index(path, "/"); slashIndex != -1 {
+		userPart = path[1:slashIndex] // Skip the ~
+		remainingPath = path[slashIndex:]
+	} else {
+		userPart = path[1:] // Skip the ~, no remaining path
+		remainingPath = ""
+	}
+	
+	var homeDir string
+	
+	if userPart == "" {
+		// ~/path - expand to current user's home
+		if dir, err := os.UserHomeDir(); err == nil {
+			homeDir = dir
+		} else {
+			// Fallback to user.Current()
+			if currentUser, err := user.Current(); err == nil {
+				homeDir = currentUser.HomeDir
+			} else {
+				// If all fails, return path unchanged
+				return path
+			}
+		}
+	} else {
+		// ~username/path - lookup specific user
+		if u, err := user.Lookup(userPart); err == nil {
+			homeDir = u.HomeDir
+		} else {
+			// If user doesn't exist, return path unchanged
+			return path
+		}
+	}
+	
+	return homeDir + remainingPath
 }
 
 // expandConfigPaths expands tilde paths in all configuration path fields

@@ -21,7 +21,7 @@
 - If Jazz approves, it's probably decent
 
 ## Charis (Technical Writer / DX Engineer)
-- Greek. Eloquent. Obsessed with clarity.
+- Canadian. Eloquent. Obsessed with clarity.
 - Writes docs that developers actually read — and that models can parse
 - Thinks about docs as product: information architecture, progressive disclosure, discoverability
 - Knows the 2026 docs landscape: what tools to use, how to host, how to make docs work for both humans and LLMs
