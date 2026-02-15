@@ -27,4 +27,5 @@ func init() {
 	rootCmd.AddCommand(importCmd)
 	rootCmd.AddCommand(queueCmd)
 	rootCmd.AddCommand(indexCmd)
+	rootCmd.AddCommand(pullCmd)
 }

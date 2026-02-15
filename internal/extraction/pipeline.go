@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kinoko-dev/kinoko/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/sanitize"
 )
 
 // Compile-time interface check.
@@ -47,6 +48,7 @@ type Pipeline struct {
 	sampleRate float64 // 0.0–1.0, e.g. 0.01 for 1%
 	randIntn   RandIntn
 	committer  model.SkillCommitter // optional: pushes skills to git
+	scanner    *sanitize.Scanner   // optional: credential scanner
 	extractor  string               // pipeline version identifier
 
 	// Stratified sampling counters: maintain ~50/50 extracted vs rejected.
@@ -67,6 +69,7 @@ type PipelineConfig struct {
 	SampleRate float64
 	RandIntn   RandIntn
 	Committer  model.SkillCommitter
+	Scanner    *sanitize.Scanner
 	Extractor  string
 }
 
@@ -107,6 +110,7 @@ func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 		embedder:   cfg.Embedder,
 		reviewer:   cfg.Reviewer,
 		committer:  cfg.Committer,
+		scanner:    cfg.Scanner,
 		log:        cfg.Log,
 		sampleRate: cfg.SampleRate,
 		randIntn:   r,
@@ -269,6 +273,15 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 	}
 
 	body := buildSkillMD(skill, s3, content)
+
+	// Credential scanning: redact secrets before git push.
+	if p.scanner != nil && p.scanner.HasSecrets(string(body)) {
+		p.log.Warn("credentials detected in generated skill, redacting",
+			"session_id", session.ID,
+			"skill_name", skillName,
+		)
+		body = []byte(p.scanner.Redact(string(body)))
+	}
 
 	// Git push is the only write path. The post-receive hook populates SQLite.
 	if p.committer != nil {

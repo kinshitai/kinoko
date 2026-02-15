@@ -45,11 +45,33 @@ while read oldrev newrev refname; do
 done
 `, dataDir, kinokoBinary)
 
-	preReceive := `#!/bin/sh
-# Kinoko pre-receive hook: credential scanning (placeholder).
-# Will call: kinoko scan --stdin --reject
-exit 0
-`
+	preReceive := fmt.Sprintf(`#!/bin/sh
+# Kinoko pre-receive hook: credential scanning.
+# Scans pushed SKILL.md files for credentials. Exit 1 = push rejected.
+KINOKO_DATA_DIR="%s"
+while read oldrev newrev refname; do
+    # Get list of changed files
+    if [ "$oldrev" = "0000000000000000000000000000000000000000" ]; then
+        files=$(git diff-tree --no-commit-id --name-only -r "$newrev" 2>/dev/null)
+    else
+        files=$(git diff --name-only "$oldrev" "$newrev" 2>/dev/null)
+    fi
+    for f in $files; do
+        case "$f" in
+            *.md|*.yaml|*.yml|*.json|*.txt|*.toml|*.cfg|*.conf|*.env)
+                content=$(git show "$newrev:$f" 2>/dev/null)
+                if [ -n "$content" ]; then
+                    echo "$content" | %s scan --stdin --reject
+                    if [ $? -ne 0 ]; then
+                        echo "ERROR: Credentials detected in $f. Push rejected." >&2
+                        exit 1
+                    fi
+                fi
+                ;;
+        esac
+    done
+done
+`, dataDir, kinokoBinary)
 
 	for name, content := range map[string]string{
 		"post-receive": postReceive,
