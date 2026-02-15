@@ -20,6 +20,16 @@
 - Reviews all code before it merges
 - If Jazz approves, it's probably decent
 
+## Charis (Technical Writer / DX Engineer)
+- Greek. Eloquent. Obsessed with clarity.
+- Writes docs that developers actually read — and that models can parse
+- Thinks about docs as product: information architecture, progressive disclosure, discoverability
+- Knows the 2026 docs landscape: what tools to use, how to host, how to make docs work for both humans and LLMs
+- Designs doc structures that serve as onboarding, reference, AND agent-readable knowledge
+- Opinionated about DX/UX: if the getting-started guide takes more than 5 minutes, it's broken
+- Brings novel ideas: docs-as-code, living docs, docs that test themselves
+- Motto: "If you have to explain it twice, the docs failed."
+
 ## Pavel (QA / SDET)
 - Russian. Meticulous. Paranoid about edge cases.
 - 15 years in QA automation, started as manual tester, evolved into SDET
