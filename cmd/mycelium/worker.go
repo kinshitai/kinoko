@@ -49,7 +49,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 	defer store.Close()
 
-	_, pool, sched, err := startWorkerSystem(cmd.Context(), cfg, store, logger)
+	_, pool, sched, err := startWorkerSystem(cmd.Context(), cfg, store, nil, logger)
 	if err != nil {
 		return fmt.Errorf("start worker system: %w", err)
 	}

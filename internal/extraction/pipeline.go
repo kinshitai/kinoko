@@ -46,7 +46,8 @@ type Pipeline struct {
 	log        *slog.Logger
 	sampleRate float64 // 0.0–1.0, e.g. 0.01 for 1%
 	randIntn   RandIntn
-	extractor  string // pipeline version identifier
+	committer  model.SkillCommitter // optional: pushes skills to git
+	extractor  string               // pipeline version identifier
 
 	// Stratified sampling counters: maintain ~50/50 extracted vs rejected.
 	extractedSamples int
@@ -65,6 +66,7 @@ type PipelineConfig struct {
 	Log        *slog.Logger
 	SampleRate float64
 	RandIntn   RandIntn
+	Committer  model.SkillCommitter
 	Extractor  string
 }
 
@@ -102,11 +104,17 @@ func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 		sessions:   cfg.Sessions,
 		embedder:   cfg.Embedder,
 		reviewer:   cfg.Reviewer,
+		committer:  cfg.Committer,
 		log:        cfg.Log,
 		sampleRate: cfg.SampleRate,
 		randIntn:   r,
 		extractor:  ext,
 	}, nil
+}
+
+// SetCommitter sets the git committer. Safe to call before Extract is used.
+func (p *Pipeline) SetCommitter(c model.SkillCommitter) {
+	p.committer = c
 }
 
 // Extract runs the full extraction pipeline on a session.
@@ -277,6 +285,16 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 		return result, nil
 	}
 	storeMs := time.Since(storeStart).Milliseconds()
+
+	// Push to git if committer is configured. Failure is non-fatal.
+	if p.committer != nil {
+		commitHash, commitErr := p.committer.CommitSkill(ctx, session.LibraryID, skill, body)
+		if commitErr != nil {
+			p.log.Error("git commit failed", "session_id", session.ID, "skill_id", skillID, "error", commitErr)
+		} else {
+			p.log.Info("skill committed to git", "session_id", session.ID, "skill_id", skillID, "hash", commitHash)
+		}
+	}
 
 	result.Status = model.StatusExtracted
 	result.Skill = skill

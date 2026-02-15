@@ -119,7 +119,8 @@ func buildSessionHooks(cfg *config.Config, store *storage.SQLiteStore, logger *s
 }
 
 // buildPipeline creates an extraction pipeline from config. Returns nil if no LLM key.
-func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, logger *slog.Logger) (model.Extractor, error) {
+// If gitSrv is non-nil, a GitCommitter is wired in for post-extraction git push.
+func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, gitSrv *gitserver.Server, logger *slog.Logger) (model.Extractor, error) {
 	llmAPIKey := os.Getenv("MYCELIUM_LLM_API_KEY")
 	if llmAPIKey == "" {
 		llmAPIKey = os.Getenv("OPENAI_API_KEY")
@@ -139,6 +140,19 @@ func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, logger *slog.
 	stage1 := extraction.NewStage1Filter(cfg.Extraction, logger)
 	stage2 := extraction.NewStage2Scorer(embedder, storage.NewSkillQuerier(store), llmClient, cfg.Extraction, logger)
 	stage3 := extraction.NewStage3Critic(llmClient, cfg.Extraction, logger)
+	// Build git committer if server is available.
+	var committer model.SkillCommitter
+	if gitSrv != nil {
+		indexer := storage.NewSQLiteIndexer(store)
+		committer = gitserver.NewGitCommitter(gitserver.GitCommitterConfig{
+			Server:   gitSrv,
+			DataDir:  cfg.Server.DataDir,
+			Indexer:  indexer,
+			Embedder: embedder,
+			Logger:   logger,
+		})
+	}
+
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
 		Stage1:    stage1,
 		Stage2:    stage2,
@@ -147,6 +161,7 @@ func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, logger *slog.
 		Sessions:  store,
 		Embedder:  embedder,
 		Reviewer:  store,
+		Committer: committer,
 		Log:       logger,
 		Extractor: "worker-v1",
 	})
@@ -171,6 +186,7 @@ func startWorkerSystem(
 	ctx context.Context,
 	cfg *config.Config,
 	store *storage.SQLiteStore,
+	gitSrv *gitserver.Server,
 	logger *slog.Logger,
 ) (queue *worker.SQLiteQueue, pool worker.Pool, sched worker.Scheduler, err error) {
 	workerCfg := worker.DefaultConfig()
@@ -179,7 +195,7 @@ func startWorkerSystem(
 
 	queue = worker.NewSQLiteQueue(store, cfg.Server.DataDir, workerCfg, logger)
 
-	pipeline, err := buildPipeline(cfg, store, logger)
+	pipeline, err := buildPipeline(cfg, store, gitSrv, logger)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("build pipeline: %w", err)
 	}
@@ -253,7 +269,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Start worker system (queue + pool + scheduler).
-	queue, pool, sched, err := startWorkerSystem(cmd.Context(), cfg, store, logger)
+	queue, pool, sched, err := startWorkerSystem(cmd.Context(), cfg, store, server, logger)
 	if err != nil {
 		return fmt.Errorf("start worker system: %w", err)
 	}
