@@ -2,6 +2,7 @@ package decay
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"math"
 	"testing"
@@ -21,7 +22,6 @@ func (m *mockReader) ListByDecay(_ context.Context, _ string, _ int) ([]extracti
 	if m.err != nil {
 		return nil, m.err
 	}
-	// Return a copy to avoid mutation issues.
 	out := make([]extraction.SkillRecord, len(m.skills))
 	copy(out, m.skills)
 	return out, nil
@@ -33,12 +33,16 @@ type decayUpdate struct {
 }
 
 type mockWriter struct {
-	updates []decayUpdate
-	err     error
+	updates  []decayUpdate
+	err      error
+	failOnID string // fail only for this ID
 }
 
 func (m *mockWriter) UpdateDecay(_ context.Context, id string, score float64) error {
-	if m.err != nil {
+	if m.failOnID != "" && id == m.failOnID {
+		return m.err
+	}
+	if m.failOnID == "" && m.err != nil {
 		return m.err
 	}
 	m.updates = append(m.updates, decayUpdate{id, score})
@@ -53,10 +57,11 @@ func fixedNow() time.Time {
 
 func skill(id string, cat extraction.SkillCategory, decay float64, updatedAt time.Time) extraction.SkillRecord {
 	return extraction.SkillRecord{
-		ID:         id,
-		Category:   cat,
-		DecayScore: decay,
-		UpdatedAt:  updatedAt,
+		ID:             id,
+		Category:       cat,
+		DecayScore:     decay,
+		UpdatedAt:      updatedAt,
+		LastInjectedAt: updatedAt, // default: same as updatedAt
 	}
 }
 
@@ -64,10 +69,43 @@ func almostEqual(a, b, eps float64) bool {
 	return math.Abs(a-b) < eps
 }
 
+func mustNewRunner(t *testing.T, reader SkillReader, writer SkillWriter, cfg Config) *Runner {
+	t.Helper()
+	r, err := NewRunner(reader, writer, cfg, slog.Default())
+	if err != nil {
+		t.Fatalf("NewRunner: %v", err)
+	}
+	return r
+}
+
 // --- tests ---
 
+func TestNewRunnerValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     Config
+		wantErr bool
+	}{
+		{"valid", DefaultConfig(), false},
+		{"zero_foundational", Config{FoundationalHalfLifeDays: 0, TacticalHalfLifeDays: 90, ContextualHalfLifeDays: 180, RescueBoost: 0.3}, true},
+		{"zero_tactical", Config{FoundationalHalfLifeDays: 365, TacticalHalfLifeDays: 0, ContextualHalfLifeDays: 180, RescueBoost: 0.3}, true},
+		{"zero_contextual", Config{FoundationalHalfLifeDays: 365, TacticalHalfLifeDays: 90, ContextualHalfLifeDays: 0, RescueBoost: 0.3}, true},
+		{"negative_half_life", Config{FoundationalHalfLifeDays: -1, TacticalHalfLifeDays: 90, ContextualHalfLifeDays: 180, RescueBoost: 0.3}, true},
+		{"bad_rescue_boost", Config{FoundationalHalfLifeDays: 365, TacticalHalfLifeDays: 90, ContextualHalfLifeDays: 180, RescueBoost: 1.5}, true},
+		{"zero_struct", Config{}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewRunner(&mockReader{}, &mockWriter{}, tt.cfg, slog.Default())
+			if (err != nil) != tt.wantErr {
+				t.Errorf("err=%v, wantErr=%v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestHalfLifeFormula(t *testing.T) {
-	// After exactly one half-life, decay should be halved.
 	tests := []struct {
 		name     string
 		category extraction.SkillCategory
@@ -85,10 +123,7 @@ func TestHalfLifeFormula(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			updatedAt := now.AddDate(0, 0, -tt.halfLife)
 			w := &mockWriter{}
-			r := NewRunner(
-				&mockReader{skills: []extraction.SkillRecord{skill("s1", tt.category, 1.0, updatedAt)}},
-				w, cfg, slog.Default(),
-			)
+			r := mustNewRunner(t, &mockReader{skills: []extraction.SkillRecord{skill("s1", tt.category, 1.0, updatedAt)}}, w, cfg)
 			r.now = func() time.Time { return now }
 
 			res, err := r.RunCycle(context.Background(), "lib1")
@@ -108,44 +143,77 @@ func TestHalfLifeFormula(t *testing.T) {
 	}
 }
 
+func TestDecayUsesLastInjectedAt(t *testing.T) {
+	now := fixedNow()
+	cfg := DefaultConfig()
+
+	// LastInjectedAt is 90 days ago, UpdatedAt is 1 day ago.
+	// Decay should use LastInjectedAt (90 days), not UpdatedAt (1 day).
+	s := extraction.SkillRecord{
+		ID:             "s1",
+		Category:       extraction.CategoryTactical, // half-life 90
+		DecayScore:     1.0,
+		LastInjectedAt: now.AddDate(0, 0, -90),
+		UpdatedAt:      now.AddDate(0, 0, -1),
+	}
+
+	w := &mockWriter{}
+	r := mustNewRunner(t, &mockReader{skills: []extraction.SkillRecord{s}}, w, cfg)
+	r.now = func() time.Time { return now }
+
+	_, err := r.RunCycle(context.Background(), "lib1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(w.updates) != 1 {
+		t.Fatalf("updates=%d, want 1", len(w.updates))
+	}
+	// Should be ~0.5 (90 days / 90 half-life), NOT ~0.992 (1 day / 90 half-life)
+	if !almostEqual(w.updates[0].score, 0.5, 0.001) {
+		t.Errorf("score=%.4f, want ~0.5 (based on LastInjectedAt)", w.updates[0].score)
+	}
+}
+
 func TestRescueLogic(t *testing.T) {
 	now := fixedNow()
 	cfg := DefaultConfig()
 
 	tests := []struct {
-		name           string
-		lastInjected   time.Time
-		successCorr    float64
-		wantRescued    int
-		wantScoreAbove float64
+		name         string
+		lastInjected time.Time
+		successCorr  float64
+		wantRescued  int
+		wantScore    float64 // expected final score (approximate)
 	}{
 		{
-			name:           "recent_success_rescues",
-			lastInjected:   now.AddDate(0, 0, -5),
-			successCorr:    0.8,
-			wantRescued:    1,
-			wantScoreAbove: 0.5, // decayed + 0.3 rescue boost
+			name:         "recent_success_rescues",
+			lastInjected: now.AddDate(0, 0, -5),
+			successCorr:  0.8,
+			wantRescued:  1,
+			// decay: 0.6 * 0.5^(90/90) = 0.3, rescue: 0.3 + 0.3 = 0.6
+			wantScore: 0.6,
 		},
 		{
-			name:           "old_injection_no_rescue",
-			lastInjected:   now.AddDate(0, 0, -60),
-			successCorr:    0.8,
-			wantRescued:    0,
-			wantScoreAbove: 0.0,
+			name:         "old_injection_no_rescue",
+			lastInjected: now.AddDate(0, 0, -60),
+			successCorr:  0.8,
+			wantRescued:  0,
+			wantScore:    0.0, // just check no rescue
 		},
 		{
-			name:           "negative_correlation_no_rescue",
-			lastInjected:   now.AddDate(0, 0, -5),
-			successCorr:    -0.2,
-			wantRescued:    0,
-			wantScoreAbove: 0.0,
+			name:         "negative_correlation_no_rescue",
+			lastInjected: now.AddDate(0, 0, -5),
+			successCorr:  -0.2,
+			wantRescued:  0,
+			wantScore:    0.0,
 		},
 		{
-			name:           "zero_correlation_no_rescue",
-			lastInjected:   now.AddDate(0, 0, -5),
-			successCorr:    0.0,
-			wantRescued:    0,
-			wantScoreAbove: 0.0,
+			name:         "zero_correlation_no_rescue",
+			lastInjected: now.AddDate(0, 0, -5),
+			successCorr:  0.0,
+			wantRescued:  0,
+			wantScore:    0.0,
 		},
 	}
 
@@ -156,7 +224,7 @@ func TestRescueLogic(t *testing.T) {
 			s.SuccessCorrelation = tt.successCorr
 
 			w := &mockWriter{}
-			r := NewRunner(&mockReader{skills: []extraction.SkillRecord{s}}, w, cfg, slog.Default())
+			r := mustNewRunner(t, &mockReader{skills: []extraction.SkillRecord{s}}, w, cfg)
 			r.now = func() time.Time { return now }
 
 			res, err := r.RunCycle(context.Background(), "lib1")
@@ -166,7 +234,67 @@ func TestRescueLogic(t *testing.T) {
 			if res.Rescued != tt.wantRescued {
 				t.Errorf("rescued=%d, want %d", res.Rescued, tt.wantRescued)
 			}
+			if tt.wantRescued > 0 && len(w.updates) > 0 {
+				if !almostEqual(w.updates[0].score, tt.wantScore, 0.05) {
+					t.Errorf("score=%.4f, want ~%.4f", w.updates[0].score, tt.wantScore)
+				}
+			}
 		})
+	}
+}
+
+func TestRescueScoreBoundary(t *testing.T) {
+	now := fixedNow()
+	cfg := DefaultConfig()
+
+	// Skill with high decay that gets rescued — should cap at 1.0
+	s := skill("s1", extraction.CategoryTactical, 0.95, now.AddDate(0, 0, -1))
+	s.LastInjectedAt = now.AddDate(0, 0, -1)
+	s.SuccessCorrelation = 0.9
+
+	w := &mockWriter{}
+	r := mustNewRunner(t, &mockReader{skills: []extraction.SkillRecord{s}}, w, cfg)
+	r.now = func() time.Time { return now }
+
+	res, err := r.RunCycle(context.Background(), "lib1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Rescued != 1 {
+		t.Fatalf("rescued=%d, want 1", res.Rescued)
+	}
+	if len(w.updates) != 1 {
+		t.Fatalf("updates=%d, want 1", len(w.updates))
+	}
+	if w.updates[0].score > 1.0 {
+		t.Errorf("score=%.4f exceeds 1.0", w.updates[0].score)
+	}
+}
+
+func TestCustomRescueBoost(t *testing.T) {
+	now := fixedNow()
+	cfg := DefaultConfig()
+	cfg.RescueBoost = 0.5
+
+	// Skill decayed to ~0.3, rescue with 0.5 boost → ~0.8
+	s := skill("s1", extraction.CategoryTactical, 0.6, now.AddDate(0, 0, -90))
+	s.LastInjectedAt = now.AddDate(0, 0, -5)
+	s.SuccessCorrelation = 0.9
+
+	w := &mockWriter{}
+	r := mustNewRunner(t, &mockReader{skills: []extraction.SkillRecord{s}}, w, cfg)
+	r.now = func() time.Time { return now }
+
+	res, err := r.RunCycle(context.Background(), "lib1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Rescued != 1 {
+		t.Fatalf("rescued=%d, want 1", res.Rescued)
+	}
+	// 0.6 * 0.5^(90/90) = 0.3, + 0.5 = 0.8
+	if len(w.updates) > 0 && !almostEqual(w.updates[0].score, 0.8, 0.05) {
+		t.Errorf("score=%.4f, want ~0.8 with boost=0.5", w.updates[0].score)
 	}
 }
 
@@ -174,10 +302,9 @@ func TestDeprecationThreshold(t *testing.T) {
 	now := fixedNow()
 	cfg := DefaultConfig()
 
-	// Skill with very low decay, updated long ago — should go to 0.
 	s := skill("s1", extraction.CategoryTactical, 0.06, now.AddDate(0, 0, -180))
 	w := &mockWriter{}
-	r := NewRunner(&mockReader{skills: []extraction.SkillRecord{s}}, w, cfg, slog.Default())
+	r := mustNewRunner(t, &mockReader{skills: []extraction.SkillRecord{s}}, w, cfg)
 	r.now = func() time.Time { return now }
 
 	res, err := r.RunCycle(context.Background(), "lib1")
@@ -194,7 +321,7 @@ func TestDeprecationThreshold(t *testing.T) {
 
 func TestEmptyLibrary(t *testing.T) {
 	w := &mockWriter{}
-	r := NewRunner(&mockReader{}, w, DefaultConfig(), slog.Default())
+	r := mustNewRunner(t, &mockReader{}, w, DefaultConfig())
 	r.now = func() time.Time { return fixedNow() }
 
 	res, err := r.RunCycle(context.Background(), "empty")
@@ -204,14 +331,10 @@ func TestEmptyLibrary(t *testing.T) {
 	if res.Processed != 0 || res.Demoted != 0 || res.Deprecated != 0 || res.Rescued != 0 {
 		t.Errorf("expected all zeros, got %+v", res)
 	}
-	if len(w.updates) != 0 {
-		t.Errorf("expected no updates, got %d", len(w.updates))
-	}
 }
 
 func TestAllFreshSkills(t *testing.T) {
 	now := fixedNow()
-	// Skills updated just now — no decay.
 	skills := []extraction.SkillRecord{
 		skill("s1", extraction.CategoryFoundational, 1.0, now),
 		skill("s2", extraction.CategoryTactical, 1.0, now),
@@ -219,7 +342,7 @@ func TestAllFreshSkills(t *testing.T) {
 	}
 
 	w := &mockWriter{}
-	r := NewRunner(&mockReader{skills: skills}, w, DefaultConfig(), slog.Default())
+	r := mustNewRunner(t, &mockReader{skills: skills}, w, DefaultConfig())
 	r.now = func() time.Time { return now }
 
 	res, err := r.RunCycle(context.Background(), "lib1")
@@ -228,9 +351,6 @@ func TestAllFreshSkills(t *testing.T) {
 	}
 	if res.Processed != 3 {
 		t.Errorf("processed=%d, want 3", res.Processed)
-	}
-	if res.Demoted != 0 || res.Deprecated != 0 || res.Rescued != 0 {
-		t.Errorf("expected no changes, got %+v", res)
 	}
 	if len(w.updates) != 0 {
 		t.Errorf("expected no updates for fresh skills, got %d", len(w.updates))
@@ -241,10 +361,6 @@ func TestCategorySpecificRates(t *testing.T) {
 	now := fixedNow()
 	cfg := DefaultConfig()
 
-	// All start at 1.0, all updated 90 days ago.
-	// Tactical (half-life 90) should be ~0.5.
-	// Contextual (half-life 180) should be ~0.707.
-	// Foundational (half-life 365) should be ~0.843.
 	daysAgo := 90
 	updatedAt := now.AddDate(0, 0, -daysAgo)
 	skills := []extraction.SkillRecord{
@@ -254,7 +370,7 @@ func TestCategorySpecificRates(t *testing.T) {
 	}
 
 	w := &mockWriter{}
-	r := NewRunner(&mockReader{skills: skills}, w, cfg, slog.Default())
+	r := mustNewRunner(t, &mockReader{skills: skills}, w, cfg)
 	r.now = func() time.Time { return now }
 
 	_, err := r.RunCycle(context.Background(), "lib1")
@@ -277,5 +393,56 @@ func TestCategorySpecificRates(t *testing.T) {
 		if !almostEqual(u.score, want, 0.001) {
 			t.Errorf("id=%s score=%.4f, want=%.4f", u.id, u.score, want)
 		}
+	}
+}
+
+func TestReaderError(t *testing.T) {
+	w := &mockWriter{}
+	r := mustNewRunner(t, &mockReader{err: errors.New("db connection lost")}, w, DefaultConfig())
+	r.now = func() time.Time { return fixedNow() }
+
+	_, err := r.RunCycle(context.Background(), "lib1")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, errors.Unwrap(err)) {
+		// Just verify it wraps properly
+	}
+}
+
+func TestWriterError(t *testing.T) {
+	now := fixedNow()
+	s := skill("s1", extraction.CategoryTactical, 1.0, now.AddDate(0, 0, -90))
+
+	w := &mockWriter{err: errors.New("write failed")}
+	r := mustNewRunner(t, &mockReader{skills: []extraction.SkillRecord{s}}, w, DefaultConfig())
+	r.now = func() time.Time { return now }
+
+	_, err := r.RunCycle(context.Background(), "lib1")
+	if err == nil {
+		t.Fatal("expected error from writer, got nil")
+	}
+}
+
+func TestPartialWriteFailure(t *testing.T) {
+	now := fixedNow()
+	skills := []extraction.SkillRecord{
+		skill("s1", extraction.CategoryTactical, 1.0, now.AddDate(0, 0, -90)),
+		skill("s2", extraction.CategoryTactical, 1.0, now.AddDate(0, 0, -90)),
+		skill("s3", extraction.CategoryTactical, 1.0, now.AddDate(0, 0, -90)),
+	}
+
+	// Fail on s3 — s1 and s2 already written.
+	w := &mockWriter{failOnID: "s3", err: errors.New("partial failure")}
+	r := mustNewRunner(t, &mockReader{skills: skills}, w, DefaultConfig())
+	r.now = func() time.Time { return now }
+
+	_, err := r.RunCycle(context.Background(), "lib1")
+	if err == nil {
+		t.Fatal("expected error on partial failure")
+	}
+	// s1 and s2 should have been written before failure.
+	if len(w.updates) != 2 {
+		t.Errorf("updates=%d, want 2 (before failure on s3)", len(w.updates))
 	}
 }

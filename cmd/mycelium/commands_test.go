@@ -1,0 +1,118 @@
+package main
+
+import (
+	"testing"
+
+	"github.com/mycelium-dev/mycelium/internal/extraction"
+)
+
+func TestExtractCmdArgs(t *testing.T) {
+	// extract requires exactly 1 arg
+	cmd := extractCmd
+	if err := cmd.Args(cmd, []string{}); err == nil {
+		t.Error("expected error with no args")
+	}
+	if err := cmd.Args(cmd, []string{"file.log"}); err != nil {
+		t.Errorf("unexpected error with 1 arg: %v", err)
+	}
+	if err := cmd.Args(cmd, []string{"a", "b"}); err == nil {
+		t.Error("expected error with 2 args")
+	}
+}
+
+func TestDecayCmdFlags(t *testing.T) {
+	cmd := decayCmd
+	f := cmd.Flags()
+
+	// --dry-run flag exists
+	dryRun := f.Lookup("dry-run")
+	if dryRun == nil {
+		t.Fatal("--dry-run flag not found")
+	}
+	if dryRun.DefValue != "false" {
+		t.Errorf("--dry-run default = %s, want false", dryRun.DefValue)
+	}
+
+	// --library flag exists
+	lib := f.Lookup("library")
+	if lib == nil {
+		t.Fatal("--library flag not found")
+	}
+}
+
+func TestStatsCmdExists(t *testing.T) {
+	found := false
+	for _, cmd := range rootCmd.Commands() {
+		if cmd.Use == "stats" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("stats command not registered")
+	}
+}
+
+func TestParseSessionFromLog(t *testing.T) {
+	log := []byte(`2025-01-15T10:00:00 Session start model=claude-3-opus
+tool_call: exec ls -la
+tool_call: exec cat file.txt
+tool_call: exec go build
+error: build failed
+tool_call: exec go build ./...
+2025-01-15T10:15:00 Session end`)
+
+	session := parseSessionFromLog(log, "test-lib")
+
+	if session.LibraryID != "test-lib" {
+		t.Errorf("LibraryID = %q, want test-lib", session.LibraryID)
+	}
+	if session.ToolCallCount < 4 {
+		t.Errorf("ToolCallCount = %d, want >= 4", session.ToolCallCount)
+	}
+	if session.ErrorCount < 1 {
+		t.Errorf("ErrorCount = %d, want >= 1", session.ErrorCount)
+	}
+	if !session.HasSuccessfulExec {
+		t.Error("HasSuccessfulExec = false, want true")
+	}
+	if session.DurationMinutes < 14 || session.DurationMinutes > 16 {
+		t.Errorf("DurationMinutes = %.1f, want ~15", session.DurationMinutes)
+	}
+	if session.AgentModel != "claude-3-opus" {
+		t.Errorf("AgentModel = %q, want claude-3-opus", session.AgentModel)
+	}
+}
+
+func TestNoopDecayWriter(t *testing.T) {
+	w := &noopDecayWriter{}
+	if err := w.UpdateDecay(nil, "test", 0.5); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestRootCmdHasAllCommands(t *testing.T) {
+	want := map[string]bool{
+		"serve":   false,
+		"init":    false,
+		"extract": false,
+		"decay":   false,
+		"stats":   false,
+	}
+	for _, cmd := range rootCmd.Commands() {
+		name := cmd.Name()
+		if _, ok := want[name]; ok {
+			want[name] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("command %q not registered on root", name)
+		}
+	}
+}
+
+func TestStoreQuerierInterface(t *testing.T) {
+	// Compile-time check that storeQuerier implements SkillQuerier
+	var _ extraction.SkillQuerier = (*storeQuerier)(nil)
+}

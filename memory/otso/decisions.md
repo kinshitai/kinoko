@@ -9,5 +9,7 @@
 - Tilde expansion: handle both `~/path` and `~user/path` via os/user.Lookup().
 - UUIDv7 via google/uuid (already in go.mod) for skill IDs — sortable by creation time per spec §1.1.
 - Skill names from Stage2 classification patterns, not raw content. CamelCase kebab conversion handles FIX/Backend/DatabaseConnection → fix-backend-database-connection.
-- Stratified sampling: double the per-pool rate so extracted and rejected each contribute ~50% of samples. Simpler than tracking separate counters.
+- Stratified sampling: track per-pool counters (extractedSamples, rejectedSamples). Underrepresented pool always sampled, overrepresented pool skipped, equal pools use base rate. This achieves actual ~50/50 balance.
+- NewPipeline returns (*Pipeline, error) — validates required deps at construction time.
+- buildSkillMD takes Stage3Result + content to populate body with actual extracted knowledge.
 - SKILL.md template follows Luka's brief-004: front matter with id/version/quality/confidence/extracted_by, body with When to Use / Solution / Why It Works / Pitfalls sections.

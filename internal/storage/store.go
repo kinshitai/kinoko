@@ -123,6 +123,11 @@ func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }
 
+// DB returns the underlying *sql.DB for direct queries (stats, migrations, etc.).
+func (s *SQLiteStore) DB() *sql.DB {
+	return s.db
+}
+
 func (s *SQLiteStore) Put(ctx context.Context, skill *extraction.SkillRecord, body []byte) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

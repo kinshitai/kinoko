@@ -94,6 +94,17 @@ func waitForShutdown(ctx context.Context, server *gitserver.Server) error {
 		cancel()
 	}()
 
+	// TODO(extraction): Post-session hook integration point.
+	// After a session completes (detected via git push or session API),
+	// read the session log, construct a SessionRecord, and run the extraction
+	// pipeline asynchronously. Wire here:
+	//   go func() { pipeline.Extract(ctx, session, content) }()
+	//
+	// TODO(injection): Pre-session hook integration point.
+	// Before a session starts (or on first prompt), run the injector to
+	// select relevant skills and prepend them to the agent context. Wire here:
+	//   resp, _ := injector.Inject(ctx, extraction.InjectionRequest{...})
+
 	slog.Info("Mycelium is ready. Use Ctrl+C to shutdown gracefully.")
 	slog.Info("Agents can now git clone, push, and pull over SSH")
 	

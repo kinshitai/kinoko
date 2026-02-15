@@ -20,4 +20,7 @@ func init() {
 	// Add subcommands
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(initCmd)
+	rootCmd.AddCommand(extractCmd)
+	rootCmd.AddCommand(decayCmd)
+	rootCmd.AddCommand(statsCmd)
 }
