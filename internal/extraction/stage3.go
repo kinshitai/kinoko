@@ -68,7 +68,6 @@ type stage3Critic struct {
 	consecutiveFail int
 	circuitOpenAt   time.Time
 	openDuration    time.Duration
-	failedInHalfOpen bool
 
 	// Injectable clock/sleep for testing
 	clock clockFunc
@@ -348,7 +347,7 @@ type retryCallResult struct {
 }
 
 func (c *stage3Critic) callWithRetry(ctx context.Context, prompt string, sessionID string) (*retryCallResult, error) {
-	maxRetries := maxRetriesFor(nil) // default 3
+	maxRetries := baseMaxRetries()
 	var lastErr error
 	totalTokens := 0
 
@@ -392,8 +391,8 @@ func (c *stage3Critic) callWithRetry(ctx context.Context, prompt string, session
 	return nil, lastErr
 }
 
-// maxRetriesFor returns the base max retry count.
-func maxRetriesFor(_ error) int {
+// baseMaxRetries returns the base max retry count.
+func baseMaxRetries() int {
 	return 3
 }
 

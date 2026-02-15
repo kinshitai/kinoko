@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,16 +54,7 @@ func (m *predictableLLM) Complete(_ context.Context, prompt string) (string, err
 }
 
 func contains(s, sub string) bool {
-	return len(s) >= len(sub) && searchString(s, sub)
-}
-
-func searchString(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(s, sub)
 }
 
 // --- Mock Embedder ---

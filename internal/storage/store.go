@@ -1,3 +1,6 @@
+// Package storage provides SQLite-backed persistence for skills, sessions,
+// injection events, and human review samples. It implements the SkillStore
+// and SessionStore interfaces consumed by the extraction and injection pipelines.
 package storage
 
 import (
@@ -114,7 +117,7 @@ func NewSQLiteStore(dsn string, embeddingModel string) (*SQLiteStore, error) {
 		db.Close()
 		return nil, fmt.Errorf("database integrity check failed: %s", result)
 	}
-	slog.Info("sqlite integrity check passed")
+	slog.Info("sqlite integrity check passed", "dsn", dsn)
 
 	// Run schema migration
 	if _, err := db.Exec(schemaDDL); err != nil {
@@ -434,6 +437,17 @@ type InjectionEventRecord struct {
 	Delivered      bool   // false for control group sessions
 }
 
+// UpdateInjectionOutcome sets session_outcome on injection events for a given session.
+func (s *SQLiteStore) UpdateInjectionOutcome(ctx context.Context, sessionID string, outcome string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE injection_events SET session_outcome = ? WHERE session_id = ?`,
+		outcome, sessionID)
+	if err != nil {
+		return fmt.Errorf("update injection outcome for session %s: %w", sessionID, err)
+	}
+	return nil
+}
+
 // InsertSession inserts a session record into the sessions table.
 func (s *SQLiteStore) InsertSession(ctx context.Context, session *extraction.SessionRecord) error {
 	_, err := s.db.ExecContext(ctx, `
@@ -451,7 +465,7 @@ func (s *SQLiteStore) InsertSession(ctx context.Context, session *extraction.Ses
 		nullString(session.ExtractedSkillID),
 	)
 	if err != nil {
-		return fmt.Errorf("insert session: %w", err)
+		return fmt.Errorf("insert session %s: %w", session.ID, err)
 	}
 	return nil
 }
@@ -472,7 +486,7 @@ func (s *SQLiteStore) UpdateSessionResult(ctx context.Context, session *extracti
 		session.ID,
 	)
 	if err != nil {
-		return fmt.Errorf("update session result: %w", err)
+		return fmt.Errorf("update session %s result: %w", session.ID, err)
 	}
 	return nil
 }

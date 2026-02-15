@@ -126,10 +126,10 @@ func buildSessionHooks(cfg *config.Config, store *storage.SQLiteStore, logger *s
 		hooks.OnSessionEnd = func(ctx context.Context, session extraction.SessionRecord, logContent []byte) (*extraction.ExtractionResult, error) {
 			result, err := pipeline.Extract(ctx, session, logContent)
 			if err != nil {
-				logger.Error("extraction failed", "session", session.ID, "error", err)
+				logger.Error("extraction failed", "session_id", session.ID, "error", err)
 				return nil, err
 			}
-			logger.Info("extraction complete", "session", session.ID, "status", result.Status)
+			logger.Info("extraction complete", "session_id", session.ID, "status", result.Status)
 			return result, nil
 		}
 		logger.Info("extraction hook registered")
@@ -156,8 +156,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	logger := slog.Default()
-	slog.Info("Mycelium serve command started")
-	slog.Info("Configuration loaded successfully",
+	logger.Info("Mycelium serve command started")
+	logger.Info("Configuration loaded successfully",
 		"host", cfg.Server.Host,
 		"port", cfg.Server.Port,
 		"dataDir", cfg.Server.DataDir,
@@ -192,7 +192,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Get connection info for logging
 	connInfo := server.GetConnectionInfo()
-	slog.Info("Mycelium git server is ready",
+	logger.Info("Mycelium git server is ready",
 		"ssh_url", connInfo.SSHUrl,
 		"host", connInfo.SSHHost,
 		"port", connInfo.SSHPort)

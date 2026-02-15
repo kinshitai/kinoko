@@ -1,3 +1,7 @@
+// Package injection selects and ranks skills for injection into agent sessions.
+// It classifies prompts via LLM, queries the skill store by pattern and embedding
+// similarity, and supports degraded (pattern-only) mode when embeddings are
+// unavailable. A/B testing is provided by the ABInjector decorator.
 package injection
 
 import (

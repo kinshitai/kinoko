@@ -162,7 +162,7 @@ func (r *Runner) RunCycle(ctx context.Context, libraryID string) (*DecayCycleRes
 	}
 
 	r.log.Info("decay cycle complete",
-		"library", libraryID,
+		"library_id", libraryID,
 		"processed", result.Processed,
 		"demoted", result.Demoted,
 		"deprecated", result.Deprecated,

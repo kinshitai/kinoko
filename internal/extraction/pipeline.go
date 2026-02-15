@@ -173,7 +173,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 	s2Ms := time.Since(s2Start).Milliseconds()
 	if err != nil {
 		result.Status = StatusError
-		result.Error = fmt.Sprintf("stage2: %v", err)
+		result.Error = fmt.Sprintf("stage2 [session=%s]: %v", session.ID, err)
 		result.DurationMs = time.Since(start).Milliseconds()
 		p.log.Error("pipeline error",
 			"session_id", session.ID,
@@ -211,7 +211,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 	s3Ms := time.Since(s3Start).Milliseconds()
 	if err != nil {
 		result.Status = StatusError
-		result.Error = fmt.Sprintf("stage3: %v", err)
+		result.Error = fmt.Sprintf("stage3 [session=%s]: %v", session.ID, err)
 		result.DurationMs = time.Since(start).Milliseconds()
 		p.log.Error("pipeline error",
 			"session_id", session.ID,
@@ -278,7 +278,7 @@ func (p *Pipeline) Extract(ctx context.Context, session SessionRecord, content [
 	storeStart := time.Now()
 	if err := p.writer.Put(ctx, skill, body); err != nil {
 		result.Status = StatusError
-		result.Error = fmt.Sprintf("store: %v", err)
+		result.Error = fmt.Sprintf("store [session=%s]: %v", session.ID, err)
 		result.DurationMs = time.Since(start).Milliseconds()
 		p.log.Error("pipeline error",
 			"session_id", session.ID,

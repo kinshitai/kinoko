@@ -1,3 +1,8 @@
+// Package extraction implements the 3-stage skill extraction pipeline.
+// Stage 1 filters sessions by metadata heuristics, Stage 2 scores novelty
+// and rubric quality via embeddings and LLM, and Stage 3 applies an LLM
+// critic for final extract/reject verdicts. Extracted skills are persisted
+// as SKILL.md files with structured front matter.
 package extraction
 
 import (
@@ -112,9 +117,6 @@ type ExtractionStatus string
 
 const (
 	StatusPending   ExtractionStatus = "pending"
-	StatusStage1    ExtractionStatus = "stage1"
-	StatusStage2    ExtractionStatus = "stage2"
-	StatusStage3    ExtractionStatus = "stage3"
 	StatusExtracted ExtractionStatus = "extracted"
 	StatusRejected  ExtractionStatus = "rejected"
 	StatusError     ExtractionStatus = "error"

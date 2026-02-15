@@ -247,7 +247,7 @@ func (sq *storeQuerier) QueryNearest(ctx context.Context, emb []float32, library
 		return nil, err
 	}
 	if len(results) == 0 {
-		return &extraction.SkillQueryResult{CosineSim: 0}, nil
+		return nil, nil
 	}
 	return &extraction.SkillQueryResult{CosineSim: results[0].CosineSim}, nil
 }

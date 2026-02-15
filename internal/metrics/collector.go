@@ -1,3 +1,6 @@
+// Package metrics collects pipeline health metrics from the database:
+// stage pass rates, extraction yield, injection utilization, A/B test
+// statistical significance, quality score distributions, and decay buckets.
 package metrics
 
 import (

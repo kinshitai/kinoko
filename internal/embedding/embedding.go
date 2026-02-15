@@ -1,3 +1,6 @@
+// Package embedding provides vector embedding computation via OpenAI-compatible
+// APIs. It includes retry logic with exponential backoff and a circuit breaker
+// to protect against cascading failures from upstream providers.
 package embedding
 
 import (

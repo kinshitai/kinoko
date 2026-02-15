@@ -1,3 +1,7 @@
+// Package skill provides parsing and validation for SKILL.md files.
+// Each skill has YAML front matter (name, version, quality, patterns)
+// and a markdown body with structured sections (When to Use, Solution,
+// Why It Works, Pitfalls).
 package skill
 
 import (

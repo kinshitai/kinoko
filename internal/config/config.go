@@ -1,3 +1,5 @@
+// Package config handles YAML configuration loading, validation, and defaults
+// for the Mycelium server, storage, extraction, decay, and hook settings.
 package config
 
 import (
@@ -10,15 +12,29 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the main configuration structure
+// Config represents the main configuration structure.
 type Config struct {
 	Server     ServerConfig     `yaml:"server"`
 	Storage    StorageConfig    `yaml:"storage"`
 	Libraries  []LibraryConfig  `yaml:"libraries"`
 	Extraction ExtractionConfig `yaml:"extraction,omitempty"`
 	Decay      DecayConfig      `yaml:"decay,omitempty"`
+	Embedding  EmbeddingConfig  `yaml:"embedding,omitempty"`
+	LLM        LLMConfig        `yaml:"llm,omitempty"`
 	Hooks      HooksConfig      `yaml:"hooks,omitempty"`
 	Defaults   DefaultsConfig   `yaml:"defaults,omitempty"`
+}
+
+// EmbeddingConfig configures the embedding provider.
+type EmbeddingConfig struct {
+	Provider string `yaml:"provider"` // e.g. "openai"
+	Model    string `yaml:"model"`    // e.g. "text-embedding-3-small"
+	BaseURL  string `yaml:"base_url"` // e.g. "https://api.openai.com"
+}
+
+// LLMConfig configures the LLM used for extraction and injection.
+type LLMConfig struct {
+	Model string `yaml:"model"` // e.g. "gpt-4o-mini"
 }
 
 // DecayConfig mirrors decay.Config for YAML config loading.
@@ -71,6 +87,9 @@ type ExtractionConfig struct {
 
 	// Version similarity threshold (Appendix A) — used in Phase 5+ for skill versioning.
 	VersionSimilarityThreshold float64 `yaml:"version_similarity_threshold"`
+
+	// Human review sample rate (§3.4), 0.0-1.0.
+	SampleRate float64 `yaml:"sample_rate"`
 
 	// A/B testing (§3.3)
 	ABTest ABTestConfig `yaml:"ab_test"`

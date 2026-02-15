@@ -1,6 +1,10 @@
+// Package gitserver manages a Soft Serve git server subprocess for hosting
+// skill repositories. It handles SSH key generation, process lifecycle,
+// repository CRUD via SSH commands, and session hook registration.
 package gitserver
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mycelium-dev/mycelium/internal/config"
+	"github.com/mycelium-dev/mycelium/internal/extraction"
 )
 
 // Server wraps the Soft Serve git server with Mycelium-specific functionality
@@ -21,14 +26,20 @@ type Server struct {
 	logger         *slog.Logger
 	softBinary     string
 	adminKeyPath   string
-	onSessionStart any
-	onSessionEnd   any
+	onSessionStart SessionStartHook
+	onSessionEnd   SessionEndHook
 }
+
+// SessionStartHook is called when a new agent session begins to run injection.
+type SessionStartHook func(ctx context.Context, req extraction.InjectionRequest) (*extraction.InjectionResponse, error)
+
+// SessionEndHook is called when an agent session completes to run extraction.
+type SessionEndHook func(ctx context.Context, session extraction.SessionRecord, logContent []byte) (*extraction.ExtractionResult, error)
 
 // SetSessionHooks registers session lifecycle callbacks.
 // The hooks are called during git push events to trigger injection (pre-session)
 // and extraction (post-session) pipelines.
-func (s *Server) SetSessionHooks(onStart, onEnd any) {
+func (s *Server) SetSessionHooks(onStart SessionStartHook, onEnd SessionEndHook) {
 	s.onSessionStart = onStart
 	s.onSessionEnd = onEnd
 	s.logger.Info("session hooks registered")

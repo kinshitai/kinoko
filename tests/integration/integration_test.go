@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"math"
 	"testing"
 	"time"
 
@@ -1639,5 +1638,4 @@ func TestConcurrentExtractionAndInjection(t *testing.T) {
 	}
 }
 
-// ensure imports used
-var _ = math.Abs
+// math is used in helpers_test.go (assertApprox)

@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log/slog"
-	"os"
 	"sort"
 
 	"github.com/spf13/cobra"
@@ -31,9 +29,6 @@ func runStats(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	_ = logger
 
 	store, err := storage.NewSQLiteStore(cfg.Storage.DSN, "")
 	if err != nil {
