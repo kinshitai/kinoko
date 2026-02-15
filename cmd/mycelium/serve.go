@@ -197,11 +197,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 		"host", connInfo.SSHHost,
 		"port", connInfo.SSHPort)
 
-	return waitForShutdown(cmd.Context(), server)
+	return waitForShutdown(cmd.Context(), server, logger)
 }
 
 // waitForShutdown waits for shutdown signal and gracefully stops the server
-func waitForShutdown(ctx context.Context, server *gitserver.Server) error {
+func waitForShutdown(ctx context.Context, server *gitserver.Server, logger *slog.Logger) error {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	// Set up context for graceful shutdown
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -216,16 +219,16 @@ func waitForShutdown(ctx context.Context, server *gitserver.Server) error {
 	go func() {
 		select {
 		case sig := <-sigCh:
-			slog.Info("Received shutdown signal", "signal", sig)
+			logger.Info("Received shutdown signal", "signal", sig)
 		case <-ctx.Done():
-			slog.Info("Context cancelled")
+			logger.Info("Context cancelled")
 		}
 		close(done)
 		cancel()
 	}()
 
-	slog.Info("Mycelium is ready. Use Ctrl+C to shutdown gracefully.")
-	slog.Info("Agents can now git clone, push, and pull over SSH")
+	logger.Info("Mycelium is ready. Use Ctrl+C to shutdown gracefully.")
+	logger.Info("Agents can now git clone, push, and pull over SSH")
 
 	// Wait for shutdown signal or context cancellation
 	select {
@@ -235,12 +238,12 @@ func waitForShutdown(ctx context.Context, server *gitserver.Server) error {
 		// Context cancelled
 	}
 
-	slog.Info("Shutting down git server...")
+	logger.Info("Shutting down git server...")
 	if err := server.Stop(); err != nil {
-		slog.Error("Error stopping git server", "error", err)
+		logger.Error("Error stopping git server", "error", err)
 		return err
 	}
 
-	slog.Info("Mycelium serve stopped successfully")
+	logger.Info("Mycelium serve stopped successfully")
 	return nil
 }

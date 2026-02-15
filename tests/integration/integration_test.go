@@ -118,9 +118,9 @@ func TestFullExtractionFlow(t *testing.T) {
 		t.Errorf("embedding dims = %d, want 3", len(dbSkill.Embedding))
 	}
 
-	// Verify timing metadata.
-	if result.DurationMs <= 0 {
-		t.Errorf("duration = %d, want > 0", result.DurationMs)
+	// Verify timing metadata (pipeline may complete in <1ms, so >= 0 is correct).
+	if result.DurationMs < 0 {
+		t.Errorf("duration = %d, want >= 0", result.DurationMs)
 	}
 }
 
