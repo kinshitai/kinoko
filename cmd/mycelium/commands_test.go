@@ -98,6 +98,9 @@ func TestRootCmdHasAllCommands(t *testing.T) {
 		"extract": false,
 		"decay":   false,
 		"stats":   false,
+		"worker":  false,
+		"import":  false,
+		"queue":   false,
 	}
 	for _, cmd := range rootCmd.Commands() {
 		name := cmd.Name()
@@ -109,6 +112,53 @@ func TestRootCmdHasAllCommands(t *testing.T) {
 		if !found {
 			t.Errorf("command %q not registered on root", name)
 		}
+	}
+}
+
+func TestWorkerCmdFlags(t *testing.T) {
+	f := workerCmd.Flags()
+	if f.Lookup("config") == nil {
+		t.Error("--config flag not found on worker command")
+	}
+}
+
+func TestImportCmdFlags(t *testing.T) {
+	f := importCmd.Flags()
+	for _, name := range []string{"config", "library", "dir"} {
+		if f.Lookup(name) == nil {
+			t.Errorf("--%s flag not found on import command", name)
+		}
+	}
+}
+
+func TestImportRequiresArgs(t *testing.T) {
+	// Running import with no args and no --dir should fail.
+	err := runImport(importCmd, []string{})
+	if err == nil {
+		t.Error("expected error with no args and no --dir")
+	}
+}
+
+func TestQueueSubcommands(t *testing.T) {
+	subs := map[string]bool{"stats": false, "list": false, "retry": false}
+	for _, cmd := range queueCmd.Commands() {
+		if _, ok := subs[cmd.Name()]; ok {
+			subs[cmd.Name()] = true
+		}
+	}
+	for name, found := range subs {
+		if !found {
+			t.Errorf("queue subcommand %q not registered", name)
+		}
+	}
+}
+
+func TestQueueRetryRequiresArg(t *testing.T) {
+	if err := queueRetryCmd.Args(queueRetryCmd, []string{}); err == nil {
+		t.Error("expected error with no args")
+	}
+	if err := queueRetryCmd.Args(queueRetryCmd, []string{"some-id"}); err != nil {
+		t.Errorf("unexpected error with 1 arg: %v", err)
 	}
 }
 
