@@ -4,7 +4,6 @@ package e2e
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
