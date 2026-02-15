@@ -1,0 +1,264 @@
+# Mycelium - Collective Knowledge Infrastructure
+
+Mycelium automatically extracts reusable knowledge from AI agent work sessions, stores it as version-controlled skills, and injects relevant knowledge into future sessions.
+
+## Core Concept
+
+**Problem:** Every problem solved by AI agents dies when the session ends. Knowledge waste at massive scale.
+
+**Solution:** Automatic extraction and injection of knowledge without human intervention.
+
+**Flow:** Agent solves problem → Knowledge extracted to SKILL.md → Stored in git → Injected into future sessions
+
+## Architecture
+
+- **Git Server**: Soft Serve-based SSH server hosts skill repositories
+- **Skills**: Structured knowledge in SKILL.md format (YAML front matter + Markdown)  
+- **Libraries**: Layered skill repositories (local > team > community priority)
+- **Extraction**: Automatic capture from agent sessions via hooks (Phase 2)
+- **Injection**: Context-aware skill insertion before agent prompts (Phase 2)
+
+## Current Status (Phase 1)
+
+**Working:**
+- ✅ Core infrastructure (`mycelium serve`, `mycelium init`)
+- ✅ SKILL.md format specification and validation
+- ✅ Git repository management with quality gates
+- ✅ Configuration system with library layering
+- ✅ SSH-based skill repository hosting
+
+**Coming in Phase 2:**
+- 🔄 Agent integration hooks for extraction/injection
+- 🔄 Semantic search and skill discovery
+- 🔄 Trust scoring and collaborative features
+
+## Installation
+
+```bash
+go install github.com/mycelium-dev/mycelium/cmd/mycelium@latest
+mycelium init
+mycelium serve
+```
+
+Server runs at `ssh://localhost:23231` by default.
+
+## SKILL.md Format
+
+Skills use structured format:
+
+```yaml
+---
+name: skill-name-kebab-case
+version: 1
+tags: [debugging, golang]
+author: agent@example.com
+confidence: 0.85
+created: 2026-02-15
+dependencies: []
+---
+
+# Skill Title
+
+## When to Use
+[Clear description of applicability]
+
+## Solution
+[Concrete steps, code, patterns - the actual knowledge]
+
+## Gotchas
+[Edge cases, pitfalls, surprises]
+
+## See Also
+- [[related-skill-name]]
+```
+
+**Validation rules:**
+- Names must be kebab-case
+- Confidence 0.0-1.0
+- Required sections: title, "When to Use", "Solution"
+- Security: credential scanning, prompt injection detection
+
+## Configuration
+
+`~/.mycelium/config.yaml`:
+
+```yaml
+storage:
+  driver: sqlite
+  dsn: ~/.mycelium/mycelium.db
+
+libraries:
+  - name: local
+    path: ~/.mycelium/skills
+    priority: 100
+  - name: team
+    url: ssh://mycelium.company.com:23231
+    priority: 50
+
+server:
+  host: 127.0.0.1
+  port: 23231
+  dataDir: ~/.mycelium/data
+
+extraction:
+  auto_extract: true
+  min_confidence: 0.5
+  require_validation: true
+
+hooks:
+  credential_scan: true
+  format_validation: true
+  llm_critic: false
+
+defaults:
+  author: ""
+  confidence: 0.7
+```
+
+## Key Files
+
+- **Skills**: `~/.mycelium/skills/` (git repository)
+- **Config**: `~/.mycelium/config.yaml`
+- **Database**: `~/.mycelium/mycelium.db` (SQLite)
+- **Server data**: `~/.mycelium/data/`
+
+## CLI Commands
+
+- `mycelium init` - Initialize workspace (~/.mycelium/)
+- `mycelium serve` - Start git server (SSH on port 23231)
+- `mycelium --version` - Show version
+- `mycelium help` - Command help
+
+**Planned:**
+- `mycelium skill create/validate/search`
+- `mycelium remote add/list`
+- `mycelium extract`
+
+## Integration Points
+
+**For AI frameworks:** Implement hooks for:
+
+1. **Extraction** (post-session):
+   - Parse session logs/transcripts
+   - Identify reusable knowledge
+   - Generate SKILL.md format
+   - Validate and push to git server
+
+2. **Injection** (pre-prompt):
+   - Search skills by semantic similarity
+   - Rank by relevance and confidence
+   - Inject relevant skills into context
+
+**Git operations:**
+- Clone: `git clone ssh://host:port/skill-name.git`
+- Push: Standard git push to create/update skills
+- Pull: Standard git pull to sync changes
+
+## Knowledge Flow
+
+```
+Session → Extract → Validate → Store → Index → Search → Inject → Session
+   ↑                                                                ↓
+   └── Human gets better results ←───────────────────────────────────┘
+```
+
+**Library resolution:** Skills resolved by priority (local > team > community). Same-named skills in higher priority libraries shadow lower ones.
+
+## Quality Assurance
+
+**Pre-commit hooks:**
+- Credential scanning (API keys, passwords)
+- Format validation (YAML + Markdown structure)  
+- Prompt injection detection
+- LLM critic review (optional)
+
+**Confidence scoring:**
+- 0.9+ : Well-tested, high reliability
+- 0.7-0.9 : Good solutions, some edge cases
+- 0.5-0.7 : Works but needs validation
+- <0.5 : Experimental, use carefully
+
+**Trust system** (Phase 3):
+- Contributor reputation
+- Peer review and voting
+- Usage feedback (helpful/not helpful)
+- Automatic decay of stale knowledge
+
+## Deployment Patterns
+
+**Personal:** Single user, local server
+```bash
+mycelium serve  # Local git server
+# Agent connects to ssh://localhost:23231
+```
+
+**Team:** Shared server, multiple clients
+```bash
+# Server: mycelium serve (public IP)
+# Clients: Add team library URL to config
+```
+
+**Federated:** Multiple servers, cross-organization
+```bash
+# Multiple library layers in config
+# Skills flow between organizations
+```
+
+## Security Model
+
+- **SSH authentication** for git operations
+- **Credential scanning** prevents secret leakage
+- **Prompt injection detection** prevents malicious skills
+- **Sandboxed extraction** (planned)
+- **Content validation** before storage
+
+## Error Handling
+
+Common issues:
+- Port conflicts → Change server.port in config
+- SSH auth failures → Check SSH key setup  
+- Git repo issues → Verify ~/.mycelium/skills/ git state
+- Format validation → Check SKILL.md structure
+
+## Future Roadmap
+
+**Phase 2:** Agent integration, semantic search, injection
+**Phase 3:** Trust system, collaboration, federation
+**Phase 4:** Public libraries, web UI, advanced features
+
+## Integration Examples
+
+**Pseudo-code for agent integration:**
+
+```python
+# Extraction (post-session)
+def extract_skills(session_transcript):
+    skills = parse_knowledge(session_transcript)
+    for skill in skills:
+        if skill.confidence > config.min_confidence:
+            validate_skill(skill)
+            push_to_git(skill)
+
+# Injection (pre-prompt)  
+def inject_skills(user_prompt):
+    relevant_skills = search_skills(user_prompt)
+    enhanced_prompt = user_prompt + "\n\nRelevant knowledge:\n" + format_skills(relevant_skills)
+    return enhanced_prompt
+```
+
+## Philosophy
+
+**Zero friction:** Knowledge sharing as byproduct of work, not separate activity.
+**Quality over quantity:** One good skill beats 1000 bad ones.
+**Open by default:** Knowledge flows freely unless restricted.
+**Version controlled:** Full history, branching, collaboration via git.
+**Agent native:** Built for AI agents, beneficial to humans.
+
+## Success Metric
+
+A developer hits a problem they've never seen. Their agent already knows the solution from another developer on another continent. They get a better answer without searching or asking. The knowledge transfer is invisible.
+
+---
+
+Full documentation: https://github.com/mycelium-dev/mycelium/tree/main/docs
+Live status: Early development, core infrastructure complete
