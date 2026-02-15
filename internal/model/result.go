@@ -12,7 +12,8 @@ type ExtractionResult struct {
 	Skill       *SkillRecord     `json:"skill,omitempty"`
 	ProcessedAt time.Time        `json:"processed_at"`
 	DurationMs  int64            `json:"duration_ms"`
-	Error       string           `json:"error,omitempty"`
+	Error      string           `json:"error,omitempty"`
+	CommitHash string           `json:"commit_hash,omitempty"`
 }
 
 // Stage1Result is the output of metadata pre-filtering.

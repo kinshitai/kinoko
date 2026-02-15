@@ -28,14 +28,12 @@ func (m *mockCommitter) CommitSkill(_ context.Context, libraryID string, skill *
 }
 
 func TestPipeline_CommitterCalledOnExtract(t *testing.T) {
-	w := &mockWriter{}
 	c := &mockCommitter{hash: "abc123"}
 
 	p, err := NewPipeline(PipelineConfig{
 		Stage1:    &mockStage1{result: passStage1()},
 		Stage2:    &mockStage2{result: passStage2()},
 		Stage3:    &mockStage3{result: passStage3()},
-		Writer:    w,
 		Committer: c,
 		Log:       slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
 	})
@@ -49,9 +47,6 @@ func TestPipeline_CommitterCalledOnExtract(t *testing.T) {
 	}
 	if result.Status != model.StatusExtracted {
 		t.Fatalf("status = %s, want extracted", result.Status)
-	}
-	if !w.called {
-		t.Error("writer.Put not called")
 	}
 	if !c.called {
 		t.Error("committer.CommitSkill not called")
@@ -59,17 +54,18 @@ func TestPipeline_CommitterCalledOnExtract(t *testing.T) {
 	if c.libraryID != "lib-1" {
 		t.Errorf("libraryID = %q, want lib-1", c.libraryID)
 	}
+	if result.CommitHash != "abc123" {
+		t.Errorf("commit hash = %q, want abc123", result.CommitHash)
+	}
 }
 
-func TestPipeline_CommitterErrorNonFatal(t *testing.T) {
-	w := &mockWriter{}
+func TestPipeline_CommitterErrorIsFatal(t *testing.T) {
 	c := &mockCommitter{err: errors.New("push failed")}
 
 	p, err := NewPipeline(PipelineConfig{
 		Stage1:    &mockStage1{result: passStage1()},
 		Stage2:    &mockStage2{result: passStage2()},
 		Stage3:    &mockStage3{result: passStage3()},
-		Writer:    w,
 		Committer: c,
 		Log:       slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
 	})
@@ -81,20 +77,16 @@ func TestPipeline_CommitterErrorNonFatal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Extraction should still succeed even if committer fails.
-	if result.Status != model.StatusExtracted {
-		t.Fatalf("status = %s, want extracted", result.Status)
+	if result.Status != model.StatusError {
+		t.Fatalf("status = %s, want error", result.Status)
 	}
 }
 
-func TestPipeline_NilCommitterSkipped(t *testing.T) {
-	w := &mockWriter{}
-
+func TestPipeline_NilCommitterExtractsWithoutGit(t *testing.T) {
 	p, err := NewPipeline(PipelineConfig{
 		Stage1: &mockStage1{result: passStage1()},
 		Stage2: &mockStage2{result: passStage2()},
 		Stage3: &mockStage3{result: passStage3()},
-		Writer: w,
 		Log:    slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
 	})
 	if err != nil {

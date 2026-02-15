@@ -18,7 +18,6 @@ func TestBug_PipelineSamplingRace(t *testing.T) {
 		Stage1:     &mockStage1{result: failStage1("rejected for sampling test")},
 		Stage2:     &mockStage2{},
 		Stage3:     &mockStage3{},
-		Writer:     &mockWriter{},
 		Reviewer:   rev,
 		Log:        testLog(),
 		SampleRate: 1.0, // always sample

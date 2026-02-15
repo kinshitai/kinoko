@@ -549,8 +549,10 @@ func TestExtractThenInject(t *testing.T) {
 	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
+	indexer := storage.NewSQLiteIndexer(store)
+	committer := &indexingCommitter{indexer: indexer, embedder: embedder}
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Embedder: embedder, Log: testLogger(),
+		Stage1: s1, Stage2: s2, Stage3: s3, Committer: committer, Embedder: embedder, Log: testLogger(),
 	})
 
 	// Extract a skill.

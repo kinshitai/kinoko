@@ -15,6 +15,28 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
+// indexingCommitter simulates the post-receive hook: on CommitSkill it indexes
+// the skill into SQLite, mimicking what the real hook pipeline does.
+type indexingCommitter struct {
+	indexer  model.SkillIndexer
+	embedder extraction.SkillEmbedder
+}
+
+func (c *indexingCommitter) CommitSkill(ctx context.Context, _ string, skill *model.SkillRecord, body []byte) (string, error) {
+	var emb []float32
+	if c.embedder != nil {
+		var err error
+		emb, err = c.embedder.Embed(ctx, string(body))
+		if err != nil {
+			return "", err
+		}
+	}
+	if err := c.indexer.IndexSkill(ctx, skill, emb); err != nil {
+		return "", err
+	}
+	return "deadbeef", nil
+}
+
 // =============================================================================
 // Test 1: Full Extraction Flow
 // session log → Stage1 → Stage2 → Stage3 → stored skill → verify in DB
@@ -36,11 +58,14 @@ func TestFullExtractionFlow(t *testing.T) {
 	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.50}, llm, defaultExtractionConfig(), testLogger())
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
+	indexer := storage.NewSQLiteIndexer(store)
+	committer := &indexingCommitter{indexer: indexer, embedder: embedder}
+
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
 		Stage1:     s1,
 		Stage2:     s2,
 		Stage3:     s3,
-		Writer:     store,
+		Committer:  committer,
 		Reviewer:   reviewer,
 		Embedder:   embedder,
 		Log:        testLogger(),
@@ -668,8 +693,10 @@ func TestStatsAccuracy(t *testing.T) {
 	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llmExtract, defaultExtractionConfig(), testLogger())
 	s3 := extraction.NewStage3Critic(llmExtract, defaultExtractionConfig(), testLogger())
 
+	indexer := storage.NewSQLiteIndexer(store)
+	committer := &indexingCommitter{indexer: indexer, embedder: embedder}
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Log: testLogger(),
+		Stage1: s1, Stage2: s2, Stage3: s3, Committer: committer, Log: testLogger(),
 	})
 
 	// Process sessions: extract 1 good + reject 2 at stage1.
@@ -1101,8 +1128,10 @@ func TestConcurrentExtractions(t *testing.T) {
 			s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
 			s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
+			indexer := storage.NewSQLiteIndexer(store)
+			committer := &indexingCommitter{indexer: indexer, embedder: embedder}
 			pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-				Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Log: testLogger(),
+				Stage1: s1, Stage2: s2, Stage3: s3, Committer: committer, Log: testLogger(),
 			})
 
 			sess := goodSession(fmt.Sprintf("sess-conc-%d", idx), "test-lib")
@@ -1227,11 +1256,13 @@ func TestSessionPersistence(t *testing.T) {
 	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.50}, llm, defaultExtractionConfig(), testLogger())
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
+	indexer := storage.NewSQLiteIndexer(store)
+	committer := &indexingCommitter{indexer: indexer, embedder: embedder}
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
 		Stage1:     s1,
 		Stage2:     s2,
 		Stage3:     s3,
-		Writer:     store,
+		Committer:  committer,
 		Sessions:   store, // <-- wired!
 		Embedder:   embedder,
 		Log:        testLogger(),
@@ -1510,9 +1541,11 @@ func TestStatsThroughPipeline(t *testing.T) {
 	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.50}, llm, defaultExtractionConfig(), testLogger())
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
+	indexer := storage.NewSQLiteIndexer(store)
+	committer := &indexingCommitter{indexer: indexer, embedder: embedder}
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
 		Stage1:    s1, Stage2: s2, Stage3: s3,
-		Writer:   store,
+		Committer: committer,
 		Sessions: store,
 		Embedder: embedder,
 		Log:      testLogger(),

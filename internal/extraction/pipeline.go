@@ -82,9 +82,6 @@ func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 	if cfg.Stage3 == nil {
 		return nil, fmt.Errorf("pipeline: Stage3 is required")
 	}
-	if cfg.Writer == nil {
-		return nil, fmt.Errorf("pipeline: Writer is required")
-	}
 	if cfg.Log == nil {
 		return nil, fmt.Errorf("pipeline: Log is required")
 	}
@@ -268,32 +265,28 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 
 	body := buildSkillMD(skill, s3, content)
 
-	storeStart := time.Now()
-	if err := p.writer.Put(ctx, skill, body); err != nil {
-		result.Status = model.StatusError
-		result.Error = fmt.Sprintf("store [session=%s]: %v", session.ID, err)
-		result.DurationMs = time.Since(start).Milliseconds()
-		p.log.Error("pipeline error",
-			"session_id", session.ID,
-			"stage", "store",
-			"error", err,
-			"store_ms", time.Since(storeStart).Milliseconds(),
-			"total_ms", result.DurationMs,
-		)
-		p.updateSessionStatus(ctx, &session, result)
-		p.maybeSample(ctx, session.ID, result)
-		return result, nil
-	}
-	storeMs := time.Since(storeStart).Milliseconds()
-
-	// Push to git if committer is configured. Failure is non-fatal.
+	// Git push is the only write path. The post-receive hook populates SQLite.
 	if p.committer != nil {
+		commitStart := time.Now()
 		commitHash, commitErr := p.committer.CommitSkill(ctx, session.LibraryID, skill, body)
+		commitMs := time.Since(commitStart).Milliseconds()
 		if commitErr != nil {
-			p.log.Error("git commit failed", "session_id", session.ID, "skill_id", skillID, "error", commitErr)
-		} else {
-			p.log.Info("skill committed to git", "session_id", session.ID, "skill_id", skillID, "hash", commitHash)
+			result.Status = model.StatusError
+			result.Error = fmt.Sprintf("git commit [session=%s]: %v", session.ID, commitErr)
+			result.DurationMs = time.Since(start).Milliseconds()
+			p.log.Error("git commit failed",
+				"session_id", session.ID,
+				"skill_id", skillID,
+				"error", commitErr,
+				"commit_ms", commitMs,
+				"total_ms", result.DurationMs,
+			)
+			p.updateSessionStatus(ctx, &session, result)
+			p.maybeSample(ctx, session.ID, result)
+			return result, nil
 		}
+		result.CommitHash = commitHash
+		p.log.Info("skill committed to git", "session_id", session.ID, "skill_id", skillID, "hash", commitHash, "commit_ms", commitMs)
 	}
 
 	result.Status = model.StatusExtracted
@@ -304,7 +297,6 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 		"session_id", session.ID,
 		"skill_id", skillID,
 		"skill_name", skillName,
-		"store_ms", storeMs,
 		"total_ms", result.DurationMs,
 	)
 

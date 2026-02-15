@@ -38,20 +38,6 @@ func (m *mockStage3) Evaluate(_ context.Context, _ model.SessionRecord, _ []byte
 	return m.result, m.err
 }
 
-type mockWriter struct {
-	err    error
-	called bool
-	skill  *model.SkillRecord
-	body   []byte
-}
-
-func (m *mockWriter) Put(_ context.Context, skill *model.SkillRecord, body []byte) error {
-	m.called = true
-	m.skill = skill
-	m.body = body
-	return m.err
-}
-
 type mockReviewer struct {
 	called    bool
 	sessionID string
@@ -149,11 +135,9 @@ func TestPipelineExtract(t *testing.T) {
 		s2Err          error
 		s3             *model.Stage3Result
 		s3Err          error
-		storeErr       error
-		wantStatus     model.ExtractionStatus
-		wantError      bool
-		wantSkill      bool
-		wantStoreCalled bool
+		wantStatus model.ExtractionStatus
+		wantError  bool
+		wantSkill  bool
 	}{
 		{
 			name:       "full pass-through",
@@ -162,7 +146,6 @@ func TestPipelineExtract(t *testing.T) {
 			s3:         passStage3(),
 			wantStatus: model.StatusExtracted,
 			wantSkill:  true,
-			wantStoreCalled: true,
 		},
 		{
 			name:       "reject at stage1",
@@ -197,26 +180,15 @@ func TestPipelineExtract(t *testing.T) {
 			wantStatus: model.StatusError,
 			wantError:  true,
 		},
-		{
-			name:       "error at store",
-			s1:         passStage1(),
-			s2:         passStage2(),
-			s3:         passStage3(),
-			storeErr:   errors.New("disk full"),
-			wantStatus: model.StatusError,
-			wantError:  true,
-			wantStoreCalled: true,
-		},
+		// Store errors no longer apply: pipeline writes via git, not SQLite directly.
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			w := &mockWriter{err: tt.storeErr}
 			p, _ := NewPipeline(PipelineConfig{
 				Stage1: &mockStage1{result: tt.s1},
 				Stage2: &mockStage2{result: tt.s2, err: tt.s2Err},
 				Stage3: &mockStage3{result: tt.s3, err: tt.s3Err},
-				Writer: w,
 				Log:    testLog(),
 			})
 
@@ -240,9 +212,6 @@ func TestPipelineExtract(t *testing.T) {
 			if !tt.wantSkill && result.Skill != nil {
 				t.Error("unexpected skill in result")
 			}
-			if tt.wantStoreCalled != w.called {
-				t.Errorf("store called = %v, want %v", w.called, tt.wantStoreCalled)
-			}
 		})
 	}
 }
@@ -252,7 +221,6 @@ func TestPipelineTiming(t *testing.T) {
 		Stage1: &mockStage1{result: passStage1()},
 		Stage2: &mockStage2{result: passStage2()},
 		Stage3: &mockStage3{result: passStage3()},
-		Writer: &mockWriter{},
 		Log:    testLog(),
 	})
 
@@ -290,7 +258,6 @@ func TestPipelineSampling(t *testing.T) {
 				Stage1:     &mockStage1{result: failStage1("test")},
 				Stage2:     &mockStage2{},
 				Stage3:     &mockStage3{},
-				Writer:     &mockWriter{},
 				Reviewer:   rev,
 				Log:        testLog(),
 				SampleRate: tt.sampleRate,
@@ -311,7 +278,6 @@ func TestPipelineSkillNameFromClassification(t *testing.T) {
 		Stage1: &mockStage1{result: passStage1()},
 		Stage2: &mockStage2{result: passStage2()},
 		Stage3: &mockStage3{result: passStage3()},
-		Writer: &mockWriter{},
 		Log:    testLog(),
 	})
 
@@ -351,12 +317,10 @@ func TestSkillNameFromClassification(t *testing.T) {
 }
 
 func TestPipelineSkillFields(t *testing.T) {
-	w := &mockWriter{}
 	p, _ := NewPipeline(PipelineConfig{
 		Stage1:    &mockStage1{result: passStage1()},
 		Stage2:    &mockStage2{result: passStage2()},
 		Stage3:    &mockStage3{result: passStage3()},
-		Writer:    w,
 		Log:       testLog(),
 		Extractor: "test-v1",
 	})
@@ -382,22 +346,14 @@ func TestPipelineSkillFields(t *testing.T) {
 	if s.Version != 1 {
 		t.Errorf("Version = %d, want 1", s.Version)
 	}
-	// UUIDv7 check: must be valid UUID
 	if len(s.ID) != 36 || s.ID[8] != '-' {
 		t.Errorf("ID = %q, want UUIDv7 format", s.ID)
 	}
-	// Timestamps must be set
 	if s.CreatedAt.IsZero() {
 		t.Error("CreatedAt is zero")
 	}
 	if s.UpdatedAt.IsZero() {
 		t.Error("UpdatedAt is zero")
-	}
-	if !w.called {
-		t.Error("writer not called")
-	}
-	if len(w.body) == 0 {
-		t.Error("empty skill body")
 	}
 	if s.DecayScore != 1.0 {
 		t.Errorf("DecayScore = %f, want 1.0 (new skills must be fully active)", s.DecayScore)
@@ -405,12 +361,10 @@ func TestPipelineSkillFields(t *testing.T) {
 }
 
 func TestPipelineNewSkillDecayScore(t *testing.T) {
-	w := &mockWriter{}
 	p, _ := NewPipeline(PipelineConfig{
 		Stage1: &mockStage1{result: passStage1()},
 		Stage2: &mockStage2{result: passStage2()},
 		Stage3: &mockStage3{result: passStage3()},
-		Writer: w,
 		Log:    testLog(),
 	})
 
@@ -431,7 +385,6 @@ func TestPipelineSessionID(t *testing.T) {
 		Stage1: &mockStage1{result: failStage1("nope")},
 		Stage2: &mockStage2{},
 		Stage3: &mockStage3{},
-		Writer: &mockWriter{},
 		Log:    testLog(),
 	})
 
@@ -449,7 +402,6 @@ func TestPipelineStageResults(t *testing.T) {
 		Stage1: &mockStage1{result: passStage1()},
 		Stage2: &mockStage2{result: failStage2("too similar")},
 		Stage3: &mockStage3{},
-		Writer: &mockWriter{},
 		Log:    testLog(),
 	})
 
@@ -471,7 +423,6 @@ func TestPipelineSamplingOnExtract(t *testing.T) {
 		Stage1:     &mockStage1{result: passStage1()},
 		Stage2:     &mockStage2{result: passStage2()},
 		Stage3:     &mockStage3{result: passStage3()},
-		Writer:     &mockWriter{},
 		Reviewer:   rev,
 		Log:        testLog(),
 		SampleRate: 1.0,
@@ -496,7 +447,6 @@ func TestPipelineStratifiedSamplingBalance(t *testing.T) {
 		Stage1:     &mockStage1{result: passStage1()},
 		Stage2:     &mockStage2{result: passStage2()},
 		Stage3:     &mockStage3{result: passStage3()},
-		Writer:     &mockWriter{},
 		Reviewer:   rev,
 		Log:        testLog(),
 		SampleRate: 0.5, // high rate so we actually get samples
@@ -603,7 +553,6 @@ func TestNewPipelineNilDeps(t *testing.T) {
 		Stage1: &mockStage1{result: passStage1()},
 		Stage2: &mockStage2{result: passStage2()},
 		// Stage3 missing
-		Writer: &mockWriter{},
 		Log:    testLog(),
 	})
 	if err == nil {
@@ -628,7 +577,6 @@ func TestPipelineNeverReturnsError(t *testing.T) {
 				Stage1: &mockStage1{result: passStage1()},
 				Stage2: &mockStage2{result: passStage2(), err: tt.s2Err},
 				Stage3: &mockStage3{result: passStage3(), err: tt.s3Err},
-				Writer: &mockWriter{},
 				Log:    testLog(),
 			})
 
@@ -696,7 +644,6 @@ func TestPipelineTimingOnReject(t *testing.T) {
 		Stage1: &mockStage1{result: failStage1("nope")},
 		Stage2: &mockStage2{},
 		Stage3: &mockStage3{},
-		Writer: &mockWriter{},
 		Log:    testLog(),
 	})
 
