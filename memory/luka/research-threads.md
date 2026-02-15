@@ -52,3 +52,41 @@ Transformed the three winning analogies into concrete implementations:
 
 ### Key Implementation Insight
 All three systems integrate: Extraction filters → Quality assessment → Pattern classification → Injection ranking with feedback loops to improve each component based on session outcomes.
+
+## 2026-02-15 — Brief 003 (COMPLETED)
+
+Explored post-session extraction signals - the insight that the strongest indicator of valuable knowledge is what happens AFTER the session ends, not during it.
+
+### Cross-Field Analysis: Retrospective Quality Systems
+- **Academic Citations**: Quality emerges through citation networks over time, not peer review
+- **Vintage Wine**: Value revealed through aging and expert consensus over years
+- **Collective Memory**: Societies remember what gets retold and referenced across contexts
+- **Search Engines**: Click-through, dwell time, and return visits reveal true relevance
+- **Financial Markets**: Price discovery through trading behavior and performance persistence
+- **Archaeology**: Artifact value through durability, uniqueness, and connection to other finds
+
+**Universal retrospective signals**: Persistence through time, network references, return engagement, context bridging, performance under pressure
+
+### 3-Layer Delayed Extraction Architecture
+- **Layer 1** (Session End): Cheap metadata capture, provisional quality assessment (<$0.01/session)
+- **Layer 2** (1-7 days): Return visits, artifact persistence, cross-references (<$0.05/promoted)
+- **Layer 3** (30+ days): Deep quality assessment and skill finalization (<$0.50/skill)
+
+**Key insight**: Quality assessment is continuous, not one-time. Best knowledge reveals itself over weeks/months.
+
+### Privacy/Value Paradox Solutions
+- **Medical Research Model**: Anonymize individual data, learn from population patterns
+- **Journalism Model**: Separate content from source, protect individual context
+- **Aggregate Analytics**: Differential privacy, k-anonymity, federated learning
+- **Wikipedia Model**: Focus on transferable patterns, not personal attribution
+
+### Concrete Signal Specifications
+- **Return Visits**: Weighted by time decay, multiple returns > single returns
+- **Artifact Persistence**: File survival, git commit integration, deployment uptime
+- **Cross-References**: Code reuse, approach similarity, problem pattern matching
+- **Composite Scoring**: 40% return behavior, 30% artifact survival, 20% citations, 10% initial filters
+
+**Quality thresholds**: ≥2.0 high-value extraction, 1.0-2.0 candidate monitoring, 0.5-1.0 low-confidence patterns, <0.5 no extraction
+
+### Meta-Insight
+The retrospective approach solves the "everyone starts from zero" problem by identifying the 1% of sessions that have already proven their value through real-world usage patterns. Time reveals quality—we just need infrastructure to wait for the revelation.
