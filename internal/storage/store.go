@@ -92,6 +92,12 @@ func NewSQLiteStore(dsn string, embeddingModel string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("set WAL mode: %w", err)
 	}
 
+	// Busy timeout: wait up to 5s for locks instead of returning SQLITE_BUSY immediately.
+	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("set busy timeout: %w", err)
+	}
+
 	// Foreign keys
 	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
 		db.Close()
@@ -170,17 +176,6 @@ func (s *SQLiteStore) Put(ctx context.Context, skill *extraction.SkillRecord, bo
 		return fmt.Errorf("insert skill: %w", err)
 	}
 
-	// Write SKILL.md body to disk at FilePath (git server not wired yet).
-	if len(body) > 0 && skill.FilePath != "" {
-		dir := filepath.Dir(skill.FilePath)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return fmt.Errorf("create skill dir: %w", err)
-		}
-		if err := os.WriteFile(skill.FilePath, body, 0o644); err != nil {
-			return fmt.Errorf("write skill body: %w", err)
-		}
-	}
-
 	// Insert patterns
 	for _, p := range skill.Patterns {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO skill_patterns (skill_id, pattern) VALUES (?, ?)`, skill.ID, p); err != nil {
@@ -197,7 +192,23 @@ func (s *SQLiteStore) Put(ctx context.Context, skill *extraction.SkillRecord, bo
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit skill: %w", err)
+	}
+
+	// Write SKILL.md body to disk AFTER commit to avoid orphaned files on rollback.
+	// If this fails, the skill exists in DB without a file — degraded but detectable.
+	if len(body) > 0 && skill.FilePath != "" {
+		dir := filepath.Dir(skill.FilePath)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create skill dir (post-commit): %w", err)
+		}
+		if err := os.WriteFile(skill.FilePath, body, 0o644); err != nil {
+			return fmt.Errorf("write skill body (post-commit): %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (s *SQLiteStore) Get(ctx context.Context, id string) (*extraction.SkillRecord, error) {

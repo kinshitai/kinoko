@@ -103,7 +103,7 @@ func TestFullExtractionFlow(t *testing.T) {
 	// This means newly extracted skills are immediately "dead" for injection.
 	// For now, test documents the actual behavior:
 	if dbSkill.DecayScore != 1.0 {
-		t.Errorf("initial decay = %f, want 0.0 (BUG: pipeline should set 1.0)", dbSkill.DecayScore)
+		t.Errorf("initial decay = %f, want 1.0", dbSkill.DecayScore)
 	}
 	if dbSkill.SourceSessionID != "sess-e2e-001" {
 		t.Errorf("source_session = %q", dbSkill.SourceSessionID)
@@ -416,7 +416,9 @@ func TestABTestFlow(t *testing.T) {
 		classifyResponse: classifyJSON("FIX", "DevOps", []string{"FIX/DevOps/DeploymentFailure"}),
 	}
 
-	innerInj := injection.New(embedder, store, llm, store, testLogger())
+	// nil eventWriter on inner — ABInjector writes events with group info.
+	// This matches the production wiring in serve.go to avoid double events.
+	innerInj := injection.New(embedder, store, llm, nil, testLogger())
 
 	abConfig := injection.ABConfig{
 		Enabled:       true,
@@ -1205,6 +1207,436 @@ func TestSchemaConstraints(t *testing.T) {
 			t.Error("expected error for confidence out of range")
 		}
 	})
+}
+
+// =============================================================================
+// Test 16: Session Persistence Through Full Pipeline (Jazz N4)
+// =============================================================================
+
+func TestSessionPersistence(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	embedder := newPredictableEmbedder(3)
+
+	llm := &predictableLLM{
+		rubricResponse: goodRubricJSON(),
+		criticResponse: extractVerdictJSON(),
+	}
+
+	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
+	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.50}, llm, defaultExtractionConfig(), testLogger())
+	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
+
+	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
+		Stage1:     s1,
+		Stage2:     s2,
+		Stage3:     s3,
+		Writer:     store,
+		Sessions:   store, // <-- wired!
+		Embedder:   embedder,
+		Log:        testLogger(),
+		SampleRate: 0,
+		Extractor:  "session-persist-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test 1: Successful extraction — session should be persisted with status=extracted.
+	sess := goodSession("sess-persist-1", "test-lib")
+	result, err := pipeline.Extract(ctx, sess, []byte("fix database connection pooling issue with retry logic"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != extraction.StatusExtracted {
+		t.Fatalf("status = %q, want extracted", result.Status)
+	}
+
+	// Verify session row exists in DB.
+	var status string
+	var skillID sql.NullString
+	err = store.DB().QueryRow("SELECT extraction_status, extracted_skill_id FROM sessions WHERE id = ?", "sess-persist-1").Scan(&status, &skillID)
+	if err != nil {
+		t.Fatalf("query session: %v", err)
+	}
+	if status != "extracted" {
+		t.Errorf("session status = %q, want extracted", status)
+	}
+	if !skillID.Valid || skillID.String == "" {
+		t.Error("extracted_skill_id should be set")
+	}
+
+	// Test 2: Rejected session — session should be persisted with status=rejected.
+	rejSess := shortSession("sess-persist-2", "test-lib")
+	rejResult, err := pipeline.Extract(ctx, rejSess, []byte("tiny"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rejResult.Status != extraction.StatusRejected {
+		t.Fatalf("status = %q, want rejected", rejResult.Status)
+	}
+
+	var rejStatus string
+	var rejStage int
+	var rejReason string
+	err = store.DB().QueryRow("SELECT extraction_status, rejected_at_stage, rejection_reason FROM sessions WHERE id = ?", "sess-persist-2").Scan(&rejStatus, &rejStage, &rejReason)
+	if err != nil {
+		t.Fatalf("query rejected session: %v", err)
+	}
+	if rejStatus != "rejected" {
+		t.Errorf("rejected session status = %q, want rejected", rejStatus)
+	}
+	if rejStage != 1 {
+		t.Errorf("rejected_at_stage = %d, want 1", rejStage)
+	}
+	if rejReason == "" {
+		t.Error("rejection_reason should not be empty")
+	}
+}
+
+// =============================================================================
+// Test 17: Embedding Cosine Similarity E2E
+// Extract skill with embedding → inject → verify cosine sim computed
+// =============================================================================
+
+func TestEmbeddingCosineSimilarityE2E(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	embedder := newPredictableEmbedder(3)
+
+	// Seed a skill WITH embedding.
+	vec := embedder.deterministicVector("fix database connection")
+	sk := &extraction.SkillRecord{
+		ID: "skill-cos-1", Name: "fix-db-conn", Version: 1, LibraryID: "test-lib",
+		Category: extraction.CategoryTactical,
+		Patterns: []string{"FIX/Backend/DatabaseConnection"},
+		Quality: extraction.QualityScores{
+			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
+			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
+			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
+		},
+		Embedding:   vec,
+		DecayScore:  1.0,
+		ExtractedBy: "test",
+		FilePath:    "skills/fix-db/SKILL.md",
+	}
+	if err := store.Put(ctx, sk, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Inject with a SIMILAR prompt (should produce similar embedding).
+	llm := &predictableLLM{
+		classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"}),
+	}
+	inj := injection.New(embedder, store, llm, store, testLogger())
+
+	resp, err := inj.Inject(ctx, extraction.InjectionRequest{
+		Prompt:     "fix database connection", // same text = same embedding = cosine 1.0
+		LibraryIDs: []string{"test-lib"},
+		MaxSkills:  5,
+		SessionID:  "sess-cos-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Skills) == 0 {
+		t.Fatal("expected injected skills")
+	}
+
+	// Cosine similarity should be ~1.0 for identical text.
+	if resp.Skills[0].CosineSim < 0.99 {
+		t.Errorf("cosine sim = %f, want ~1.0 for identical embedding", resp.Skills[0].CosineSim)
+	}
+
+	// Now inject with a DIFFERENT prompt.
+	resp2, err := inj.Inject(ctx, extraction.InjectionRequest{
+		Prompt:     "build REST API design patterns",
+		LibraryIDs: []string{"test-lib"},
+		MaxSkills:  5,
+		SessionID:  "sess-cos-2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp2.Skills) == 0 {
+		t.Fatal("expected skills even for different prompt (pattern match)")
+	}
+
+	// Cosine similarity should be lower for different text.
+	if resp2.Skills[0].CosineSim >= 0.99 {
+		t.Errorf("cosine sim = %f, should be < 0.99 for different embedding", resp2.Skills[0].CosineSim)
+	}
+}
+
+// =============================================================================
+// Test 18: A/B Event Deduplication — verify exact event count
+// =============================================================================
+
+func TestABEventDeduplication(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	embedder := newPredictableEmbedder(3)
+
+	// Seed a skill.
+	sk := &extraction.SkillRecord{
+		ID: "skill-dedup-1", Name: "fix-deploy", Version: 1, LibraryID: "test-lib",
+		Category: extraction.CategoryTactical,
+		Patterns: []string{"FIX/DevOps/DeploymentFailure"},
+		Quality: extraction.QualityScores{
+			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
+			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
+			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
+		},
+		Embedding:   embedder.deterministicVector("fix deployment failure"),
+		DecayScore:  1.0,
+		ExtractedBy: "test",
+		FilePath:    "skills/fix-deploy/SKILL.md",
+	}
+	if err := store.Put(ctx, sk, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	llm := &predictableLLM{
+		classifyResponse: classifyJSON("FIX", "DevOps", []string{"FIX/DevOps/DeploymentFailure"}),
+	}
+
+	// Inner injector with nil eventWriter — AB handles events.
+	innerInj := injection.New(embedder, store, llm, nil, testLogger())
+	abInj := injection.NewABInjector(innerInj, store, injection.ABConfig{
+		Enabled: true, ControlRatio: 0.5, MinSampleSize: 10,
+	}, testLogger())
+
+	abInj.SetRandFunc(func() float64 { return 0.9 }) // treatment
+
+	_, err := abInj.Inject(ctx, extraction.InjectionRequest{
+		Prompt:     "fix deployment failure",
+		LibraryIDs: []string{"test-lib"},
+		MaxSkills:  5,
+		SessionID:  "sess-dedup-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify EXACTLY 1 event per skill (no duplicates).
+	var totalEvents int
+	store.DB().QueryRow("SELECT COUNT(*) FROM injection_events WHERE session_id = ?", "sess-dedup-1").Scan(&totalEvents)
+	if totalEvents != 1 {
+		t.Errorf("total events = %d, want exactly 1 (no duplicates)", totalEvents)
+	}
+
+	// All events should have ab_group set.
+	var ungrouped int
+	store.DB().QueryRow("SELECT COUNT(*) FROM injection_events WHERE session_id = ? AND ab_group = ''", "sess-dedup-1").Scan(&ungrouped)
+	if ungrouped != 0 {
+		t.Errorf("ungrouped events = %d, want 0 (all should have ab_group)", ungrouped)
+	}
+}
+
+// =============================================================================
+// Test 19: Human Review Sampling E2E
+// =============================================================================
+
+func TestHumanReviewSampling(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	embedder := newPredictableEmbedder(3)
+
+	llm := &predictableLLM{
+		rubricResponse: goodRubricJSON(),
+		criticResponse: extractVerdictJSON(),
+	}
+
+	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
+	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.50}, llm, defaultExtractionConfig(), testLogger())
+	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
+
+	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
+		Stage1:     s1,
+		Stage2:     s2,
+		Stage3:     s3,
+		Writer:     store,
+		Sessions:   store,
+		Reviewer:   store, // real store, not mock
+		Embedder:   embedder,
+		Log:        testLogger(),
+		SampleRate: 1.0, // always sample
+		Extractor:  "sampling-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run extraction — should produce a sample.
+	sess := goodSession("sess-sample-1", "test-lib")
+	result, err := pipeline.Extract(ctx, sess, []byte("fix database connection pooling"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != extraction.StatusExtracted {
+		t.Fatalf("status = %q, want extracted", result.Status)
+	}
+
+	// Verify human_review_samples row exists.
+	var sampleCount int
+	store.DB().QueryRow("SELECT COUNT(*) FROM human_review_samples WHERE session_id = ?", "sess-sample-1").Scan(&sampleCount)
+	if sampleCount != 1 {
+		t.Errorf("sample count = %d, want 1", sampleCount)
+	}
+
+	// Verify the sample contains valid JSON.
+	var resultJSON string
+	store.DB().QueryRow("SELECT extraction_result FROM human_review_samples WHERE session_id = ?", "sess-sample-1").Scan(&resultJSON)
+	if resultJSON == "" {
+		t.Error("extraction_result should not be empty")
+	}
+}
+
+// =============================================================================
+// Test 20: Stats Through Full Pipeline Chain
+// =============================================================================
+
+func TestStatsThroughPipeline(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	embedder := newPredictableEmbedder(3)
+
+	llm := &predictableLLM{
+		rubricResponse: goodRubricJSON(),
+		criticResponse: extractVerdictJSON(),
+	}
+
+	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
+	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.50}, llm, defaultExtractionConfig(), testLogger())
+	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
+
+	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
+		Stage1:    s1, Stage2: s2, Stage3: s3,
+		Writer:   store,
+		Sessions: store,
+		Embedder: embedder,
+		Log:      testLogger(),
+		Extractor: "stats-pipeline-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1 good extraction.
+	sess1 := goodSession("sess-sp-1", "test-lib")
+	r1, _ := pipeline.Extract(ctx, sess1, []byte("fix database connection pooling"))
+	if r1.Status != extraction.StatusExtracted {
+		t.Fatalf("expected extracted, got %q: %s", r1.Status, r1.Error)
+	}
+
+	// 1 rejection at stage1.
+	sess2 := shortSession("sess-sp-2", "test-lib")
+	r2, _ := pipeline.Extract(ctx, sess2, []byte("tiny"))
+	if r2.Status != extraction.StatusRejected {
+		t.Fatalf("expected rejected, got %q", r2.Status)
+	}
+
+	// Collect metrics — should reflect pipeline-persisted sessions.
+	collector := metrics.NewCollector(store.DB())
+	m, err := collector.Collect()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if m.TotalSessions != 2 {
+		t.Errorf("total sessions = %d, want 2", m.TotalSessions)
+	}
+	if m.Extracted != 1 {
+		t.Errorf("extracted = %d, want 1", m.Extracted)
+	}
+	if m.Rejected != 1 {
+		t.Errorf("rejected = %d, want 1", m.Rejected)
+	}
+}
+
+// =============================================================================
+// Test 21: Concurrent Extraction + Injection (race conditions)
+// =============================================================================
+
+func TestConcurrentExtractionAndInjection(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := storage.NewSQLiteStore(tmpDir+"/concurrent-ei.db", "test-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	ctx := context.Background()
+	embedder := newPredictableEmbedder(3)
+
+	// Pre-seed a skill for injection to find.
+	sk := &extraction.SkillRecord{
+		ID: "pre-seed-1", Name: "pre-seeded", Version: 1, LibraryID: "test-lib",
+		Category: extraction.CategoryTactical,
+		Patterns: []string{"FIX/Backend/DatabaseConnection"},
+		Quality: extraction.QualityScores{
+			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
+			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
+			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
+		},
+		Embedding:   embedder.deterministicVector("pre-seeded skill"),
+		DecayScore:  1.0,
+		ExtractedBy: "test",
+		FilePath:    "skills/pre-seeded/SKILL.md",
+	}
+	if err := store.Put(ctx, sk, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	const n = 5
+	errs := make(chan error, n*2)
+
+	// Extraction goroutines.
+	for i := 0; i < n; i++ {
+		go func(idx int) {
+			emb := newPredictableEmbedder(3)
+			llm := &predictableLLM{rubricResponse: goodRubricJSON(), criticResponse: extractVerdictJSON()}
+			s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
+			s2 := extraction.NewStage2Scorer(emb, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+			s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
+			p, _ := extraction.NewPipeline(extraction.PipelineConfig{
+				Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Log: testLogger(),
+			})
+			sess := goodSession(fmt.Sprintf("sess-cei-%d", idx), "test-lib")
+			_, err := p.Extract(ctx, sess, []byte(fmt.Sprintf("unique extraction problem %d", idx)))
+			errs <- err
+		}(i)
+	}
+
+	// Injection goroutines.
+	for i := 0; i < n; i++ {
+		go func(idx int) {
+			emb := newPredictableEmbedder(3)
+			llm := &predictableLLM{classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"})}
+			inj := injection.New(emb, store, llm, store, testLogger())
+			_, err := inj.Inject(ctx, extraction.InjectionRequest{
+				Prompt:     "fix database issue",
+				LibraryIDs: []string{"test-lib"},
+				MaxSkills:  3,
+				SessionID:  fmt.Sprintf("sess-cinj-%d", idx),
+			})
+			errs <- err
+		}(i)
+	}
+
+	var failures int
+	for i := 0; i < n*2; i++ {
+		if err := <-errs; err != nil {
+			t.Logf("concurrent op %d: %v", i, err)
+			failures++
+		}
+	}
+
+	// Key assertion: no panics, no corruption.
+	var integrity string
+	store.DB().QueryRow("PRAGMA integrity_check").Scan(&integrity)
+	if integrity != "ok" {
+		t.Fatalf("DB integrity: %s", integrity)
+	}
 }
 
 // ensure imports used
