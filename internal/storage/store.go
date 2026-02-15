@@ -124,6 +124,18 @@ func NewSQLiteStore(dsn string, embeddingModel string) (*SQLiteStore, error) {
 		db.Close()
 		return nil, fmt.Errorf("run schema: %w", err)
 	}
+
+	// Migrate existing sessions tables that lack new columns.
+	for _, col := range []struct{ name, ddl string }{
+		{"log_content_path", "ALTER TABLE sessions ADD COLUMN log_content_path TEXT NOT NULL DEFAULT ''"},
+		{"retry_count", "ALTER TABLE sessions ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0"},
+		{"last_error", "ALTER TABLE sessions ADD COLUMN last_error TEXT NOT NULL DEFAULT ''"},
+		{"next_retry_at", "ALTER TABLE sessions ADD COLUMN next_retry_at TIMESTAMP"},
+		{"claimed_by", "ALTER TABLE sessions ADD COLUMN claimed_by TEXT NOT NULL DEFAULT ''"},
+		{"claimed_at", "ALTER TABLE sessions ADD COLUMN claimed_at TIMESTAMP"},
+	} {
+		_, _ = db.Exec(col.ddl) // ignore "duplicate column" errors
+	}
 	slog.Info("sqlite schema applied")
 
 	if embeddingModel == "" {
@@ -448,6 +460,41 @@ func (s *SQLiteStore) UpdateInjectionOutcome(ctx context.Context, sessionID stri
 	return nil
 }
 
+// GetSession retrieves a session record by ID.
+func (s *SQLiteStore) GetSession(ctx context.Context, id string) (*extraction.SessionRecord, error) {
+	var sr extraction.SessionRecord
+	var extractedSkillID sql.NullString
+	var status string
+	var logContentPath, lastError, claimedBy string
+	var retryCount int
+	var nextRetryAt, claimedAt sql.NullTime
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, started_at, ended_at, duration_minutes, tool_call_count, error_count,
+			message_count, error_rate, has_successful_exec, tokens_used, agent_model,
+			user_id, library_id, extraction_status, rejected_at_stage, rejection_reason,
+			extracted_skill_id, log_content_path, retry_count, last_error, next_retry_at,
+			claimed_by, claimed_at
+		FROM sessions WHERE id = ?`, id).Scan(
+		&sr.ID, &sr.StartedAt, &sr.EndedAt, &sr.DurationMinutes, &sr.ToolCallCount,
+		&sr.ErrorCount, &sr.MessageCount, &sr.ErrorRate, &sr.HasSuccessfulExec,
+		&sr.TokensUsed, &sr.AgentModel, &sr.UserID, &sr.LibraryID, &status,
+		&sr.RejectedAtStage, &sr.RejectionReason, &extractedSkillID,
+		&logContentPath, &retryCount, &lastError, &nextRetryAt, &claimedBy, &claimedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get session %s: %w", id, err)
+	}
+	sr.ExtractionStatus = extraction.ExtractionStatus(status)
+	if extractedSkillID.Valid {
+		sr.ExtractedSkillID = extractedSkillID.String
+	}
+	sr.LogPath = logContentPath
+	return &sr, nil
+}
+
 // InsertSession inserts a session record into the sessions table.
 func (s *SQLiteStore) InsertSession(ctx context.Context, session *extraction.SessionRecord) error {
 	_, err := s.db.ExecContext(ctx, `
@@ -455,14 +502,14 @@ func (s *SQLiteStore) InsertSession(ctx context.Context, session *extraction.Ses
 			id, started_at, ended_at, duration_minutes, tool_call_count, error_count,
 			message_count, error_rate, has_successful_exec, tokens_used, agent_model,
 			user_id, library_id, extraction_status, rejected_at_stage, rejection_reason,
-			extracted_skill_id
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			extracted_skill_id, log_content_path
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		session.ID, session.StartedAt, session.EndedAt, session.DurationMinutes,
 		session.ToolCallCount, session.ErrorCount, session.MessageCount, session.ErrorRate,
 		session.HasSuccessfulExec, session.TokensUsed, session.AgentModel,
 		session.UserID, session.LibraryID, string(session.ExtractionStatus),
 		session.RejectedAtStage, session.RejectionReason,
-		nullString(session.ExtractedSkillID),
+		nullString(session.ExtractedSkillID), session.LogPath,
 	)
 	if err != nil {
 		return fmt.Errorf("insert session %s: %w", session.ID, err)

@@ -116,10 +116,12 @@ type SessionRecord struct {
 type ExtractionStatus string
 
 const (
+	StatusQueued    ExtractionStatus = "queued"
 	StatusPending   ExtractionStatus = "pending"
 	StatusExtracted ExtractionStatus = "extracted"
 	StatusRejected  ExtractionStatus = "rejected"
 	StatusError     ExtractionStatus = "error"
+	StatusFailed    ExtractionStatus = "failed"
 )
 
 // ExtractionResult is the output of the full pipeline for a single session.

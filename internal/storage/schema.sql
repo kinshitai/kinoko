@@ -57,6 +57,12 @@ CREATE TABLE IF NOT EXISTS sessions (
     rejected_at_stage    INTEGER NOT NULL DEFAULT 0,
     rejection_reason     TEXT NOT NULL DEFAULT '',
     extracted_skill_id   TEXT REFERENCES skills(id),
+    log_content_path     TEXT NOT NULL DEFAULT '',
+    retry_count          INTEGER NOT NULL DEFAULT 0,
+    last_error           TEXT NOT NULL DEFAULT '',
+    next_retry_at        TIMESTAMP,
+    claimed_by           TEXT NOT NULL DEFAULT '',
+    claimed_at           TIMESTAMP,
     created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -94,5 +100,6 @@ CREATE INDEX IF NOT EXISTS idx_sessions_library ON sessions(library_id);
 CREATE INDEX IF NOT EXISTS idx_injection_events_skill ON injection_events(skill_id);
 CREATE INDEX IF NOT EXISTS idx_injection_events_session ON injection_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_skills_name_library ON skills(name, library_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_queue ON sessions(extraction_status, next_retry_at);
 CREATE INDEX IF NOT EXISTS idx_injection_events_ab_group ON injection_events(ab_group);
 CREATE INDEX IF NOT EXISTS idx_injection_events_outcome ON injection_events(skill_id, session_outcome);

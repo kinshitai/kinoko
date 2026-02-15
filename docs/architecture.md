@@ -1,12 +1,12 @@
 # Internal Architecture
 
-This document describes Mycelium's technical architecture: how knowledge flows from agent sessions into a shared library and back out into future sessions. No analogies — just components, data flow, and boundaries.
+This document describes Mycelium's technical architecture: how knowledge flows from agent sessions into a shared library and back out into future sessions. Every claim here matches the implemented code.
 
 ---
 
 ## System Overview
 
-Mycelium is a pipeline with four stages:
+Mycelium is a pipeline with four subsystems:
 
 ```
 Agent Session → EXTRACTION → STORAGE → INJECTION → Agent Session
@@ -15,7 +15,24 @@ Agent Session → EXTRACTION → STORAGE → INJECTION → Agent Session
                                     (ongoing)
 ```
 
-A session produces work. Extraction decides whether that work contains reusable knowledge and, if so, distills it into a **skill**. Storage persists skills in a versioned, searchable library. Injection matches relevant skills to new sessions and delivers them as context. Decay continuously demotes or removes skills that are no longer useful.
+A session produces work. Extraction decides whether that work contains reusable knowledge and, if so, distills it into a **skill**. Storage persists skills in a SQLite database and as `SKILL.md` files on disk. Injection matches relevant skills to new sessions and delivers them as context. Decay continuously demotes or removes skills that are no longer useful.
+
+---
+
+## Package Map
+
+| Package | Path | Responsibility |
+|---|---|---|
+| `extraction` | `internal/extraction/` | 3-stage pipeline: types, pipeline orchestration, Stage 1/2/3 |
+| `storage` | `internal/storage/` | SQLite-backed persistence for skills, sessions, embeddings, injection events, review samples |
+| `injection` | `internal/injection/` | Prompt classification, skill ranking, A/B test decorator |
+| `decay` | `internal/decay/` | Half-life degradation, rescue mechanics |
+| `metrics` | `internal/metrics/` | Pipeline health: stage pass rates, yield, A/B z-test, decay distribution |
+| `embedding` | `internal/embedding/` | Embedding computation (OpenAI API) |
+| `config` | `internal/config/` | YAML config loading and validation |
+| `gitserver` | `internal/gitserver/` | Soft Serve SSH git server |
+
+CLI entry points live in `cmd/mycelium/`.
 
 ---
 
@@ -23,152 +40,276 @@ A session produces work. Extraction decides whether that work contains reusable 
 
 ### 1. Extraction Pipeline
 
-Extraction is a multi-stage filter. Each stage is cheaper than the next; most sessions are rejected early.
+**Package:** `internal/extraction/`
 
-**Stage 1: Metadata Pre-Filters**
+The pipeline is implemented by the `Pipeline` struct, which satisfies the `Extractor` interface:
 
-Operates on session metadata only — no content analysis. Rejects sessions that are too short, too long, or lack meaningful interaction.
+```go
+type Extractor interface {
+    Extract(ctx context.Context, session SessionRecord, content []byte) (*ExtractionResult, error)
+}
+```
 
-| Filter | Threshold | Rationale |
+`Pipeline` is constructed via `NewPipeline(PipelineConfig)` and wires three stages plus persistence:
+
+```
+SessionRecord + content
+       │
+       ▼
+   Stage1Filter.Filter(session) → Stage1Result
+       │ (pass/reject)
+       ▼
+   Stage2Scorer.Score(ctx, session, content) → Stage2Result
+       │ (pass/reject)
+       ▼
+   Stage3Critic.Evaluate(ctx, session, content, stage2) → Stage3Result
+       │ (pass/reject)
+       ▼
+   SkillWriter.Put(ctx, skill, body)  → persisted SkillRecord + SKILL.md
+```
+
+Sessions rejected at any stage return `StatusRejected`. Errors return `StatusError`. The pipeline is fail-safe: session persistence failures are non-fatal.
+
+**Pipeline dependencies** (all injected via `PipelineConfig`):
+
+| Interface | Purpose |
+|---|---|
+| `Stage1Filter` | Metadata pre-filtering (sync, no I/O) |
+| `Stage2Scorer` | Embedding novelty + LLM rubric scoring |
+| `Stage3Critic` | LLM critic for final verdict |
+| `SkillWriter` | Persists skill record + SKILL.md body |
+| `SessionWriter` | Persists/updates session records |
+| `SkillEmbedder` | Computes embedding for extracted skills |
+| `HumanReviewWriter` | Stratified sampling for human review |
+
+---
+
+#### Stage 1: Metadata Pre-Filters
+
+**Interface:** `Stage1Filter` · **Implementation:** `stage1Filter` via `NewStage1Filter(cfg, logger)`
+
+Operates on `SessionRecord` metadata only — no content analysis, no I/O. Rejects sessions that fail any threshold:
+
+| Filter | Config Field | Default | Rationale |
+|---|---|---|---|
+| Duration range | `min_duration_minutes` / `max_duration_minutes` | 2–180 min | Too brief = no depth; too long = exploratory |
+| Tool call count | `min_tool_calls` | ≥ 3 | Minimal interaction unlikely to produce knowledge |
+| Error rate | `max_error_rate` | ≤ 0.70 | Mostly-failed sessions rarely contain solutions |
+| Successful execution | — | ≥ 1 | No successful execution = no verified work |
+
+All four must pass. `Stage1Result` includes per-criterion booleans and a human-readable `Reason` on rejection.
+
+---
+
+#### Stage 2: Embedding Novelty + Rubric Scoring
+
+**Interface:** `Stage2Scorer` · **Implementation:** `stage2Scorer` via `NewStage2Scorer(embedder, querier, llm, cfg, logger)`
+
+Runs two classifiers:
+
+1. **Embedding novelty** — Embeds the session content, queries the skill store for the nearest neighbor (`SkillQuerier.QueryNearest`), computes distance = 1 − cosine similarity. Distance must fall within `[novelty_min_distance, novelty_max_distance]` (defaults: 0.15–0.95). A triangle function normalizes the score to [0, 1] with a 0.05 floor at boundaries.
+
+2. **Structured rubric scoring** — Sends session content to an LLM (`LLMClient.Complete`) with a prompt requesting JSON scores across 7 dimensions (1–5 each). The response is parsed with multi-strategy JSON extraction (raw → fenced → brace-matching). Scores are validated to [1,5]. Category is validated against `{foundational, tactical, contextual}` (default: `tactical`). Patterns are validated against the 20-entry `Taxonomy` (Appendix B).
+
+**Pass criteria:** `QualityScores.MinimumViable()` — Problem Specificity ≥ 3, Solution Completeness ≥ 3, Technical Accuracy ≥ 3.
+
+**Output:** `Stage2Result` with novelty score, rubric scores, classified category, and validated patterns.
+
+**Key interfaces consumed:**
+
+| Interface | Package | Purpose |
 |---|---|---|
-| Session duration | 2–180 minutes | Too brief = no depth; too long = likely exploratory |
-| Tool call count | ≥ 3 | Minimal interaction unlikely to produce knowledge |
-| Error rate | ≤ 70% | Mostly-failed sessions rarely contain solutions |
-| Successful execution | ≥ 1 exit code 0 | No successful execution = no verified work |
+| `embedding.Embedder` | `internal/embedding` | `Embed(ctx, text) → []float32` |
+| `SkillQuerier` | `internal/extraction` | `QueryNearest(ctx, embedding, libraryID) → *SkillQueryResult` |
+| `LLMClient` | `internal/extraction` | `Complete(ctx, prompt) → string` |
 
-All thresholds are configurable. Stage 1 is a decision tree — every session either passes or is rejected.
+---
 
-**Stage 2: Structured Dimensional Scoring**
+#### Stage 3: LLM Critic
 
-Runs two classifiers on session content:
+**Interface:** `Stage3Critic` · **Implementation:** `stage3Critic` via `NewStage3Critic(llm, cfg, logger)`
 
-1. **Embedding distance** — measures how far the session's content is from existing skills. Sessions too similar to existing knowledge score low on novelty; sessions too dissimilar may be noise.
-2. **Structured rubric scoring** — evaluates the session against specific quality dimensions (see [Dimensional Scoring](#dimensional-scoring) below).
+The most expensive stage. Features:
 
-Stage 2 produces a numeric score per dimension. Sessions must meet minimum thresholds on Problem Specificity, Solution Completeness, and Technical Accuracy (≥ 3/5 each) to proceed.
+- **Content truncation** at 100 KB with UTF-8-safe boundary handling
+- **Delimiter injection** using random nonces to prevent prompt injection
+- **Retry with exponential backoff** (1s, 2s, 4s; max 3 retries, extended to 5 for rate limits)
+- **Timeout escalation** (30s default → 60s on retry after timeout)
+- **Circuit breaker** — opens after 5 consecutive failures (5 min cooldown, doubling on re-failure)
+- **Contradiction detection** — overrides verdict when scores and verdict conflict (e.g., "extract" with avg score < 1.5 → reject)
+- **Parse error tolerance** — unparseable LLM responses become rejections, not errors
 
-**Stage 3: LLM Critic**
+Supports `LLMClientV2` for token usage tracking and explicit timeout control; falls back to basic `LLMClient` with context deadlines.
 
-An LLM evaluates surviving candidates with focused, dimensional questions — not a holistic "is this good?" judgment. The critic answers specific questions:
+**Output:** `Stage3Result` with verdict (extract/reject), refined quality scores, critic confidence, and flags for reusable pattern, explicit reasoning, and best-practice contradiction.
 
-- Does this contain a reusable solution pattern?
-- Is the reasoning explicit enough to apply elsewhere?
-- Does it contradict known best practices?
+---
 
-Stage 3 is expensive. By filtering at Stages 1 and 2, we limit LLM calls to a small fraction of total sessions.
+#### Human Review Sampling
 
-**Output:** A candidate skill with quality scores, or rejection.
+The pipeline implements stratified sampling per §3.4. After every pipeline run (regardless of outcome), `maybeSample` probabilistically selects results for human review:
+
+- **Stratified 50/50 balance** between extracted and rejected pools
+- Underrepresented pool: always sampled
+- Overrepresented pool: skipped until balance is restored
+- Equal counts: sampled at the configured `sample_rate` (default 1%)
+- Uses crypto/rand for unbiased sampling
+
+---
+
+#### Skill Generation
+
+Extracted skills receive:
+- A UUID v7 ID
+- A kebab-case name derived from classified patterns (e.g., `FIX/Backend/DatabaseConnection` → `fix-backend-database-connection`)
+- Version 1
+- `DecayScore` initialized to 1.0 (fully active)
+- An embedding vector (if `SkillEmbedder` is provided)
+- A `SKILL.md` file with YAML front matter and structured body (When to Use, Solution, Why It Works, Pitfalls)
+
+---
 
 ### 2. Skill Storage
 
-A skill is the atomic unit of knowledge. It is a Markdown file (`SKILL.md`) with YAML front matter, stored in a Git repository.
+**Package:** `internal/storage/`
 
-**Skill data model:**
+`SQLiteStore` implements both `SkillStore` and `SessionStore`. Uses WAL mode, 5s busy timeout, and foreign keys.
 
-```yaml
+**Database schema** (managed via embedded `schema.sql`):
+
+| Table | Purpose |
+|---|---|
+| `skills` | Skill metadata, quality scores, decay score, usage stats |
+| `skill_patterns` | Many-to-many: skill ↔ pattern tags |
+| `skill_embeddings` | Binary embedding blobs with model name |
+| `sessions` | Session metadata, extraction status, rejection info |
+| `injection_events` | Per-skill-per-session injection records with A/B group |
+| `human_review_samples` | Sampled extraction results for human review |
+
+**Key operations:**
+
+| Method | Description |
+|---|---|
+| `Put(ctx, skill, body)` | Insert skill + patterns + embedding in a transaction; write SKILL.md to disk post-commit |
+| `Get(ctx, id)` | Load skill with patterns and embedding |
+| `Query(ctx, SkillQuery)` | Multi-signal ranked search (pattern overlap + cosine similarity + historical rate) |
+| `UpdateUsage(ctx, id, outcome)` | Increment injection count, recompute success correlation |
+| `UpdateDecay(ctx, id, decayScore)` | Set decay score |
+| `ListByDecay(ctx, libraryID, limit)` | Skills ordered by decay score ascending |
+
+**Query ranking formula:**
+
+```
+CompositeScore = 0.5 × PatternOverlap + 0.3 × CosineSim + 0.2 × HistoricalRate
+```
+
+Bulk-loads patterns and embeddings via multi-ID queries (no N+1).
+
+**Skill data model** (as stored):
+
+```go
+type SkillRecord struct {
+    ID, Name, ParentID, LibraryID string
+    Version                        int
+    Category                       SkillCategory  // "foundational" | "tactical" | "contextual"
+    Patterns                       []string
+    Quality                        QualityScores  // 7 dimensions + composite + confidence
+    Embedding                      []float32
+    InjectionCount                 int
+    LastInjectedAt                 time.Time
+    SuccessCorrelation             float64
+    DecayScore                     float64
+    SourceSessionID                string
+    ExtractedBy                    string
+    FilePath                       string
+    CreatedAt, UpdatedAt           time.Time
+}
+```
+
 ---
-id: <uuid>
-title: <human-readable title>
-version: <semver>
-patterns:
-  - <problem pattern tags, e.g. FIX/Backend/DatabaseConnection>
-quality:
-  problem_specificity: <1-5>
-  solution_completeness: <1-5>
-  context_portability: <1-5>
-  reasoning_transparency: <1-5>
-  technical_accuracy: <1-5>
-  verification_evidence: <1-5>
-  innovation_level: <1-5>
-category: foundational | tactical | contextual
-usage:
-  injection_count: <int>
-  last_injected: <timestamp>
-  success_correlation: <float>
-created: <timestamp>
-updated: <timestamp>
----
-
-<Markdown body: problem description, solution, context, reasoning>
-```
-
-**Storage topology:**
-
-Skills are stored in subdirectories of `~/.mycelium/skills/`. Libraries are layered:
-
-```
-Local skills  →  Company/team skills  →  Public library
-(highest priority)                      (lowest priority)
-```
-
-When multiple skills match a query, local skills take precedence over shared ones.
-
-**Embeddings:** Each skill has a single embedding vector computed from its content. Stored alongside the skill metadata. One embedding space (not multiple — that's premature optimization at this stage).
 
 ### 3. Injection Pipeline
 
-Injection delivers relevant skills as additional context when an agent starts a session.
+**Package:** `internal/injection/`
 
-**Matching steps:**
+**Interface:** `Injector` · **Implementation:** `injector` via `New(embedder, store, llm, eventWriter, logger)`
 
-1. **Prompt classification** — Parse the user's prompt to extract intent (BUILD, FIX, OPTIMIZE, INTEGRATE, CONFIGURE, LEARN), technical domain (Frontend, Backend, DevOps, Data, Security, Performance), and specific problem signals.
+Steps:
 
-2. **Pattern matching** — Find skills whose problem pattern tags overlap with the classified prompt. Uses the [Problem Pattern Taxonomy](#problem-pattern-taxonomy).
+1. **Prompt classification** — LLM classifies the prompt into intent (BUILD/FIX/OPTIMIZE/INTEGRATE/CONFIGURE/LEARN), domain (validated via `extraction.ValidateDomain`), and 1–3 patterns (validated against `extraction.Taxonomy`).
 
-3. **Similarity ranking** — Rank candidate skills using a weighted score:
+2. **Embedding** — Computes prompt embedding. Falls back to **degraded mode** (pattern-only) if embedder is nil or fails.
 
-   ```
-   Score = 0.5 × Pattern_Overlap
-         + 0.3 × Cosine_Similarity(prompt_embedding, skill_embedding)
-         + 0.2 × Historical_Success_Rate
-   ```
+3. **Skill query** — Queries `SkillStore.Query` with patterns, embedding, library IDs, min decay of 0.05, candidate limit of 50.
 
-4. **Quality filtering** — Exclude skills below quality thresholds. Prefer skills with high Context Portability and Verification Evidence.
+4. **Re-ranking** — In degraded mode, re-ranks as `0.7 × PatternOverlap + 0.3 × HistoricalRate`. In normal mode, uses the store's composite score.
 
-5. **Delivery** — Top-ranked skills are injected into the agent's context window. Number of injected skills is bounded by context budget.
+5. **Limit** — Caps to `MaxSkills` (default: 3).
 
-**What "injection" means concretely:** The skill's Markdown content is prepended to the agent's system prompt or included as reference material, depending on the agent integration.
+6. **Event logging** — Writes `InjectionEventRecord` per skill for the feedback loop.
+
+**Output:** `InjectionResponse` with `[]InjectedSkill` and `PromptClassification`.
+
+#### A/B Testing
+
+**`ABInjector`** wraps any `Injector` with A/B test logic:
+
+- Randomly assigns sessions to **treatment** (skills delivered) or **control** (skills withheld) based on `ControlRatio` (default: 10%)
+- Always runs the real injection pipeline to get candidates
+- Control group: events logged with `delivered=false`, response returns empty skills
+- Treatment group: events logged with `delivered=true`, skills passed through
+
+The `ABInjector` writes events itself — the inner injector should be constructed without an `eventWriter` to avoid double-writing.
+
+---
 
 ### 4. Decay System
 
-Decay prevents the knowledge library from accumulating stale or unused skills.
+**Package:** `internal/decay/`
 
-**Skill categories and decay rates:**
+**`Runner`** performs decay cycles via `RunCycle(ctx, libraryID)`.
 
-| Category | Description | Decay behavior |
-|---|---|---|
-| **Foundational** | Core patterns that rarely change (e.g., "how to debug race conditions") | Slow decay. Requires strong evidence to deprecate. |
-| **Tactical** | Specific solutions tied to current tool versions or APIs | Fast decay. Must be validated by recent usage to persist. |
-| **Contextual** | Environment-specific knowledge | Medium decay. Loses relevance as environments change. |
+**Half-life formula:**
 
-**Decay mechanics:**
+```
+newDecay = oldDecay × 0.5^(daysSince / halfLifeDays)
+```
 
-- **Usage tracking:** Every injection is logged. Skills that haven't been injected in a configurable period (default: 6 months) begin losing ranking.
-- **Success correlation:** Skills whose injections correlate with session failures get flagged for review and deprioritized.
-- **Gradual demotion:** Decaying skills aren't deleted — they drop in ranking until they're effectively invisible to injection. They can be rescued by successful usage or manual intervention.
-- **Version supersession:** When a new skill is extracted that covers the same problem pattern as an existing skill, the old skill is compared and may be deprecated in favor of the new one.
+Where `daysSince` is measured from `LastInjectedAt` (or `UpdatedAt` if never injected).
 
-### 5. Logging and Measurement
+**Half-life defaults by category:**
 
-Every pipeline decision point emits structured logs. This is not optional — it ships with the pipeline, not after.
+| Category | Half-Life |
+|---|---|
+| Foundational | 365 days |
+| Tactical | 90 days |
+| Contextual | 180 days |
 
-**What's logged:**
+**Rescue mechanic:** Skills injected within `RescueWindowDays` (default: 30) with positive `SuccessCorrelation` receive a `RescueBoost` (default: 0.3) added to their decay score, capped at 1.0.
 
-- Stage 1: filter pass/fail per criterion, per session
-- Stage 2: dimensional scores per classifier, per session
-- Stage 3: LLM critic verdict and reasoning
-- Injection: which skills matched, ranking scores, which were delivered
-- Decay: demotion events, rescues, deprecations
-- Outcomes: session success/failure correlated with injected skills
+**Deprecation:** Skills that decay below `DeprecationThreshold` (default: 0.05) are set to 0.0 (dead). Dead skills are filtered from injection queries by the `MinDecay` floor.
 
-**Human review sampling:** 1% of processed sessions (both accepted and rejected) are flagged for manual review to calibrate filter accuracy.
+**Output:** `DecayCycleResult` with counts: Processed, Demoted, Deprecated, Rescued.
 
-**Baseline metrics:**
+---
 
-- Extraction precision: what fraction of extracted skills are actually useful?
-- Extraction recall: what fraction of useful knowledge is captured?
-- Injection relevance: do injected skills help the session?
-- Decay accuracy: are we keeping good skills and removing bad ones?
+### 5. Metrics
+
+**Package:** `internal/metrics/`
+
+`Collector` computes pipeline health metrics from the database:
+
+| Metric Group | Details |
+|---|---|
+| Sessions | Total, extracted, rejected, errored, extraction yield |
+| Stage pass rates | Per-stage total/passed/rate |
+| Human review | Total reviewed, agree count, extraction precision |
+| Injection | Events, sessions with injection, injection rate, skill utilization |
+| Quality | Average composite score, average confidence |
+| Decay | Bucketed distribution (dead / low / medium / high / fresh) |
+| A/B test | Per-group success rates, two-proportion z-test, p-value, significance |
+
+A/B significance requires `MinSampleSize` (default: 100) sessions per group.
 
 ---
 
@@ -186,17 +327,25 @@ Skills are evaluated on seven dimensions, each scored 1–5:
 | Verification Evidence | Is there proof this solution works? |
 | Innovation Level | How novel is the approach? |
 
-**Minimum viable skill:** ≥ 3 on Problem Specificity, Solution Completeness, and Technical Accuracy.
+**Minimum viable skill:** `MinimumViable()` — Problem Specificity ≥ 3, Solution Completeness ≥ 3, Technical Accuracy ≥ 3.
 
-**High-value skill:** ≥ 4 average across all dimensions.
+**High-value skill:** `HighValue()` — average across all 7 dimensions ≥ 4.0.
 
-**Injection priority weighting:** Context Portability × Verification Evidence.
+**Injection priority:** `InjectionPriority()` = `ContextPortability × 0.6 + VerificationEvidence × 0.4`.
+
+**Composite score** (weighted sum for ranking):
+
+```
+0.15 × ProblemSpecificity + 0.20 × SolutionCompleteness + 0.15 × ContextPortability
++ 0.10 × ReasoningTransparency + 0.20 × TechnicalAccuracy + 0.10 × VerificationEvidence
++ 0.10 × InnovationLevel
+```
 
 ---
 
 ## Problem Pattern Taxonomy
 
-Skills and prompts are classified into a three-tier taxonomy:
+Skills and prompts are classified into a three-tier taxonomy. The canonical list is defined in `extraction.Taxonomy` (20 patterns):
 
 **Tier 1 — Intent:**
 `BUILD` · `FIX` · `OPTIMIZE` · `INTEGRATE` · `CONFIGURE` · `LEARN`
@@ -204,48 +353,66 @@ Skills and prompts are classified into a three-tier taxonomy:
 **Tier 2 — Domain:**
 `Frontend` · `Backend` · `DevOps` · `Data` · `Security` · `Performance`
 
-**Tier 3 — Specific pattern** (examples):
-`FIX/Backend/DatabaseConnection` · `BUILD/Frontend/ComponentDesign` · `OPTIMIZE/Performance/MemoryLeak`
+**Tier 3 — Specific patterns:**
 
-Skills can have multiple pattern tags. More specific tags receive higher relevance weight during injection matching.
+```
+BUILD/Frontend/ComponentDesign     FIX/Frontend/RenderingBug
+BUILD/Frontend/StateManagement     FIX/Backend/DatabaseConnection
+BUILD/Backend/APIDesign            FIX/Backend/AuthFlow
+BUILD/Backend/DataModeling         FIX/DevOps/DeploymentFailure
+BUILD/DevOps/CIPipeline            FIX/Performance/MemoryLeak
+BUILD/DevOps/ContainerSetup        FIX/Performance/SlowQuery
+OPTIMIZE/Performance/Caching       INTEGRATE/Backend/ThirdPartyAPI
+OPTIMIZE/Performance/BundleSize    INTEGRATE/DevOps/CloudService
+OPTIMIZE/Backend/QueryOptimization CONFIGURE/DevOps/InfraAsCode
+CONFIGURE/Security/AccessControl   LEARN/Data/DataPipeline
+```
 
-The taxonomy is a fixed, manually curated list of ~15–20 patterns. It is not ML-generated.
+The taxonomy is a fixed, manually curated list validated at both extraction (Stage 2) and injection (prompt classification).
 
 ---
 
 ## Component Boundaries
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  Extraction  │────▶│   Storage   │◀────│    Decay    │
-│   Pipeline   │     │  (Git +     │     │   System    │
-│              │     │  Embeddings)│     │             │
-└─────────────┘     └──────┬──────┘     └─────────────┘
-                           │
-                    ┌──────▼──────┐
-                    │  Injection  │
-                    │  Pipeline   │
-                    └─────────────┘
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│    Extraction     │────▶│     Storage      │◀────│      Decay       │
+│    Pipeline       │     │  (SQLite + disk) │     │     Runner       │
+│ (extraction pkg)  │     │  (storage pkg)   │     │   (decay pkg)    │
+└──────────────────┘     └────────┬─────────┘     └──────────────────┘
+                                  │
+                         ┌────────▼─────────┐
+                         │    Injection      │
+                         │    Pipeline       │
+                         │ (injection pkg)   │
+                         └──────────────────┘
+                                  │
+                         ┌────────▼─────────┐
+                         │     Metrics       │
+                         │   Collector       │
+                         │  (metrics pkg)    │
+                         └──────────────────┘
 ```
 
-**Extraction → Storage:** Extraction produces a `SKILL.md` file with metadata. Storage accepts it, computes the embedding, and commits it to the skill repository.
+**Extraction → Storage:** Pipeline calls `SkillWriter.Put()` to persist skills and `SessionWriter` to track session state.
 
-**Storage → Injection:** Injection queries storage by pattern tags and embedding similarity. Storage returns ranked candidates.
+**Storage → Injection:** Injection calls `SkillStore.Query()` for ranked candidates.
 
-**Decay → Storage:** Decay reads usage statistics from storage, computes demotion/deprecation decisions, and writes updated metadata back.
+**Decay → Storage:** Decay reads via `SkillReader.ListByDecay()` and writes via `SkillWriter.UpdateDecay()`.
 
-**Injection → Decay (indirect):** Injection logs usage events. Decay reads those logs to determine which skills are active.
+**Injection → Storage (feedback):** Injection writes `InjectionEventRecord` rows. Storage recomputes `SuccessCorrelation` on usage updates.
 
-Each component communicates through defined interfaces. Extraction does not know about injection. Injection does not trigger extraction. Decay operates independently on a schedule.
+**Metrics → Storage:** Collector reads directly from the `*sql.DB` with aggregate queries.
+
+Each component communicates through defined Go interfaces. Extraction does not know about injection. Injection does not trigger extraction. Decay operates independently on a schedule or via CLI.
 
 ---
 
-## Post-Session Signals
+## Server Integration
 
-Extraction doesn't only happen at session end. A delayed extraction pass can evaluate sessions retroactively based on:
+`cmd/mycelium/serve.go` wires both pipelines into session lifecycle hooks:
 
-- **Return signal** — User reopens an old session. High-confidence indicator of extractable knowledge.
-- **Artifact persistence** — Session outputs (files, configs) that survive in the user's environment.
-- **Cross-reference signal** — Artifacts from one session appearing in another.
+- **`OnSessionStart`** — runs the injection pipeline (with optional A/B testing)
+- **`OnSessionEnd`** — runs the extraction pipeline on the session log
 
-These signals require separating transferable patterns from personal context during extraction. The story stays local; the pattern travels.
+Hooks are registered on the git server. If API keys are missing, hooks degrade gracefully (injection returns empty, extraction returns rejected).

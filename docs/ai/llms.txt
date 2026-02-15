@@ -4,70 +4,95 @@
 
 ## What It Does
 
-Agents solve problems. Mycelium extracts the knowledge into structured skills (SKILL.md files), stores them in git repositories, and injects relevant skills into future agent sessions.
+Agents solve problems. Mycelium extracts the knowledge into structured skills (SKILL.md files), stores them in a SQLite database with embeddings, and injects relevant skills into future agent sessions — automatically.
 
 ## Status
 
-Early development. Core infrastructure works. Agent integrations coming.
+Active development. 11 packages, 373 tests, ~17K lines of Go. Extraction pipeline complete and tested.
 
-## Quick Start
+## Architecture
 
-```
-git clone https://github.com/mycelium-dev/mycelium.git
-cd mycelium && go install ./cmd/mycelium
-mycelium init
-mycelium serve
-```
+Four subsystems: Extraction → Storage → Injection → Decay.
 
-Server runs at ssh://localhost:23231.
+### Extraction Pipeline (internal/extraction/)
+3-stage filter:
+- Stage 1: Metadata pre-filter (duration 2-180min, tool calls ≥3, error rate ≤70%, successful exec). No I/O.
+- Stage 2: Embedding novelty (cosine distance in [0.15, 0.95]) + LLM rubric scoring (7 dimensions, 1-5 each). Must meet MinimumViable: ProblemSpecificity ≥3, SolutionCompleteness ≥3, TechnicalAccuracy ≥3.
+- Stage 3: LLM critic with retry (exponential backoff, max 3-5 retries), circuit breaker (opens after 5 failures, 5min cooldown), content truncation at 100KB, contradiction detection.
+
+Key interfaces: Extractor, Stage1Filter, Stage2Scorer, Stage3Critic, LLMClient, SkillQuerier, SkillEmbedder, SkillWriter, SessionWriter, HumanReviewWriter.
+
+Human review: stratified 50/50 sampling at configurable rate (default 1%).
+
+### Storage (internal/storage/)
+SQLite with WAL mode. Tables: skills, skill_patterns, skill_embeddings, sessions, injection_events, human_review_samples.
+Query ranking: 0.5×PatternOverlap + 0.3×CosineSim + 0.2×HistoricalRate.
+Bulk-loads patterns and embeddings (no N+1).
+
+### Injection (internal/injection/)
+Steps: LLM prompt classification → embedding → skill store query → re-rank → limit (default 3).
+Degraded mode (no embeddings): 0.7×PatternOverlap + 0.3×HistoricalRate.
+ABInjector decorator: treatment (skills delivered) vs control (skills withheld, events logged with delivered=false).
+
+### Decay (internal/decay/)
+Half-life: foundational=365d, tactical=90d, contextual=180d.
+Formula: newDecay = oldDecay × 0.5^(days/halfLife).
+Rescue: skills injected within 30d with positive success correlation get +0.3 boost.
+Deprecation threshold: 0.05 → set to 0.0.
+
+### Metrics (internal/metrics/)
+Collects: stage pass rates, extraction yield, injection rate, skill utilization, quality averages, decay distribution, A/B z-test with p-value.
 
 ## CLI Commands
 
 - `mycelium init` — Create workspace at ~/.mycelium/
-- `mycelium serve` — Start SSH git server (default port 23231)
-- `mycelium serve --config <path>` — Use custom config file
+- `mycelium serve` — Start SSH git server with extraction + injection hooks
+- `mycelium extract <session-log>` — Run extraction pipeline (flags: --config, --library)
+- `mycelium decay` — Run decay cycle (flags: --config, --library, --dry-run)
+- `mycelium stats` — Print pipeline metrics (flags: --config)
 - `mycelium --version` — Show version
 - `mycelium help` — Show help
+
+Exit codes: 0=success, 1=error, 2=extraction rejected, 3=extraction error.
 
 ## SKILL.md Format
 
 ```yaml
 ---
-name: kebab-case-name    # required, must match ^[a-z0-9]+(-[a-z0-9]+)*$
-version: 1               # required, must be 1
-tags: [tag1, tag2]       # optional
-author: user@example.com # required
-confidence: 0.85         # required, 0.0-1.0
-created: 2026-02-15      # required, YYYY-MM-DD
-updated: 2026-02-15      # optional, must be >= created
-dependencies: []         # optional, kebab-case names
+name: kebab-case-name
+id: uuid-v7
+version: 1
+category: foundational|tactical|contextual
+patterns:
+  - BUILD/Backend/APIDesign
+extracted_by: pipeline-v1
+quality: 3.45
+confidence: 0.82
+source_session: session-uuid
+created: 2026-02-15
 ---
 
-# Title (required)
+# Title
 
-## When to Use (required)
-Description of when this skill applies.
-
-## Solution (required)
-The actual knowledge.
-
-## Gotchas (optional)
-Edge cases and pitfalls.
+## When to Use
+## Solution
+## Why It Works
+## Pitfalls
 ```
 
 ## Configuration (~/.mycelium/config.yaml)
 
 ```yaml
 server:
-  host: "127.0.0.1"    # bind address
-  port: 23231           # SSH port
+  host: "127.0.0.1"
+  port: 23231
   dataDir: ~/.mycelium/data
 
 storage:
-  driver: sqlite        # sqlite or postgres
+  driver: sqlite
   dsn: ~/.mycelium/mycelium.db
 
-libraries:              # layered, higher priority wins
+libraries:
   - name: local
     path: ~/.mycelium/skills
     priority: 100
@@ -76,6 +101,33 @@ extraction:
   auto_extract: true
   min_confidence: 0.5
   require_validation: true
+  min_duration_minutes: 2
+  max_duration_minutes: 180
+  min_tool_calls: 3
+  max_error_rate: 0.7
+  novelty_min_distance: 0.15
+  novelty_max_distance: 0.95
+  version_similarity_threshold: 0.85
+  sample_rate: 0.01
+  ab_test:
+    enabled: false
+    control_ratio: 0.1
+    min_sample_size: 100
+
+decay:
+  foundational_half_life_days: 365
+  tactical_half_life_days: 90
+  contextual_half_life_days: 180
+  deprecation_threshold: 0.05
+  rescue_boost: 0.3
+  rescue_window_days: 30
+
+embedding:
+  provider: openai
+  model: text-embedding-3-small
+
+llm:
+  model: gpt-4o-mini
 
 hooks:
   credential_scan: true
@@ -87,22 +139,38 @@ defaults:
   confidence: 0.7
 ```
 
+## Environment Variables
+
+- OPENAI_API_KEY — fallback for embeddings and LLM
+- MYCELIUM_EMBEDDING_API_KEY — embedding API key (overrides OPENAI_API_KEY)
+- MYCELIUM_LLM_API_KEY — LLM API key (overrides OPENAI_API_KEY)
+
 ## Key Paths
 
 - Config: ~/.mycelium/config.yaml
-- Skills: ~/.mycelium/skills/ (git repo, skills in subdirectories)
-- Database: ~/.mycelium/mycelium.db
+- Skills: ~/.mycelium/skills/ (git repo)
+- Database: ~/.mycelium/mycelium.db (SQLite)
 - Server data: ~/.mycelium/data/
+
+## Problem Pattern Taxonomy (20 patterns)
+
+BUILD/Frontend/ComponentDesign, BUILD/Frontend/StateManagement, BUILD/Backend/APIDesign, BUILD/Backend/DataModeling, BUILD/DevOps/CIPipeline, BUILD/DevOps/ContainerSetup, FIX/Frontend/RenderingBug, FIX/Backend/DatabaseConnection, FIX/Backend/AuthFlow, FIX/DevOps/DeploymentFailure, FIX/Performance/MemoryLeak, FIX/Performance/SlowQuery, OPTIMIZE/Performance/Caching, OPTIMIZE/Performance/BundleSize, OPTIMIZE/Backend/QueryOptimization, INTEGRATE/Backend/ThirdPartyAPI, INTEGRATE/DevOps/CloudService, CONFIGURE/DevOps/InfraAsCode, CONFIGURE/Security/AccessControl, LEARN/Data/DataPipeline
+
+## Quality Dimensions (each 1-5)
+
+ProblemSpecificity, SolutionCompleteness, ContextPortability, ReasoningTransparency, TechnicalAccuracy, VerificationEvidence, InnovationLevel.
+Composite weights: 0.15, 0.20, 0.15, 0.10, 0.20, 0.10, 0.10.
 
 ## Requirements
 
-Go 1.24+, Git, SSH client.
+Go 1.24+, Git, SSH client, OpenAI API key (for extraction/injection).
 
 ## Documentation
 
-- docs/getting-started/installation.md
-- docs/getting-started/quickstart.md
-- docs/reference/cli-reference.md
-- docs/reference/config-reference.md
-- docs/reference/skill-format.md
-- docs/troubleshooting.md
+- docs/architecture.md — system design
+- docs/concepts.md — core concepts
+- docs/glossary.md — terminology
+- docs/reference/cli-reference.md — CLI commands
+- docs/reference/config-reference.md — configuration
+- docs/reference/skill-format.md — SKILL.md spec
+- docs/troubleshooting.md — common issues
