@@ -327,7 +327,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	var apiSrv *api.Server
 	if embCfgAPI.APIKey != "" {
 		apiEmbedder := embedding.New(embCfgAPI, logger)
-		apiPort := cfg.Server.Port + 1 // default: 23232
+		apiPort := cfg.Server.GetAPIPort()
 		apiSrv = api.New(api.Config{
 			Host:     cfg.Server.Host,
 			Port:     apiPort,
