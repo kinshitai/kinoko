@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/kinoko-dev/kinoko/internal/api"
 	"github.com/kinoko-dev/kinoko/internal/config"
 	"github.com/kinoko-dev/kinoko/internal/decay"
 	"github.com/kinoko-dev/kinoko/internal/embedding"
@@ -317,7 +318,44 @@ func runServe(cmd *cobra.Command, args []string) error {
 		"host", connInfo.SSHHost,
 		"port", connInfo.SSHPort)
 
-	return waitForShutdown(cmd.Context(), server, sched, pool, store, logger)
+	// Start HTTP API server for discovery + ingestion.
+	embCfgAPI := embedding.DefaultConfig()
+	embCfgAPI.APIKey = os.Getenv("KINOKO_EMBEDDING_API_KEY")
+	if embCfgAPI.APIKey == "" {
+		embCfgAPI.APIKey = os.Getenv("OPENAI_API_KEY")
+	}
+	var apiSrv *api.Server
+	if embCfgAPI.APIKey != "" {
+		apiEmbedder := embedding.New(embCfgAPI, logger)
+		apiPort := cfg.Server.Port + 1 // default: 23232
+		apiSrv = api.New(api.Config{
+			Host:     cfg.Server.Host,
+			Port:     apiPort,
+			Store:    store,
+			Embedder: apiEmbedder,
+			SSHURL:   connInfo.SSHUrl,
+			Logger:   logger,
+			Enqueue: func(ctx context.Context, session model.SessionRecord, logContent []byte) error {
+				if queue != nil {
+					return queue.Enqueue(ctx, session, logContent)
+				}
+				return nil
+			},
+		})
+		if err := apiSrv.Start(); err != nil {
+			logger.Error("failed to start API server", "error", err)
+		} else {
+			logger.Info("API server ready", "port", apiPort)
+		}
+	} else {
+		logger.Warn("API server disabled: no embedding API key")
+	}
+
+	err = waitForShutdown(cmd.Context(), server, sched, pool, store, logger)
+	if apiSrv != nil {
+		apiSrv.Stop(context.Background())
+	}
+	return err
 }
 
 // waitForShutdown waits for shutdown signal and gracefully stops all components.

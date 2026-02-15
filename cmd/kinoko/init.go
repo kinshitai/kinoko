@@ -1,13 +1,20 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/kinoko-dev/kinoko/internal/client"
+)
+
+var (
+	connectURL string
 )
 
 var initCmd = &cobra.Command{
@@ -15,13 +22,22 @@ var initCmd = &cobra.Command{
 	Short: "Initialize Kinoko workspace",
 	Long: `Initialize a new Kinoko workspace in ~/.kinoko/.
 
-This creates the necessary directories, configuration file, and git repository
-for managing your local skills.`,
+Without flags, creates the necessary directories, configuration file, and git repository
+for managing your local skills (server mode).
+
+With --connect <url>, connects this machine to a remote Kinoko server (client mode).`,
 	RunE: initCommand,
+}
+
+func init() {
+	initCmd.Flags().StringVar(&connectURL, "connect", "", "Connect to a remote Kinoko server (client mode)")
 }
 
 // initCommand implements the 'kinoko init' command
 func initCommand(cmd *cobra.Command, args []string) error {
+	if connectURL != "" {
+		return initClientMode(cmd, connectURL)
+	}
 	slog.Info("Initializing Kinoko workspace...")
 
 	homeDir, err := os.UserHomeDir()
@@ -172,6 +188,58 @@ Thumbs.db
 		cmd.Dir = skillsDir
 		_ = cmd.Run() // Ignore error - commit might fail if git user is not configured
 	}
+
+	return nil
+}
+
+// initClientMode connects to a remote Kinoko server and saves client config.
+func initClientMode(_ *cobra.Command, serverURL string) error {
+	fmt.Println("🍄 Connecting to Kinoko server...")
+
+	apiURL, err := client.ParseServerURL(serverURL)
+	if err != nil {
+		return fmt.Errorf("invalid server URL: %w", err)
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	cacheDir := filepath.Join(homeDir, ".kinoko", "cache")
+
+	c := client.New(client.ClientConfig{
+		APIURL:   apiURL,
+		CacheDir: cacheDir,
+	})
+
+	// Test connection
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := c.Health(ctx); err != nil {
+		return fmt.Errorf("cannot reach server: %w", err)
+	}
+	fmt.Printf("✓ Server reachable at %s\n", apiURL)
+
+	// Save config
+	configPath := client.DefaultConfigPath()
+	if err := client.SaveClientConfig(configPath, client.ClientSection{
+		API:          apiURL,
+		Server:       serverURL,
+		CacheDir:     cacheDir,
+		PullInterval: "5m",
+	}); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+	fmt.Printf("✓ Config written to %s\n", configPath)
+
+	// Create cache dir
+	os.MkdirAll(cacheDir, 0755)
+
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Printf("  • kinoko pull <skill-repo>  — clone a skill locally\n")
+	fmt.Printf("  • kinoko pull --all         — sync all cached skills\n")
+	fmt.Println()
 
 	return nil
 }
