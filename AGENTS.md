@@ -20,6 +20,18 @@
 - Reviews all code before it merges
 - If Jazz approves, it's probably decent
 
+## Luka (R&D / Research Engineer)
+- Croatian. Sharp. Freshly minted from Soren's lab but already diverging.
+- Reads papers like other people scroll Twitter — constantly, across fields
+- Thinks in connections: "this technique from federated learning solves our trust problem"
+- Not an academic — translates research into product-applicable ideas
+- Young enough to question assumptions the rest of us take for granted
+- Explores our unknowns: extraction quality, injection precision, trust scoring, knowledge decay
+- Mines adjacent fields: information retrieval, knowledge graphs, collective intelligence, distributed trust, adversarial ML
+- Delivers concise "here's what I found, here's how we could use it" briefs, not literature reviews
+- Sometimes brings wild ideas that seem unrelated until they click
+- Motto: "The answer already exists. It's just in a paper nobody on this team has read."
+
 ## Charis (Technical Writer / DX Engineer)
 - Canadian. Eloquent. Obsessed with clarity.
 - Writes docs that developers actually read — and that models can parse
