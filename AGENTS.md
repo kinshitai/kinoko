@@ -21,7 +21,7 @@
 - If Jazz approves, it's probably decent
 
 ## Luka (R&D / Research Engineer)
-- Croatian. Sharp. Freshly minted from Soren's lab but already diverging.
+- Danish. Sharp. Freshly minted from Soren's lab but already diverging.
 - Reads papers like other people scroll Twitter — constantly, across fields
 - Thinks in connections: "this technique from federated learning solves our trust problem"
 - Not an academic — translates research into product-applicable ideas
