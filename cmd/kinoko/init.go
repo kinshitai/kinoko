@@ -93,12 +93,8 @@ storage:
 # Library layers (resolution order: highest priority first)
 libraries: []
 
-# Server configuration
-# The server URL that 'kinoko run' pushes extracted skills to
-server:
-  host: "127.0.0.1"
-  port: 23231
-  dataDir: ~/.kinoko/data
+# Server URL that 'kinoko run' connects to
+# server_url: "localhost:23231"
 
 # Extraction settings
 extraction:
@@ -147,8 +143,12 @@ func generateClientKey(kinokoDir string) error {
 		return fmt.Errorf("ssh-keygen failed: %w", err)
 	}
 
-	os.Chmod(keyPath, 0600)
-	os.Chmod(keyPath+".pub", 0644)
+	if err := os.Chmod(keyPath, 0600); err != nil {
+		return fmt.Errorf("chmod private key: %w", err)
+	}
+	if err := os.Chmod(keyPath+".pub", 0644); err != nil {
+		return fmt.Errorf("chmod public key: %w", err)
+	}
 
 	slog.Info("Generated client SSH key", "path", keyPath)
 	return nil

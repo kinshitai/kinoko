@@ -29,10 +29,14 @@ Run 'kinoko serve' separately to start the shared infrastructure server.`,
 	RunE: runRun,
 }
 
-var runConfigPath string
+var (
+	runConfigPath string
+	runServerURL  string
+)
 
 func init() {
 	runCmd.Flags().StringVar(&runConfigPath, "config", "", "Config file path (default: ~/.kinoko/config.yaml)")
+	runCmd.Flags().StringVar(&runServerURL, "server", "", "Server URL override (e.g. localhost:23231)")
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
@@ -41,8 +45,9 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	if err := os.MkdirAll(cfg.Server.DataDir, 0755); err != nil {
-		return fmt.Errorf("create data directory: %w", err)
+	// P2-11: Apply --server override if provided.
+	if runServerURL != "" {
+		cfg.Server.Host = runServerURL
 	}
 
 	logger := slog.Default()
