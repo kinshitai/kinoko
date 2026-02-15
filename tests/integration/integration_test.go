@@ -102,7 +102,7 @@ func TestFullExtractionFlow(t *testing.T) {
 	// The Go zero value (0.0) overrides the DB DEFAULT 1.0.
 	// This means newly extracted skills are immediately "dead" for injection.
 	// For now, test documents the actual behavior:
-	if dbSkill.DecayScore != 0.0 {
+	if dbSkill.DecayScore != 1.0 {
 		t.Errorf("initial decay = %f, want 0.0 (BUG: pipeline should set 1.0)", dbSkill.DecayScore)
 	}
 	if dbSkill.SourceSessionID != "sess-e2e-001" {
