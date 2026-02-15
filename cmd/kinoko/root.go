@@ -26,4 +26,5 @@ func init() {
 	rootCmd.AddCommand(workerCmd)
 	rootCmd.AddCommand(importCmd)
 	rootCmd.AddCommand(queueCmd)
+	rootCmd.AddCommand(indexCmd)
 }

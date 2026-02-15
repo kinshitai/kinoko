@@ -274,6 +274,17 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create git server: %w", err)
 	}
 
+	// Install Soft Serve hooks for post-receive indexing.
+	kinokoBin, err := os.Executable()
+	if err != nil {
+		kinokoBin = "kinoko" // fallback to PATH
+	}
+	if err := gitserver.InstallHooks(cfg.Server.DataDir, kinokoBin); err != nil {
+		logger.Warn("failed to install git hooks", "error", err)
+	} else {
+		logger.Info("git hooks installed", "data_dir", cfg.Server.DataDir)
+	}
+
 	// Start worker system (queue + pool + scheduler).
 	queue, pool, sched, err := startWorkerSystem(cmd.Context(), cfg, store, server, logger)
 	if err != nil {

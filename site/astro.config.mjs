@@ -2,10 +2,31 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
+  site: 'https://kinoko.tech',
   integrations: [
     starlight({
       title: '🍄 Kinoko',
+      description: 'Knowledge-sharing infrastructure for AI agents. Every problem solved once is solved for everyone.',
       customCss: ['./src/styles/custom.css'],
+      favicon: '/favicon.svg',
+      head: [
+        {
+          tag: 'meta',
+          attrs: { property: 'og:title', content: 'Kinoko — Knowledge Infrastructure for AI Agents' },
+        },
+        {
+          tag: 'meta',
+          attrs: { property: 'og:description', content: 'Every problem solved once is solved for everyone. Knowledge-sharing infrastructure for AI agents.' },
+        },
+        {
+          tag: 'meta',
+          attrs: { property: 'og:type', content: 'website' },
+        },
+        {
+          tag: 'meta',
+          attrs: { property: 'og:url', content: 'https://kinoko.tech' },
+        },
+      ],
       social: {
         github: 'https://github.com/kinoko-dev/kinoko',
       },
