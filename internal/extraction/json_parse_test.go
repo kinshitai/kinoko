@@ -2,6 +2,8 @@ package extraction
 
 import (
 	"testing"
+
+	"github.com/mycelium-dev/mycelium/internal/llmutil"
 )
 
 func TestParseCriticResponse_AllStrategies(t *testing.T) {
@@ -27,8 +29,7 @@ func TestParseCriticResponse_AllStrategies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var out criticResponse
-			err := parseCriticResponse(tt.input, &out)
+			out, err := llmutil.ExtractJSON[criticResponse](tt.input)
 			if tt.wantErr && err == nil {
 				t.Error("expected error")
 			}
@@ -62,8 +63,7 @@ func TestParseRubricResponse_AllStrategies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var out rubricResponse
-			err := parseRubricResponse(tt.input, &out)
+			out, err := llmutil.ExtractJSON[rubricResponse](tt.input)
 			if tt.wantErr && err == nil {
 				t.Error("expected error")
 			}

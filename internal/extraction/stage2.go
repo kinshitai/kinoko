@@ -2,15 +2,14 @@ package extraction
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
-	"strings"
 
 	"github.com/mycelium-dev/mycelium/internal/config"
 	"github.com/mycelium-dev/mycelium/internal/embedding"
 	"github.com/mycelium-dev/mycelium/internal/llm"
+	"github.com/mycelium-dev/mycelium/internal/llmutil"
 	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
@@ -157,8 +156,8 @@ func (s *stage2Scorer) Score(ctx context.Context, session model.SessionRecord, c
 		return nil, fmt.Errorf("stage2: llm rubric call: %w", err)
 	}
 
-	var rubric rubricResponse
-	if err := parseRubricResponse(resp, &rubric); err != nil {
+	rubric, err := llmutil.ExtractJSON[rubricResponse](resp)
+	if err != nil {
 		return nil, fmt.Errorf("stage2: parse rubric response: %w", err)
 	}
 
@@ -230,45 +229,6 @@ func compositeScore(q model.QualityScores) float64 {
 		float64(q.TechnicalAccuracy)*0.20 +
 		float64(q.VerificationEvidence)*0.10 +
 		float64(q.InnovationLevel)*0.10
-}
-
-func parseRubricResponse(resp string, out *rubricResponse) error {
-	// Try raw parse first.
-	if err := json.Unmarshal([]byte(resp), out); err == nil {
-		return nil
-	}
-
-	// Try extracting from ```json ... ``` blocks.
-	if start := strings.Index(resp, "```json"); start >= 0 {
-		inner := resp[start+7:]
-		if end := strings.Index(inner, "```"); end >= 0 {
-			if err := json.Unmarshal([]byte(strings.TrimSpace(inner[:end])), out); err == nil {
-				return nil
-			}
-		}
-	}
-
-	// Try generic ``` blocks.
-	if start := strings.Index(resp, "```"); start >= 0 {
-		inner := resp[start+3:]
-		if end := strings.Index(inner, "```"); end >= 0 {
-			candidate := strings.TrimSpace(inner[:end])
-			if err := json.Unmarshal([]byte(candidate), out); err == nil {
-				return nil
-			}
-		}
-	}
-
-	// Fallback: find first { and last }.
-	first := strings.Index(resp, "{")
-	last := strings.LastIndex(resp, "}")
-	if first >= 0 && last > first {
-		if err := json.Unmarshal([]byte(resp[first:last+1]), out); err == nil {
-			return nil
-		}
-	}
-
-	return fmt.Errorf("invalid JSON in LLM response: could not extract valid JSON")
 }
 
 // validate checks all 7 rubric scores are in [1,5].

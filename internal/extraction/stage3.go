@@ -15,6 +15,7 @@ import (
 	"github.com/mycelium-dev/mycelium/internal/circuitbreaker"
 	"github.com/mycelium-dev/mycelium/internal/config"
 	"github.com/mycelium-dev/mycelium/internal/llm"
+	"github.com/mycelium-dev/mycelium/internal/llmutil"
 	"github.com/mycelium-dev/mycelium/internal/model"
 )
 
@@ -166,8 +167,8 @@ type criticResponse struct {
 }
 
 func (c *stage3Critic) parseAndValidate(resp string) (*model.Stage3Result, error) {
-	var cr criticResponse
-	if err := parseCriticResponse(resp, &cr); err != nil {
+	cr, err := llmutil.ExtractJSON[criticResponse](resp)
+	if err != nil {
 		return nil, err
 	}
 
@@ -236,49 +237,6 @@ func allScoresAbove(q model.QualityScores, threshold int) bool {
 		q.TechnicalAccuracy >= threshold &&
 		q.VerificationEvidence >= threshold &&
 		q.InnovationLevel >= threshold
-}
-
-func parseCriticResponse(resp string, out *criticResponse) error {
-	if strings.TrimSpace(resp) == "" {
-		return errors.New("empty LLM response")
-	}
-
-	// Strategy 1: direct parse
-	if err := json.Unmarshal([]byte(resp), out); err == nil {
-		return nil
-	}
-
-	// Strategy 2: ```json blocks
-	if start := strings.Index(resp, "```json"); start >= 0 {
-		inner := resp[start+7:]
-		if end := strings.Index(inner, "```"); end >= 0 {
-			if err := json.Unmarshal([]byte(strings.TrimSpace(inner[:end])), out); err == nil {
-				return nil
-			}
-		}
-	}
-
-	// Strategy 3: generic ``` blocks
-	if start := strings.Index(resp, "```"); start >= 0 {
-		inner := resp[start+3:]
-		if end := strings.Index(inner, "```"); end >= 0 {
-			candidate := strings.TrimSpace(inner[:end])
-			if err := json.Unmarshal([]byte(candidate), out); err == nil {
-				return nil
-			}
-		}
-	}
-
-	// Strategy 4: first { to last }
-	first := strings.Index(resp, "{")
-	last := strings.LastIndex(resp, "}")
-	if first >= 0 && last > first {
-		if err := json.Unmarshal([]byte(resp[first:last+1]), out); err == nil {
-			return nil
-		}
-	}
-
-	return errors.New("could not extract valid JSON from LLM response")
 }
 
 // isRetryable delegates to llm.IsRetryable.

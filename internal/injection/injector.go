@@ -6,7 +6,6 @@ package injection
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -16,6 +15,7 @@ import (
 	"github.com/mycelium-dev/mycelium/internal/embedding"
 	"github.com/mycelium-dev/mycelium/internal/extraction"
 	"github.com/mycelium-dev/mycelium/internal/llm"
+	"github.com/mycelium-dev/mycelium/internal/llmutil"
 	"github.com/mycelium-dev/mycelium/internal/model"
 	"github.com/mycelium-dev/mycelium/internal/storage"
 )
@@ -198,8 +198,8 @@ func (inj *injector) classifyPrompt(ctx context.Context, prompt string) (model.P
 		return model.PromptClassification{}, fmt.Errorf("llm classify: %w", err)
 	}
 
-	var result classificationResponse
-	if err := parseClassificationResponse(resp, &result); err != nil {
+	result, err := llmutil.ExtractJSON[classificationResponse](resp)
+	if err != nil {
 		return model.PromptClassification{}, fmt.Errorf("parse classification: %w", err)
 	}
 
@@ -234,21 +234,6 @@ type classificationResponse struct {
 	Intent   string   `json:"intent"`
 	Domain   string   `json:"domain"`
 	Patterns []string `json:"patterns"`
-}
-
-func parseClassificationResponse(resp string, out *classificationResponse) error {
-	if err := json.Unmarshal([]byte(resp), out); err == nil {
-		return nil
-	}
-	// Try extracting JSON from markdown fences.
-	if start := strings.Index(resp, "{"); start >= 0 {
-		if end := strings.LastIndex(resp, "}"); end > start {
-			if err := json.Unmarshal([]byte(resp[start:end+1]), out); err == nil {
-				return nil
-			}
-		}
-	}
-	return fmt.Errorf("could not parse classification JSON from LLM response")
 }
 
 func buildClassificationPrompt(userPrompt string) string {

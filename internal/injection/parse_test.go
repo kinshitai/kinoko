@@ -2,6 +2,8 @@ package injection
 
 import (
 	"testing"
+
+	"github.com/mycelium-dev/mycelium/internal/llmutil"
 )
 
 func TestParseClassificationResponse_AllStrategies(t *testing.T) {
@@ -13,19 +15,16 @@ func TestParseClassificationResponse_AllStrategies(t *testing.T) {
 		wantErr bool
 	}{
 		{"raw JSON", validJSON, false},
-		// parseClassificationResponse only uses strategy 1 (raw) and strategy 4 (first-{-to-last-}).
-		// It does NOT support ```json or ``` fences — this is the simplified version (tech debt C.2).
 		{"first-brace-to-last", "Here:\n" + validJSON + "\nDone.", false},
 		{"empty", "", true},
 		{"no JSON", "I think this is a build task.", true},
 		{"malformed", `{"intent": "BUILD"`, true},
-		{"json fence NOT supported", "```json\n" + validJSON + "\n```", false}, // works via first-{-to-last
+		{"json fence", "```json\n" + validJSON + "\n```", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var out classificationResponse
-			err := parseClassificationResponse(tt.input, &out)
+			out, err := llmutil.ExtractJSON[classificationResponse](tt.input)
 			if tt.wantErr && err == nil {
 				t.Error("expected error")
 			}
