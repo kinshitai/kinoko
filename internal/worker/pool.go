@@ -150,7 +150,11 @@ func (p *workerPool) process(ctx context.Context, workerID string, entry *QueueE
 	// Use a detached context for all DB operations during processing.
 	// The pool context (ctx) may be cancelled during graceful shutdown,
 	// but in-flight work must still be able to Complete/Fail/read sessions.
-	dbCtx, dbCancel := context.WithTimeout(context.Background(), 300*time.Second) // 5min: accommodates stage3 retry (up to 150s)
+		processTimeout := p.cfg.ProcessTimeout
+	if processTimeout <= 0 {
+		processTimeout = 300 * time.Second
+	}
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), processTimeout)
 	defer dbCancel()
 
 	// Read log file from disk.
@@ -180,13 +184,16 @@ func (p *workerPool) process(ctx context.Context, workerID string, entry *QueueE
 	result, err := p.extractor.Extract(dbCtx, *session, content)
 	if err != nil {
 		p.log.Error("extraction failed", "worker_id", workerID, "session_id", entry.SessionID, "error", err)
+		// Use a fresh context for failure recording — dbCtx may be the one that timed out.
+		failCtx, failCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer failCancel()
 		if entry.RetryCount+1 >= p.cfg.MaxRetries {
-			if failErr := p.queue.FailPermanent(dbCtx, entry.SessionID, err); failErr != nil {
+			if failErr := p.queue.FailPermanent(failCtx, entry.SessionID, err); failErr != nil {
 				p.log.Error("fail permanent error", "worker_id", workerID, "session_id", entry.SessionID, "error", failErr)
 			}
 			p.failed.Add(1)
 		} else {
-			if failErr := p.queue.Fail(dbCtx, entry.SessionID, err); failErr != nil {
+			if failErr := p.queue.Fail(failCtx, entry.SessionID, err); failErr != nil {
 				p.log.Error("fail error", "worker_id", workerID, "session_id", entry.SessionID, "error", failErr)
 			}
 			p.errors.Add(1)

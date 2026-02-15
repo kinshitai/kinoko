@@ -46,7 +46,7 @@ func initCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	kinokoDir := filepath.Join(homeDir, ".kinoko")
-	skillsDir := filepath.Join(kinokoDir, "skills")
+	dataDir := filepath.Join(kinokoDir, "data")
 	configFile := filepath.Join(kinokoDir, "config.yaml")
 
 	// Create ~/.kinoko/ directory
@@ -55,20 +55,20 @@ func initCommand(cmd *cobra.Command, args []string) error {
 	}
 	slog.Info("Created directory", "path", kinokoDir)
 
-	// Create ~/.kinoko/skills/ directory
-	if err := os.MkdirAll(skillsDir, 0755); err != nil {
-		return fmt.Errorf("failed to create skills directory: %w", err)
+	// Create ~/.kinoko/data/ for Soft Serve git server
+	if err := os.MkdirAll(dataDir, 0700); err != nil {
+		return fmt.Errorf("failed to create data directory: %w", err)
 	}
-	slog.Info("Created skills directory", "path", skillsDir)
+	slog.Info("Created data directory", "path", dataDir)
 
 	// Create default config.yaml if it doesn't exist
 	if err := createDefaultConfig(configFile); err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
 
-	// Initialize git repo in skills directory if not already a repo
-	if err := initGitRepo(skillsDir); err != nil {
-		return fmt.Errorf("failed to initialize git repository: %w", err)
+	// Generate admin SSH keypair for Soft Serve
+	if err := generateAdminKeypair(dataDir); err != nil {
+		return fmt.Errorf("failed to generate admin keypair: %w", err)
 	}
 
 	// Print success message and next steps
@@ -94,11 +94,9 @@ storage:
   dsn: ~/.kinoko/kinoko.db
 
 # Library layers (resolution order: highest priority first)
-libraries:
-  - name: local
-    path: ~/.kinoko/skills
-    priority: 100
-    description: "Local skills on this machine"
+# Skills live as individual repos on the Soft Serve git server.
+# Use 'kinoko serve' to start the server, then agents push skills via SSH.
+libraries: []
 
 # Server configuration (for 'kinoko serve')
 server:
@@ -132,63 +130,32 @@ defaults:
 	return nil
 }
 
-// initGitRepo initializes a git repository in the given directory if one doesn't exist
-func initGitRepo(skillsDir string) error {
-	// Check if .git directory exists
-	gitDir := filepath.Join(skillsDir, ".git")
-	if _, err := os.Stat(gitDir); err == nil {
-		slog.Info("Git repository already exists", "path", skillsDir)
+// generateAdminKeypair creates an ed25519 SSH keypair for the Soft Serve admin.
+func generateAdminKeypair(dataDir string) error {
+	keyPath := filepath.Join(dataDir, "kinoko_admin_ed25519")
+	if _, err := os.Stat(keyPath); err == nil {
+		slog.Info("Admin keypair already exists", "path", keyPath)
 		return nil
 	}
 
-	// Check if git is available
-	if _, err := exec.LookPath("git"); err != nil {
-		slog.Warn("Git not found in PATH, skipping git repository initialization")
+	// Check if ssh-keygen is available
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		slog.Warn("ssh-keygen not found, skipping keypair generation (will be generated on first 'kinoko serve')")
 		return nil
 	}
 
-	// Initialize git repository
-	cmd := exec.Command("git", "init")
-	cmd.Dir = skillsDir
+	cmd := exec.Command("ssh-keygen", "-t", "ed25519", "-f", keyPath, "-N", "", "-C", "kinoko-admin")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to initialize git repository: %w", err)
+		return fmt.Errorf("ssh-keygen failed: %w", err)
 	}
 
-	slog.Info("Initialized git repository", "path", skillsDir)
+	// Restrict permissions
+	os.Chmod(keyPath, 0600)
+	os.Chmod(keyPath+".pub", 0644)
 
-	// Create a basic .gitignore
-	gitignoreFile := filepath.Join(skillsDir, ".gitignore")
-	gitignoreContent := `# Kinoko local files
-*.tmp
-*.log
-.DS_Store
-Thumbs.db
-
-# Editor files
-*.swp
-*.swo
-*~
-.vscode/
-.idea/
-`
-
-	if err := os.WriteFile(gitignoreFile, []byte(gitignoreContent), 0644); err != nil {
-		slog.Warn("Failed to create .gitignore", "error", err)
-		// Not a fatal error
-	}
-
-	// Create initial commit
-	cmd = exec.Command("git", "add", ".")
-	cmd.Dir = skillsDir
-	if err := cmd.Run(); err == nil {
-		cmd = exec.Command("git", "commit", "-m", "Initial commit: Kinoko skills repository")
-		cmd.Dir = skillsDir
-		_ = cmd.Run() // Ignore error - commit might fail if git user is not configured
-	}
-
+	slog.Info("Generated admin keypair", "path", keyPath)
 	return nil
 }
 
@@ -253,11 +220,13 @@ func printSuccessMessage() {
 	fmt.Println()
 	fmt.Println("Next steps:")
 	fmt.Println("  • Edit ~/.kinoko/config.yaml to configure your setup")
-	fmt.Println("  • Set your preferred author in the config file")
-	fmt.Println("  • Run 'kinoko serve' to start the git server")
-	fmt.Println("  • Agents can then git clone, push, and pull skill repositories over SSH")
+	fmt.Println("  • Set OPENAI_API_KEY for extraction and embedding")
+	fmt.Println("  • Run 'kinoko serve' to start the server")
 	fmt.Println()
-	fmt.Println("Your local skills will be stored in ~/.kinoko/skills/")
-	fmt.Println("This directory is already a git repository for version control.")
+	fmt.Println("'kinoko serve' starts:")
+	fmt.Println("  • Soft Serve git server (SSH :23231) — skill repos live here")
+	fmt.Println("  • Discovery API (HTTP :23232) — clients find relevant skills")
+	fmt.Println("  • Worker pool — async extraction from session logs")
+	fmt.Println("  • Hooks — credential scanning + auto-indexing on push")
 	fmt.Println()
 }

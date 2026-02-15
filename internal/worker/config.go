@@ -12,6 +12,7 @@ type Config struct {
 	QueueDepthWarning  int           `yaml:"queue_depth_warning"`
 	QueueDepthCritical int           `yaml:"queue_depth_critical"`
 	StaleClaimTimeout  time.Duration `yaml:"stale_claim_timeout"`
+	ProcessTimeout     time.Duration `yaml:"process_timeout"` // timeout for each extraction; 0 = 300s default
 }
 
 // DefaultConfig returns Config with spec defaults.
@@ -25,6 +26,7 @@ func DefaultConfig() Config {
 		QueueDepthWarning:  100,
 		QueueDepthCritical: 10000,
 		StaleClaimTimeout:  10 * time.Minute,
+		ProcessTimeout:     300 * time.Second,
 	}
 }
 

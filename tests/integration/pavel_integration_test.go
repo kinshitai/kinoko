@@ -109,7 +109,7 @@ func TestPipelineWorkerConcurrentResults(t *testing.T) {
 
 func TestWorkerTimeoutMidExtraction(t *testing.T) {
 	if testing.Short() {
-		t.Skip("skipping 60s+ timeout test in short mode")
+		t.Skip("skipping timeout test in short mode")
 	}
 	tmpDir := t.TempDir()
 	store, err := storage.NewSQLiteStore(filepath.Join(tmpDir, "p2.db"), "test")
@@ -122,20 +122,19 @@ func TestWorkerTimeoutMidExtraction(t *testing.T) {
 
 	cfg := workerConfig()
 	cfg.Concurrency = 1
+	cfg.ProcessTimeout = 3 * time.Second // short timeout for test
 	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
 
 	q.Enqueue(ctx, makeWorkerSession("sess-slow", "lib-1"), []byte("slow log content"))
 
-	// Extractor that takes longer than the 60s pool timeout.
-	// We simulate by checking context cancellation.
+	// Extractor that takes longer than the configured ProcessTimeout.
 	var ctxWasCancelled atomic.Bool
 	ext := &workerMockExtractor{fn: func(ctx context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
-		// Pool gives 60s. We'll just wait for cancellation to prove it happens.
 		select {
 		case <-ctx.Done():
 			ctxWasCancelled.Store(true)
 			return nil, ctx.Err()
-		case <-time.After(70 * time.Second):
+		case <-time.After(10 * time.Second):
 			return &model.ExtractionResult{Status: model.StatusExtracted}, nil
 		}
 	}}
@@ -147,8 +146,8 @@ func TestWorkerTimeoutMidExtraction(t *testing.T) {
 	pool := worker.NewPool(q, ext, getSession, cfg, testLogger())
 	pool.Start(ctx)
 
-	// Wait for the 60s timeout to fire + some margin.
-	deadline := time.After(75 * time.Second)
+	// Wait for the timeout to fire + margin.
+	deadline := time.After(15 * time.Second)
 	for {
 		stats := pool.Stats()
 		if stats.TotalProcessed >= 1 {
@@ -156,12 +155,11 @@ func TestWorkerTimeoutMidExtraction(t *testing.T) {
 		}
 		select {
 		case <-deadline:
-			// Stop the pool regardless.
 			stopCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			pool.Stop(stopCtx)
 			cancel()
 			t.Fatal("timeout waiting for pool to process slow session")
-		case <-time.After(500 * time.Millisecond):
+		case <-time.After(200 * time.Millisecond):
 		}
 	}
 
@@ -170,7 +168,7 @@ func TestWorkerTimeoutMidExtraction(t *testing.T) {
 	pool.Stop(stopCtx)
 
 	if !ctxWasCancelled.Load() {
-		t.Error("expected context to be cancelled by pool's 60s timeout")
+		t.Error("expected context to be cancelled by pool's ProcessTimeout")
 	}
 
 	// Session should be in error/failed state.
