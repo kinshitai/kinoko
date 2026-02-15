@@ -134,7 +134,12 @@ func NewSQLiteStore(dsn string, embeddingModel string) (*SQLiteStore, error) {
 		{"claimed_by", "ALTER TABLE sessions ADD COLUMN claimed_by TEXT NOT NULL DEFAULT ''"},
 		{"claimed_at", "ALTER TABLE sessions ADD COLUMN claimed_at TIMESTAMP"},
 	} {
-		_, _ = db.Exec(col.ddl) // ignore "duplicate column" errors
+		if _, err := db.Exec(col.ddl); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column") {
+				db.Close()
+				return nil, fmt.Errorf("migrate %s: %w", col.name, err)
+			}
+		}
 	}
 	slog.Info("sqlite schema applied")
 
