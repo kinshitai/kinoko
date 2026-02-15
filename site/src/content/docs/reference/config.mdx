@@ -1,0 +1,182 @@
+---
+title: Configuration Reference
+description: Complete reference for ~/.kinoko/config.yaml.
+---
+
+Kinoko configuration lives at `~/.kinoko/config.yaml`. Created by `kinoko init` with sensible defaults.
+
+## Full Configuration
+
+```yaml
+server:
+  host: "127.0.0.1"
+  port: 23231
+  dataDir: ~/.kinoko/data
+
+storage:
+  driver: sqlite
+  dsn: ~/.kinoko/kinoko.db
+
+libraries:
+  - name: local
+    path: ~/.kinoko/skills
+    priority: 100
+    description: "Local skills on this machine"
+
+extraction:
+  auto_extract: true
+  min_confidence: 0.5
+  require_validation: true
+  min_duration_minutes: 2
+  max_duration_minutes: 180
+  min_tool_calls: 3
+  max_error_rate: 0.7
+  novelty_min_distance: 0.15
+  novelty_max_distance: 0.95
+  version_similarity_threshold: 0.85
+  sample_rate: 0.01
+  ab_test:
+    enabled: false
+    control_ratio: 0.1
+    min_sample_size: 100
+
+decay:
+  foundational_half_life_days: 365
+  tactical_half_life_days: 90
+  contextual_half_life_days: 180
+  deprecation_threshold: 0.05
+  rescue_boost: 0.3
+  rescue_window_days: 30
+
+embedding:
+  provider: openai
+  model: text-embedding-3-small
+  base_url: https://api.openai.com
+
+llm:
+  model: gpt-4o-mini
+
+hooks:
+  credential_scan: true
+  format_validation: true
+  llm_critic: false
+
+defaults:
+  author: ""
+  confidence: 0.7
+```
+
+## Sections
+
+### `server`
+
+Controls the git server started by `kinoko serve`.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `host` | string | `"127.0.0.1"` | IP to bind. Use `"0.0.0.0"` for all interfaces. |
+| `port` | int | `23231` | SSH port. Must be 1–65535. |
+| `dataDir` | string | `~/.kinoko/data` | Directory for server data. Auto-created. |
+
+### `storage`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `driver` | string | `"sqlite"` | `"sqlite"` or `"postgres"` |
+| `dsn` | string | `~/.kinoko/kinoko.db` | Connection string. File path for SQLite, URL for Postgres. |
+
+### `libraries`
+
+Skill libraries in priority order. Higher priority wins when skills share a name.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Unique identifier |
+| `path` | string | one of path/url | Local filesystem path |
+| `url` | string | one of path/url | Remote URL (`ssh://host:port`) |
+| `priority` | int | yes | Higher = higher priority. Non-negative. |
+| `description` | string | no | Human-readable description |
+
+### `extraction`
+
+Controls the 3-stage extraction pipeline.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `auto_extract` | bool | `true` | Enable automatic extraction on session end |
+| `min_confidence` | float | `0.5` | Minimum confidence threshold (0.0–1.0) |
+| `require_validation` | bool | `true` | Require validation before storing |
+| `min_duration_minutes` | float | `2` | Stage 1: minimum session duration |
+| `max_duration_minutes` | float | `180` | Stage 1: maximum session duration |
+| `min_tool_calls` | int | `3` | Stage 1: minimum tool call count |
+| `max_error_rate` | float | `0.7` | Stage 1: maximum error rate (0.0–1.0) |
+| `novelty_min_distance` | float | `0.15` | Stage 2: minimum embedding distance for novelty |
+| `novelty_max_distance` | float | `0.95` | Stage 2: maximum embedding distance |
+| `version_similarity_threshold` | float | `0.85` | Threshold for skill versioning |
+| `sample_rate` | float | `0.01` | Human review sample rate (0.0–1.0) |
+
+#### `extraction.ab_test`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable A/B testing |
+| `control_ratio` | float | `0.1` | Fraction in control group (0.0–1.0) |
+| `min_sample_size` | int | `100` | Minimum sessions per group before z-test |
+
+### `decay`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `foundational_half_life_days` | int | `365` | Half-life for foundational skills |
+| `tactical_half_life_days` | int | `90` | Half-life for tactical skills |
+| `contextual_half_life_days` | int | `180` | Half-life for contextual skills |
+| `deprecation_threshold` | float | `0.05` | Score below which skills are deprecated |
+| `rescue_boost` | float | `0.3` | Boost for recently-used successful skills |
+| `rescue_window_days` | int | `30` | Window for rescue eligibility (days) |
+
+### `embedding`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `provider` | string | `"openai"` | Embedding provider |
+| `model` | string | `"text-embedding-3-small"` | Embedding model name |
+| `base_url` | string | `"https://api.openai.com"` | Base URL for API calls |
+
+### `llm`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `model` | string | `"gpt-4o-mini"` | LLM model name |
+
+### `hooks`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `credential_scan` | bool | `true` | Scan for leaked credentials |
+| `format_validation` | bool | `true` | Validate SKILL.md format |
+| `llm_critic` | bool | `false` | LLM-based skill review |
+
+### `defaults`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `author` | string | `""` | Default author identifier |
+| `confidence` | float | `0.7` | Default confidence score (0.0–1.0) |
+
+## Environment Variables
+
+| Variable | Purpose |
+|---|---|
+| `OPENAI_API_KEY` | Fallback API key for both embeddings and LLM |
+| `KINOKO_EMBEDDING_API_KEY` | API key for embedding calls (overrides `OPENAI_API_KEY`) |
+| `KINOKO_LLM_API_KEY` | API key for LLM calls (overrides `OPENAI_API_KEY`) |
+
+## Path Expansion
+
+All path fields support `~` expansion to the current user's home directory.
+
+## Config Loading Order
+
+1. Explicit path via `--config` flag
+2. `~/.kinoko/config.yaml`
+3. Built-in defaults (if no file exists)

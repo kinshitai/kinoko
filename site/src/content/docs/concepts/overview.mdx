@@ -1,0 +1,33 @@
+---
+title: How Kinoko Thinks
+description: Four mental models that explain how Kinoko captures, evaluates, delivers, and maintains knowledge.
+---
+
+Every day, AI agents help people solve problems. Every solution dies when the session ends. The next person with the same problem starts from zero. Kinoko captures that knowledge automatically and delivers it to future sessions — without anyone having to write documentation, publish anything, or even know the system exists.
+
+The hard part isn't storing knowledge. It's deciding **what's worth keeping**, **how good it is**, **who should receive it**, and **when to let it go**. Four mental models explain how Kinoko makes those decisions.
+
+## The Four Models
+
+| Model | Stage | Question It Answers |
+|-------|-------|-------------------|
+| 🪙 [Gold Panning](/concepts/extraction/) | Extraction | What's worth keeping? |
+| 🍷 [Wine Tasting](/concepts/quality/) | Quality | How good is it? |
+| 📚 [Reference Librarian](/concepts/injection/) | Injection | Who should receive it? |
+| 🔥 [Forest Fires](/concepts/decay/) | Decay | When should it go? |
+
+## How They Connect
+
+The four models form a coherent pipeline:
+
+1. **Gold panning** gets the raw material — filtering the enormous volume of agent sessions down to candidates worth evaluating.
+2. **Wine tasting** assesses the survivors — determining quality across specific dimensions rather than with a single thumbs-up/thumbs-down.
+3. **The reference librarian** delivers the knowledge — matching skills to needs by understanding the problem, not just the words.
+4. **Forest fires** keep the library healthy — ensuring that what stays in the system earns its place through continued relevance.
+
+Each model addresses a different challenge (volume, quality, relevance, freshness), and each produces a different type of signal that the next stage depends on.
+
+## Further Reading
+
+- [Architecture](/reference/cli/) — technical component descriptions
+- [Glossary](/reference/glossary/) — definitions of terms used throughout the project

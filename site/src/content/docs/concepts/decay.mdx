@@ -1,0 +1,44 @@
+---
+title: "Decay: Forest Fires"
+description: How Kinoko manages knowledge lifecycle through controlled decay and rescue mechanics.
+---
+
+## The Model
+
+A healthy forest needs fire. Without periodic burns, dead wood and undergrowth accumulate until the forest is a tinderbox. Controlled burns clear the debris while preserving mature trees with deep root systems. Not everything burns the same way: old-growth trees survive fires that kill saplings, and some species *depend* on fire to germinate.
+
+## How It Maps
+
+A knowledge library that only grows eventually drowns in stale, outdated, or redundant information. Without decay, the ratio of useful to useless knowledge degrades over time, and injection quality collapses under noise.
+
+Kinoko applies different decay rules to different types of knowledge:
+
+### Foundational Skills (Old-Growth Trees)
+
+Core patterns that rarely change: debugging race conditions, designing database schemas, structuring error handling. Half-life: **365 days**. These decay slowly and require strong evidence to deprecate.
+
+### Tactical Skills (Undergrowth)
+
+Specific solutions tied to current tool versions, API behaviors, or library quirks. Half-life: **90 days**. These decay fast. If they haven't been used recently and validated by success, they lose ranking.
+
+### Contextual Skills (Seasonal Growth)
+
+Environment-specific knowledge. Useful in the right context, irrelevant elsewhere. Half-life: **180 days**.
+
+## The Mechanics
+
+Decay is gradual, not sudden. Skills don't get deleted — they lose ranking until they're effectively invisible.
+
+**Formula:** `newDecay = oldDecay × 0.5^(days / halfLife)`
+
+A decayed skill that suddenly gets used again and correlates with success is **rescued** — its ranking recovers (boost of 0.3, within a 30-day window). The system forgets gracefully and can remember again when evidence warrants it.
+
+Skills below the deprecation threshold (0.05) are set to 0.0 — effectively invisible but never deleted.
+
+## The Key Insight
+
+Different knowledge types have different shelf lives, and the system must model that explicitly. Treating all knowledge the same — either never deleting (hoarding) or deleting on a fixed schedule (indiscriminate) — fails in different ways.
+
+## For Contributors
+
+When working on decay, think about what category a skill falls into before adjusting thresholds. A foundational skill that hasn't been injected in six months might still be perfectly valid — it's just niche. A tactical skill that hasn't been used in six months is probably stale. The category determines the appropriate response to inactivity.

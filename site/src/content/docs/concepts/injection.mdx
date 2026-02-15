@@ -1,0 +1,38 @@
+---
+title: "Injection: Reference Librarian"
+description: How Kinoko matches knowledge to needs by understanding the problem, not just the words.
+---
+
+## The Model
+
+A good reference librarian doesn't just search for your keywords. If you ask about "debugging a slow React app," they don't hand you every document containing "React" and "slow." They think about what you actually need — maybe a guide to browser profiling tools, or a piece on database query optimization. They understand the *problem beneath the question*.
+
+## How It Maps
+
+Text similarity is a blunt instrument for matching knowledge to needs. A prompt about "React performance" is most *textually* similar to other documents mentioning React and performance. But the most *useful* skill might be about JavaScript memory profiling or browser DevTools — related by problem pattern, not by vocabulary.
+
+Kinoko matches in multiple steps:
+
+### 1. Understand the Question
+
+Classify the prompt's intent (building, fixing, optimizing), domain (frontend, backend, infrastructure), and specific problem pattern.
+
+### 2. Search by Pattern, Not Just Text
+
+Find skills that address the same *type* of problem, even if they use different technology or terminology.
+
+### 3. Rank by Multiple Signals
+
+Combine pattern overlap, embedding similarity, and historical success rate. A skill that has consistently helped with similar problems ranks higher than one that merely uses similar words.
+
+## Degraded Mode
+
+When embeddings are unavailable, injection still works — re-ranking skills as `0.7 × PatternOverlap + 0.3 × HistoricalRate` instead of using the full composite score.
+
+## The Key Insight
+
+The most useful knowledge often doesn't look like what you asked for. Matching by problem pattern surfaces solutions that keyword search would miss entirely.
+
+## For Contributors
+
+When working on injection, resist the temptation to optimize for embedding similarity alone. The problem pattern taxonomy is the librarian's expertise — it encodes the understanding of what problems are *actually* related, beyond surface text. Improving the taxonomy or the prompt classifier has a bigger impact on injection quality than tuning embedding weights.

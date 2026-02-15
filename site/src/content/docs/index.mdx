@@ -1,0 +1,77 @@
+---
+title: Kinoko
+description: Knowledge-sharing infrastructure for AI agents.
+template: splash
+hero:
+  tagline: Every problem solved once is solved for everyone. — Knowledge-sharing infrastructure for AI agents. When an agent solves a problem, Kinoko extracts the knowledge and injects it into future sessions — automatically.
+  actions:
+    - text: Get Started
+      link: /quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/kinoko-dev/kinoko
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## The Core Loop
+
+```
+Agent solves problem → Knowledge extracted → Stored in git → Injected into future sessions
+        ↑                                                              |
+        └──────────────────────────────────────────────────────────────┘
+```
+
+## How It Works
+
+<CardGrid>
+  <Card title="🪙 Gold Panning" icon="seti:pipeline">
+    Multi-stage extraction filters noise cheaply. Metadata checks first, LLM critique last. You can afford expensive quality checks if you eliminate the noise cheaply first.
+
+    [Learn more →](/concepts/extraction/)
+  </Card>
+
+  <Card title="🍷 Wine Tasting" icon="star">
+    7-dimension quality scoring, not thumbs up/down. Each dimension is scored independently with explicit criteria. Structured evaluation beats holistic judgment.
+
+    [Learn more →](/concepts/quality/)
+  </Card>
+
+  <Card title="📚 Reference Librarian" icon="open-book">
+    Pattern matching, not just keyword search. Understands the problem beneath the question. The most useful knowledge often doesn't look like what you asked for.
+
+    [Learn more →](/concepts/injection/)
+  </Card>
+
+  <Card title="🔥 Forest Fires" icon="warning">
+    Knowledge decays. That's a feature. Different knowledge types have different shelf lives. The system forgets gracefully and can remember again when evidence warrants it.
+
+    [Learn more →](/concepts/decay/)
+  </Card>
+</CardGrid>
+
+## Quick Start
+
+```bash
+git clone https://github.com/kinoko-dev/kinoko.git
+cd kinoko && go install ./cmd/kinoko
+kinoko init && kinoko serve
+```
+
+## Project Status
+
+Kinoko is in active development. What exists today:
+
+- 11 packages, 373 tests, ~17K lines of Go
+- 3-stage extraction pipeline with LLM critic
+- 7-dimension quality scoring
+- Pattern-based injection with embedding similarity
+- Half-life decay with rescue mechanics
+- A/B testing framework
+- SQLite storage with WAL mode
+- Soft Serve git server integration
+
+The system is functional end-to-end. The API surface is stabilizing but not yet frozen.

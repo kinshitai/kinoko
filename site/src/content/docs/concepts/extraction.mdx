@@ -1,0 +1,46 @@
+---
+title: "Extraction: Gold Panning"
+description: How Kinoko's multi-stage extraction pipeline filters noise cheaply and preserves knowledge efficiently.
+---
+
+## The Model
+
+A gold miner doesn't analyze every grain of sand with a microscope. They start with a pan, washing away the obviously worthless material. What survives gets progressively finer treatment — magnetic separation, chemical assays — until only gold remains. Each stage is more precise *and* more expensive than the last.
+
+## How It Maps
+
+Most agent sessions don't produce reusable knowledge. They're routine work, failed experiments, or exploration with no conclusion. Running an expensive LLM critic on every session would be wasteful and slow.
+
+Instead, Kinoko filters in stages:
+
+### Stage 1 — Panning
+
+Cheap metadata checks. Is the session long enough? Did the agent actually execute anything successfully? Sessions that are obviously worthless get rejected instantly, at near-zero cost.
+
+**Checks:** minimum duration, minimum tool calls, maximum error rate.
+
+### Stage 2 — Sifting
+
+Content analysis with lightweight classifiers. Does the session contain a problem-solution structure? Is the solution novel compared to what we already know? This costs more than checking metadata, but far less than an LLM call.
+
+**Checks:** embedding novelty, rubric scoring across 7 quality dimensions.
+
+### Stage 3 — Assaying
+
+An LLM critic examines the survivors with focused questions. Not "is this good?" but "is the reasoning explicit?" and "does this contradict known practices?" This is expensive, but it only runs on the small fraction that passed earlier stages.
+
+**Features:** retry logic, circuit breaker (5 failures → 5 min cooldown), contradiction detection.
+
+## The Key Insight
+
+You can afford expensive quality checks if you first eliminate the noise cheaply. Each stage has a different cost-precision tradeoff, and they're ordered from cheapest to most precise.
+
+## For Contributors
+
+When working on extraction, think about which stage a filter belongs in:
+
+- Can it be evaluated from metadata alone? → **Stage 1**
+- Does it need content analysis? → **Stage 2**
+- Does it require judgment? → **Stage 3**
+
+Moving a filter to an earlier stage saves cost. Moving it later improves precision.

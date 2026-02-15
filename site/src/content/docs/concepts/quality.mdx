@@ -1,0 +1,34 @@
+---
+title: "Quality: Wine Tasting"
+description: How Kinoko evaluates knowledge quality through dimensional scoring, not holistic judgment.
+---
+
+## The Model
+
+A professional wine taster doesn't sip a wine and say "7 out of 10." They evaluate specific dimensions independently — appearance, aroma, acidity, tannins, finish — each on its own scale, each answerable without reference to the others. The overall assessment emerges from the combination.
+
+## How It Maps
+
+Asking "is this knowledge good?" is like asking "is this wine good?" — it's too vague to produce reliable, consistent answers. Different evaluators will weigh different things, and you can't debug why something scored poorly.
+
+Kinoko evaluates skills on seven specific dimensions:
+
+| Dimension | Weight | Question |
+|-----------|--------|----------|
+| Problem Specificity | 0.15 | Is the problem clearly defined? |
+| Solution Completeness | 0.20 | Could someone follow this and solve the problem? |
+| Context Portability | 0.15 | Does this work beyond its original environment? |
+| Reasoning Transparency | 0.10 | Does it explain *why*, not just *what*? |
+| Technical Accuracy | 0.20 | Are the details correct? |
+| Verification Evidence | 0.10 | Is there proof it works? |
+| Innovation Level | 0.10 | Is the approach novel? |
+
+Each dimension is scored 1–5 with explicit criteria at each level. An LLM answering "is this reasoning transparent?" is far more reliable than one answering "rate this knowledge."
+
+## The Key Insight
+
+Structured evaluation with specific questions beats holistic judgment in every domain where it's been tried. It's more consistent, more debuggable, and more calibratable.
+
+## For Contributors
+
+When tuning quality assessment, work on one dimension at a time. If extraction is letting through poorly reasoned skills, improve the Reasoning Transparency classifier specifically. If it's rejecting niche but accurate solutions, check whether Context Portability is being overweighted. The dimensional model lets you diagnose and fix quality problems precisely.

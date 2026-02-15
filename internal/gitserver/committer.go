@@ -17,28 +17,20 @@ import (
 // Compile-time check.
 var _ model.SkillCommitter = (*GitCommitter)(nil)
 
-// Embedder computes an embedding vector from text.
-type Embedder interface {
-	Embed(ctx context.Context, text string) ([]float32, error)
-}
-
-// GitCommitter pushes skills to Soft Serve repos and indexes after push.
+// GitCommitter pushes skills to Soft Serve repos. Indexing is handled by
+// the post-receive hook, not by the committer.
 type GitCommitter struct {
-	server   *Server
-	dataDir  string
-	indexer  model.SkillIndexer
-	embedder Embedder
-	logger   *slog.Logger
-	locks    sync.Map // keyed by "{libraryID}/{skillName}" → *sync.Mutex
+	server *Server
+	dataDir string
+	logger *slog.Logger
+	locks  sync.Map // keyed by "{libraryID}/{skillName}" → *sync.Mutex
 }
 
 // GitCommitterConfig holds constructor parameters.
 type GitCommitterConfig struct {
-	Server   *Server
-	DataDir  string
-	Indexer  model.SkillIndexer
-	Embedder Embedder
-	Logger   *slog.Logger
+	Server *Server
+	DataDir string
+	Logger *slog.Logger
 }
 
 // NewGitCommitter creates a GitCommitter.
@@ -47,11 +39,9 @@ func NewGitCommitter(cfg GitCommitterConfig) *GitCommitter {
 		cfg.Logger = slog.Default()
 	}
 	return &GitCommitter{
-		server:   cfg.Server,
-		dataDir:  cfg.DataDir,
-		indexer:  cfg.Indexer,
-		embedder: cfg.Embedder,
-		logger:   cfg.Logger,
+		server:  cfg.Server,
+		dataDir: cfg.DataDir,
+		logger:  cfg.Logger,
 	}
 }
 
@@ -96,20 +86,6 @@ func (g *GitCommitter) CommitSkill(ctx context.Context, libraryID string, skill 
 	hash, err := g.commitAndPush(ctx, workdir, fmt.Sprintf("v%d: extracted", skill.Version))
 	if err != nil {
 		return "", fmt.Errorf("commit and push: %w", err)
-	}
-
-	// Post-push indexing.
-	if g.indexer != nil {
-		var emb []float32
-		if g.embedder != nil {
-			emb, err = g.embedder.Embed(ctx, string(body))
-			if err != nil {
-				g.logger.Warn("embedding failed, indexing without", "repo", repoName, "error", err)
-			}
-		}
-		if err := g.indexer.IndexSkill(ctx, skill, emb); err != nil {
-			g.logger.Error("post-push indexing failed", "repo", repoName, "error", err)
-		}
 	}
 
 	g.logger.Info("skill committed", "repo", repoName, "version", skill.Version, "hash", hash)

@@ -1,0 +1,88 @@
+---
+title: Glossary
+description: Terms used throughout the Kinoko project with specific meanings.
+---
+
+**ABInjector**
+A decorator that wraps an `Injector` with A/B test logic. Randomly assigns sessions to treatment (skills delivered) or control (skills withheld).
+
+**Category**
+A classification of a skill's persistence characteristics. One of three values:
+- **Foundational** — Core patterns that rarely change. Half-life: 365 days.
+- **Tactical** — Solutions tied to specific tool versions or APIs. Half-life: 90 days.
+- **Contextual** — Environment-specific knowledge. Half-life: 180 days.
+
+**Circuit Breaker**
+A resilience pattern in Stage 3. Opens after 5 consecutive LLM failures, blocking further calls for 5 minutes (doubling on re-failure during half-open probes).
+
+**Composite Score**
+A weighted sum of all 7 quality dimensions used for ranking. Weights: Problem Specificity (0.15), Solution Completeness (0.20), Context Portability (0.15), Reasoning Transparency (0.10), Technical Accuracy (0.20), Verification Evidence (0.10), Innovation Level (0.10).
+
+**Critic**
+The LLM evaluator that runs at Stage 3 of the extraction pipeline. Returns extract/reject verdicts with refined scores and confidence.
+
+**Decay**
+The process by which skills lose ranking over time. Uses half-life degradation: `newDecay = oldDecay × 0.5^(days/halfLife)`. Skills below the deprecation threshold (0.05) are set to 0.0.
+
+**Degraded Mode**
+Injection operating without embeddings. Re-ranks skills as `0.7 × PatternOverlap + 0.3 × HistoricalRate`.
+
+**Dimensional Scoring**
+The evaluation method for skill quality. Seven independent dimensions, each scored 1–5.
+
+**Embedding**
+A vector representation of content, used for similarity-based retrieval. Default model: `text-embedding-3-small`.
+
+**Extraction**
+The process of identifying reusable knowledge in an agent session and distilling it into a skill. A three-stage pipeline: metadata pre-filters → embedding novelty + rubric scoring → LLM critic.
+
+**ExtractionResult**
+The output of the full pipeline for a single session. Contains stage results, final status, optional skill record, timing, and error info.
+
+**ExtractionStatus**
+The pipeline state of a session: `pending`, `extracted`, `rejected`, or `error`.
+
+**Human Review Sampling**
+Stratified sampling of pipeline results for manual calibration. Maintains ~50/50 balance between extracted and rejected samples.
+
+**Injection**
+The process of delivering relevant skills as context to an agent at the start of a session. Classifies prompts, queries the skill store, ranks candidates, and logs events.
+
+**InjectionEventRecord**
+A database row tracking a single skill's injection into a single session. Records rank position, match scores, A/B group, delivery status, and eventual session outcome.
+
+**Knowledge Library**
+A collection of skills scoped by `library_id`. Libraries are layered by priority: local → team → public.
+
+**LLMClient**
+A lightweight interface for LLM calls: `Complete(ctx, prompt) → (string, error)`.
+
+**Pattern (Problem Pattern)**
+A tag from the fixed Taxonomy (20 entries) that classifies the type of problem a skill addresses. Three tiers: Intent/Domain/Specific (e.g., `FIX/Backend/DatabaseConnection`).
+
+**Pipeline**
+The extraction pipeline that orchestrates Stage 1 → Stage 2 → Stage 3 → skill persistence.
+
+**QualityScores**
+A struct holding 7 dimensional scores (int, 1–5 each), a composite score (float64), and critic confidence (float64).
+
+**Rescue**
+A decay mechanic that boosts skills recently used with positive outcomes. Boost of 0.3, within a 30-day window, capped at 1.0.
+
+**Session**
+A single interaction between a user and an AI agent. The raw input to the extraction pipeline.
+
+**Skill**
+The atomic unit of knowledge in Kinoko. A `SKILL.md` file with YAML front matter containing quality scores, patterns, category, decay score, and usage statistics.
+
+**SkillStore**
+The main storage interface: `Put`, `Get`, `GetLatestByName`, `Query`, `UpdateUsage`, `UpdateDecay`, `ListByDecay`. Implemented by `SQLiteStore`.
+
+**Success Correlation**
+A metric tracking how often a skill's injection correlates with positive session outcomes. Ranges from -1.0 to 1.0.
+
+**Taxonomy**
+The canonical list of 20 problem patterns. Used for classification at both extraction and injection.
+
+**Usage Tracking**
+The system that records injection events. Feeds injection ranking and decay rescue.

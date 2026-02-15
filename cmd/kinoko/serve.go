@@ -143,13 +143,10 @@ func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, gitSrv *gitse
 	// Build git committer if server is available.
 	var committer model.SkillCommitter
 	if gitSrv != nil {
-		indexer := storage.NewSQLiteIndexer(store)
 		committer = gitserver.NewGitCommitter(gitserver.GitCommitterConfig{
-			Server:   gitSrv,
-			DataDir:  cfg.Server.DataDir,
-			Indexer:  indexer,
-			Embedder: embedder,
-			Logger:   logger,
+			Server:  gitSrv,
+			DataDir: cfg.Server.DataDir,
+			Logger:  logger,
 		})
 	}
 

@@ -19,4 +19,6 @@ Thumbs.db
 
 # Build
 /dist/
+site/node_modules/
+site/dist/
 docs/reference/soft-serve-reference.md
