@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -20,14 +21,17 @@ type Embedder interface {
 	Dimensions() int
 }
 
+// Compile-time interface check.
+var _ Embedder = (*Client)(nil)
+
 // Config configures the embedding service.
 type Config struct {
-	Provider       string             `yaml:"provider"`
-	Model          string             `yaml:"model"`
-	Dims           int                `yaml:"dimensions"`
-	BaseURL        string             `yaml:"base_url"`
-	APIKey         string             `yaml:"api_key"`
-	Retry          RetryConfig        `yaml:"retry"`
+	Provider       string               `yaml:"provider"`
+	Model          string               `yaml:"model"`
+	Dims           int                  `yaml:"dimensions"`
+	BaseURL        string               `yaml:"base_url"`
+	APIKey         string               `yaml:"api_key"`
+	Retry          RetryConfig          `yaml:"retry"`
 	CircuitBreaker CircuitBreakerConfig `yaml:"circuit_breaker"`
 }
 
@@ -76,6 +80,15 @@ const (
 	circuitHalfOpen
 )
 
+// maxOpenDuration caps the escalating open duration.
+const maxOpenDuration = 30 * time.Minute
+
+// maxResponseBody caps response body reads (10 MB).
+const maxResponseBody = 10 << 20
+
+// maxErrorBodyLog caps body bytes included in error messages.
+const maxErrorBodyLog = 512
+
 func (s circuitState) String() string {
 	switch s {
 	case circuitClosed:
@@ -89,17 +102,35 @@ func (s circuitState) String() string {
 	}
 }
 
+// permanentError wraps errors that should not be retried (4xx except 429).
+type permanentError struct {
+	err error
+}
+
+func (e *permanentError) Error() string { return e.err.Error() }
+func (e *permanentError) Unwrap() error { return e.err }
+
+// IsPermanent reports whether err is a non-retryable error.
+func IsPermanent(err error) bool {
+	var pe *permanentError
+	return errors.As(err, &pe)
+}
+
+// ErrCircuitOpen is returned when the circuit breaker is open.
+var ErrCircuitOpen = errors.New("circuit breaker is open")
+
 // Client is the OpenAI-compatible embedding client.
 type Client struct {
 	cfg    Config
 	http   *http.Client
 	logger *slog.Logger
 
-	mu                sync.Mutex
-	cbState           circuitState
-	cbFailures        int
-	cbOpenedAt        time.Time
+	mu                 sync.Mutex
+	cbState            circuitState
+	cbFailures         int
+	cbOpenedAt         time.Time
 	cbHalfOpenInFlight int
+	cbCurrentOpenDur   time.Duration // current open duration (escalates on half-open failure)
 }
 
 // New creates a new embedding Client.
@@ -108,9 +139,10 @@ func New(cfg Config, logger *slog.Logger) *Client {
 		logger = slog.Default()
 	}
 	return &Client{
-		cfg:    cfg,
-		http:   &http.Client{Timeout: 30 * time.Second},
-		logger: logger.With("component", "embedding"),
+		cfg:              cfg,
+		http:             &http.Client{Timeout: 30 * time.Second},
+		logger:           logger.With("component", "embedding"),
+		cbCurrentOpenDur: cfg.CircuitBreaker.OpenDuration,
 	}
 }
 
@@ -165,6 +197,10 @@ func (c *Client) EmbedBatch(ctx context.Context, texts []string) ([][]float32, e
 
 		result, lastErr = c.doRequest(ctx, texts)
 		if lastErr != nil {
+			// Permanent errors (4xx except 429): don't retry, don't trip breaker.
+			if IsPermanent(lastErr) {
+				return nil, lastErr
+			}
 			c.cbRecordFailure()
 			continue
 		}
@@ -198,6 +234,14 @@ type apiError struct {
 	Type    string `json:"type"`
 }
 
+// truncateBody returns at most maxErrorBodyLog bytes of body for error messages.
+func truncateBody(body []byte) string {
+	if len(body) <= maxErrorBodyLog {
+		return string(body)
+	}
+	return string(body[:maxErrorBodyLog]) + "...(truncated)"
+}
+
 func (c *Client) doRequest(ctx context.Context, texts []string) ([][]float32, error) {
 	reqBody, err := json.Marshal(embeddingRequest{
 		Input: texts,
@@ -223,17 +267,24 @@ func (c *Client) doRequest(ctx context.Context, texts []string) ([][]float32, er
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		bodySnippet := truncateBody(body)
 		c.logger.Error("embedding API error",
 			"status", resp.StatusCode,
-			"body", string(body),
+			"body", bodySnippet,
 		)
-		return nil, fmt.Errorf("embedding API returned status %d: %s", resp.StatusCode, string(body))
+		apiErr := fmt.Errorf("embedding API returned status %d: %s", resp.StatusCode, bodySnippet)
+
+		// 4xx (except 429) are permanent — don't retry.
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
+			return nil, &permanentError{err: apiErr}
+		}
+		return nil, apiErr
 	}
 
 	var embResp embeddingResponse
@@ -249,11 +300,14 @@ func (c *Client) doRequest(ctx context.Context, texts []string) ([][]float32, er
 		return nil, fmt.Errorf("expected %d embeddings, got %d", len(texts), len(embResp.Data))
 	}
 
-	// Sort by index to match input order.
+	// Sort by index to match input order; validate dimensions.
 	results := make([][]float32, len(texts))
 	for _, d := range embResp.Data {
 		if d.Index < 0 || d.Index >= len(texts) {
 			return nil, fmt.Errorf("invalid embedding index %d", d.Index)
+		}
+		if c.cfg.Dims > 0 && len(d.Embedding) != c.cfg.Dims {
+			return nil, fmt.Errorf("expected %d dimensions, got %d for index %d", c.cfg.Dims, len(d.Embedding), d.Index)
 		}
 		results[d.Index] = d.Embedding
 	}
@@ -263,8 +317,6 @@ func (c *Client) doRequest(ctx context.Context, texts []string) ([][]float32, er
 
 // --- Circuit breaker ---
 
-var ErrCircuitOpen = fmt.Errorf("circuit breaker is open")
-
 func (c *Client) cbAllow() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -273,7 +325,7 @@ func (c *Client) cbAllow() error {
 	case circuitClosed:
 		return nil
 	case circuitOpen:
-		if time.Since(c.cbOpenedAt) >= c.cfg.CircuitBreaker.OpenDuration {
+		if time.Since(c.cbOpenedAt) >= c.cbCurrentOpenDur {
 			c.cbState = circuitHalfOpen
 			c.cbHalfOpenInFlight = 0
 			c.logger.Info("circuit breaker transition", "from", "open", "to", "half-open")
@@ -301,6 +353,7 @@ func (c *Client) cbRecordSuccess() {
 	c.cbState = circuitClosed
 	c.cbFailures = 0
 	c.cbHalfOpenInFlight = 0
+	c.cbCurrentOpenDur = c.cfg.CircuitBreaker.OpenDuration // reset to base
 }
 
 func (c *Client) cbRecordFailure() {
@@ -318,19 +371,26 @@ func (c *Client) cbRecordFailure() {
 		if c.cbFailures >= c.cfg.CircuitBreaker.FailureThreshold {
 			c.cbState = circuitOpen
 			c.cbOpenedAt = time.Now()
+			c.cbCurrentOpenDur = c.cfg.CircuitBreaker.OpenDuration // base duration
 			c.logger.Warn("circuit breaker transition",
 				"from", "closed",
 				"to", "open",
-				"open_duration", c.cfg.CircuitBreaker.OpenDuration,
+				"open_duration", c.cbCurrentOpenDur,
 			)
 		}
 	case circuitHalfOpen:
+		// Escalate: double the open duration, capped at max.
+		nextDur := c.cbCurrentOpenDur * 2
+		if nextDur > maxOpenDuration {
+			nextDur = maxOpenDuration
+		}
+		c.cbCurrentOpenDur = nextDur
 		c.cbState = circuitOpen
 		c.cbOpenedAt = time.Now()
 		c.logger.Warn("circuit breaker transition",
 			"from", "half-open",
 			"to", "open",
-			"open_duration", c.cfg.CircuitBreaker.OpenDuration,
+			"open_duration", c.cbCurrentOpenDur,
 		)
 	}
 }
