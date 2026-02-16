@@ -65,7 +65,7 @@ func (q *SQLiteQueue) Enqueue(ctx context.Context, session model.SessionRecord, 
 		return fmt.Errorf("create queue dir: %w", err)
 	}
 	logPath := filepath.Join(dir, session.ID+".log")
-	if err := os.WriteFile(logPath, logContent, 0o644); err != nil {
+	if err := os.WriteFile(logPath, logContent, 0o600); err != nil {
 		return fmt.Errorf("write log file: %w", err)
 	}
 
@@ -79,10 +79,10 @@ func (q *SQLiteQueue) Enqueue(ctx context.Context, session model.SessionRecord, 
 		os.Remove(logPath)
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }() // errcheck: intentionally ignoring rollback after commit
 
 	var depth int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE extraction_status = 'queued'`).Scan(&depth); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE extraction_status = 'queued'`).Scan(&depth); err != nil {
 		os.Remove(logPath)
 		return fmt.Errorf("check depth: %w", err)
 	}
@@ -164,13 +164,14 @@ func (q *SQLiteQueue) Complete(ctx context.Context, sessionID string, result *mo
 
 	rejectedStage := 0
 	rejectionReason := ""
-	if result.Stage1 != nil && !result.Stage1.Passed {
+	switch {
+	case result.Stage1 != nil && !result.Stage1.Passed:
 		rejectedStage = 1
 		rejectionReason = result.Stage1.Reason
-	} else if result.Stage2 != nil && !result.Stage2.Passed {
+	case result.Stage2 != nil && !result.Stage2.Passed:
 		rejectedStage = 2
 		rejectionReason = result.Stage2.Reason
-	} else if result.Stage3 != nil && !result.Stage3.Passed {
+	case result.Stage3 != nil && !result.Stage3.Passed:
 		rejectedStage = 3
 		rejectionReason = result.Stage3.CriticReasoning
 	}
@@ -264,6 +265,9 @@ func (q *SQLiteQueue) RequeueStale(ctx context.Context, staleDuration time.Durat
 	if err != nil {
 		return 0, fmt.Errorf("requeue stale: %w", err)
 	}
-	n, _ := result.RowsAffected()
+	n, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("rows affected: %w", err)
+	}
 	return int(n), nil
 }

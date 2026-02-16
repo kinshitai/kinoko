@@ -27,7 +27,7 @@ func (q *schedMockQueue) Claim(_ context.Context, _ string) (*QueueEntry, error)
 func (q *schedMockQueue) Complete(_ context.Context, _ string, _ *model.ExtractionResult) error {
 	return nil
 }
-func (q *schedMockQueue) Fail(_ context.Context, _ string, _ error) error         { return nil }
+func (q *schedMockQueue) Fail(_ context.Context, _ string, _ error) error          { return nil }
 func (q *schedMockQueue) FailPermanent(_ context.Context, _ string, _ error) error { return nil }
 func (q *schedMockQueue) Depth(_ context.Context) (int, error)                     { return q.depthVal, nil }
 func (q *schedMockQueue) RequeueStale(_ context.Context, _ time.Duration) (int, error) {
@@ -62,18 +62,18 @@ func (w *schedMockSkillWriter) UpdateDecay(_ context.Context, _ string, _ float6
 
 func TestParseDailyCron(t *testing.T) {
 	tests := []struct {
-		expr    string
-		hour    int
-		minute  int
-		ok      bool
+		expr   string
+		hour   int
+		minute int
+		ok     bool
 	}{
 		{"0 3 * * *", 3, 0, true},
 		{"30 14 * * *", 14, 30, true},
 		{"  5  23  *  *  *  ", 23, 5, true},
-		{"0 25 * * *", 0, 0, false},      // invalid hour
-		{"60 3 * * *", 0, 0, false},       // invalid minute
-		{"0 3 1 * *", 0, 0, false},        // not daily
-		{"*/5 * * * *", 0, 0, false},      // complex
+		{"0 25 * * *", 0, 0, false},  // invalid hour
+		{"60 3 * * *", 0, 0, false},  // invalid minute
+		{"0 3 1 * *", 0, 0, false},   // not daily
+		{"*/5 * * * *", 0, 0, false}, // complex
 		{"", 0, 0, false},
 	}
 	for _, tt := range tests {
@@ -184,7 +184,7 @@ func TestDecayRunsOnSchedule(t *testing.T) {
 	s, _, _ := newTestScheduler(t, cfg)
 
 	// Override timing to fire immediately.
-	s.nextDailyFunc = func(now time.Time, hour, minute int) time.Duration {
+	s.nextDailyFunc = func(_ time.Time, _, _ int) time.Duration {
 		return 5 * time.Millisecond
 	}
 

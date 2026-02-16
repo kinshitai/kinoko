@@ -21,15 +21,21 @@ type mockQueue struct {
 	mu       sync.Mutex
 	entries  []*QueueEntry
 	results  map[string]*model.ExtractionResult
-	failures map[string]struct{ err error; permanent bool }
-	claimCh  chan struct{} // signaled on each claim attempt
+	failures map[string]struct {
+		err       error
+		permanent bool
+	}
+	claimCh chan struct{} // signaled on each claim attempt
 }
 
 func newMockQueue() *mockQueue {
 	return &mockQueue{
-		results:  make(map[string]*model.ExtractionResult),
-		failures: make(map[string]struct{ err error; permanent bool }),
-		claimCh:  make(chan struct{}, 100),
+		results: make(map[string]*model.ExtractionResult),
+		failures: make(map[string]struct {
+			err       error
+			permanent bool
+		}),
+		claimCh: make(chan struct{}, 100),
 	}
 }
 
@@ -59,14 +65,20 @@ func (q *mockQueue) Complete(_ context.Context, sessionID string, result *model.
 func (q *mockQueue) Fail(_ context.Context, sessionID string, err error) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.failures[sessionID] = struct{ err error; permanent bool }{err, false}
+	q.failures[sessionID] = struct {
+		err       error
+		permanent bool
+	}{err, false}
 	return nil
 }
 
 func (q *mockQueue) FailPermanent(_ context.Context, sessionID string, err error) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.failures[sessionID] = struct{ err error; permanent bool }{err, true}
+	q.failures[sessionID] = struct {
+		err       error
+		permanent bool
+	}{err, true}
 	return nil
 }
 
@@ -179,11 +191,7 @@ func TestPool_ProcessSessions(t *testing.T) {
 
 	// Wait for processing.
 	deadline := time.After(2 * time.Second)
-	for {
-		stats := p.Stats()
-		if stats.TotalProcessed >= 2 {
-			break
-		}
+	for p.Stats().TotalProcessed < 2 {
 		select {
 		case <-deadline:
 			t.Fatalf("timeout waiting for processing, stats=%+v", p.Stats())
@@ -193,7 +201,7 @@ func TestPool_ProcessSessions(t *testing.T) {
 
 	stopCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	p.Stop(stopCtx)
+	_ = p.Stop(stopCtx)
 
 	stats := p.Stats()
 	if stats.TotalProcessed != 2 {
@@ -225,14 +233,10 @@ func TestPool_RetryOnPipelineError(t *testing.T) {
 	p := NewPool(q, ext, dummySessionGetter, cfg, testLogger())
 
 	ctx := context.Background()
-	p.Start(ctx)
+	if err := p.Start(ctx); err != nil { t.Fatal(err) }
 
 	deadline := time.After(2 * time.Second)
-	for {
-		stats := p.Stats()
-		if stats.TotalProcessed >= 1 {
-			break
-		}
+	for p.Stats().TotalProcessed < 1 {
 		select {
 		case <-deadline:
 			t.Fatal("timeout")
@@ -242,7 +246,7 @@ func TestPool_RetryOnPipelineError(t *testing.T) {
 
 	stopCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	p.Stop(stopCtx)
+	_ = p.Stop(stopCtx)
 
 	q.mu.Lock()
 	f, ok := q.failures["s1"]
@@ -275,13 +279,10 @@ func TestPool_FailPermanentAfterMaxRetries(t *testing.T) {
 	p := NewPool(q, ext, dummySessionGetter, cfg, testLogger())
 
 	ctx := context.Background()
-	p.Start(ctx)
+	if err := p.Start(ctx); err != nil { t.Fatal(err) }
 
 	deadline := time.After(2 * time.Second)
-	for {
-		if p.Stats().TotalProcessed >= 1 {
-			break
-		}
+	for p.Stats().TotalProcessed < 1 {
 		select {
 		case <-deadline:
 			t.Fatal("timeout")
@@ -291,7 +292,7 @@ func TestPool_FailPermanentAfterMaxRetries(t *testing.T) {
 
 	stopCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	p.Stop(stopCtx)
+	_ = p.Stop(stopCtx)
 
 	q.mu.Lock()
 	f, ok := q.failures["s1"]
@@ -322,13 +323,10 @@ func TestPool_FileReadFailIsPermanent(t *testing.T) {
 	p := NewPool(q, ext, dummySessionGetter, cfg, testLogger())
 
 	ctx := context.Background()
-	p.Start(ctx)
+	if err := p.Start(ctx); err != nil { t.Fatal(err) }
 
 	deadline := time.After(2 * time.Second)
-	for {
-		if p.Stats().TotalProcessed >= 1 {
-			break
-		}
+	for p.Stats().TotalProcessed < 1 {
 		select {
 		case <-deadline:
 			t.Fatal("timeout")
@@ -338,7 +336,7 @@ func TestPool_FileReadFailIsPermanent(t *testing.T) {
 
 	stopCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	p.Stop(stopCtx)
+	_ = p.Stop(stopCtx)
 
 	q.mu.Lock()
 	f, ok := q.failures["s1"]
@@ -377,7 +375,7 @@ func TestPool_GracefulShutdown_InFlightCompletes(t *testing.T) {
 	p := NewPool(q, ext, dummySessionGetter, cfg, testLogger())
 
 	ctx := context.Background()
-	p.Start(ctx)
+	if err := p.Start(ctx); err != nil { t.Fatal(err) }
 
 	<-extractStarted // Worker is in Extract
 
@@ -421,13 +419,10 @@ func TestPool_StatsCountRejected(t *testing.T) {
 	p := NewPool(q, ext, dummySessionGetter, cfg, testLogger())
 
 	ctx := context.Background()
-	p.Start(ctx)
+	if err := p.Start(ctx); err != nil { t.Fatal(err) }
 
 	deadline := time.After(2 * time.Second)
-	for {
-		if p.Stats().TotalProcessed >= 1 {
-			break
-		}
+	for p.Stats().TotalProcessed < 1 {
 		select {
 		case <-deadline:
 			t.Fatal("timeout")
@@ -437,7 +432,7 @@ func TestPool_StatsCountRejected(t *testing.T) {
 
 	stopCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	p.Stop(stopCtx)
+	_ = p.Stop(stopCtx)
 
 	stats := p.Stats()
 	if stats.TotalRejected != 1 {
@@ -465,13 +460,10 @@ func TestPool_GetSessionFailureIsTransient(t *testing.T) {
 	p := NewPool(q, ext, failingSessionGetter, cfg, testLogger())
 
 	ctx := context.Background()
-	p.Start(ctx)
+	if err := p.Start(ctx); err != nil { t.Fatal(err) }
 
 	deadline := time.After(2 * time.Second)
-	for {
-		if p.Stats().TotalProcessed >= 1 {
-			break
-		}
+	for p.Stats().TotalProcessed < 1 {
 		select {
 		case <-deadline:
 			t.Fatal("timeout")
@@ -481,7 +473,7 @@ func TestPool_GetSessionFailureIsTransient(t *testing.T) {
 
 	stopCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	p.Stop(stopCtx)
+	_ = p.Stop(stopCtx)
 
 	q.mu.Lock()
 	f, ok := q.failures["s1"]
@@ -512,7 +504,7 @@ func TestPool_EmptyQueue_NoSpin(t *testing.T) {
 	p := NewPool(q, ext, dummySessionGetter, cfg, testLogger())
 
 	ctx := context.Background()
-	p.Start(ctx)
+	if err := p.Start(ctx); err != nil { t.Fatal(err) }
 
 	// Count claim attempts over 200ms. With 50ms poll, should be ~4-5, not hundreds.
 	var claimCount atomic.Int32
@@ -533,7 +525,7 @@ func TestPool_EmptyQueue_NoSpin(t *testing.T) {
 
 	stopCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	p.Stop(stopCtx)
+	_ = p.Stop(stopCtx)
 
 	count := claimCount.Load()
 	// With 50ms poll and 200ms window: expect roughly 4-5 claims. Allow up to 10.

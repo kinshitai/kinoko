@@ -35,11 +35,11 @@ type PoolStats struct {
 
 // workerPool implements Pool.
 type workerPool struct {
-	queue     SessionQueue
-	extractor model.Extractor
+	queue      SessionQueue
+	extractor  model.Extractor
 	getSession SessionGetter
-	cfg       Config
-	log       *slog.Logger
+	cfg        Config
+	log        *slog.Logger
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -146,11 +146,11 @@ func (p *workerPool) run(ctx context.Context, workerID string) {
 	}
 }
 
-func (p *workerPool) process(ctx context.Context, workerID string, entry *QueueEntry) {
+func (p *workerPool) process(_ context.Context, workerID string, entry *QueueEntry) {
 	// Use a detached context for all DB operations during processing.
 	// The pool context (ctx) may be cancelled during graceful shutdown,
 	// but in-flight work must still be able to Complete/Fail/read sessions.
-		processTimeout := p.cfg.ProcessTimeout
+	processTimeout := p.cfg.ProcessTimeout
 	if processTimeout <= 0 {
 		processTimeout = 300 * time.Second
 	}

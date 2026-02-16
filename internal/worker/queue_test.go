@@ -21,7 +21,7 @@ func setupQueue(t *testing.T) (*SQLiteQueue, string) {
 		t.Fatalf("new store: %v", err)
 	}
 	// Disable FK checks for tests — we don't insert skill rows.
-	store.DB().Exec("PRAGMA foreign_keys=OFF")
+	_, _ = store.DB().Exec("PRAGMA foreign_keys=OFF")
 	t.Cleanup(func() { store.Close() })
 
 	dataDir := t.TempDir()
@@ -146,7 +146,10 @@ func TestFailAndRetry(t *testing.T) {
 		t.Fatalf("enqueue: %v", err)
 	}
 
-	entry, _ := q.Claim(ctx, "worker-1")
+	entry, err := q.Claim(ctx, "worker-1")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if entry == nil {
 		t.Fatal("expected entry")
 	}
@@ -157,15 +160,20 @@ func TestFailAndRetry(t *testing.T) {
 	}
 
 	// Should not be claimable immediately (next_retry_at in future).
-	entry, _ = q.Claim(ctx, "worker-1")
+	entry, err = q.Claim(ctx, "worker-1")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if entry != nil {
 		t.Fatal("expected nil after fail (retry not due)")
 	}
 
 	// Fast-forward: set next_retry_at to past.
-	q.store.DB().ExecContext(ctx, `UPDATE sessions SET next_retry_at = datetime('now', '-1 minute') WHERE id = 'sess-1'`)
+	if _, err := q.store.DB().ExecContext(ctx, `UPDATE sessions SET next_retry_at = datetime('now', '-1 minute') WHERE id = 'sess-1'`); err != nil {
+		t.Fatal(err)
+	}
 
-	entry, err := q.Claim(ctx, "worker-1")
+	entry, err = q.Claim(ctx, "worker-1")
 	if err != nil {
 		t.Fatalf("claim after retry: %v", err)
 	}
@@ -184,7 +192,7 @@ func TestFailPermanent(t *testing.T) {
 	if err := q.Enqueue(ctx, makeSession("sess-1"), []byte("log")); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
-	q.Claim(ctx, "worker-1")
+	_, _ = q.Claim(ctx, "worker-1")
 
 	if err := q.FailPermanent(ctx, "sess-1", errors.New("bad data")); err != nil {
 		t.Fatalf("fail permanent: %v", err)
@@ -192,13 +200,18 @@ func TestFailPermanent(t *testing.T) {
 
 	// Check status is failed.
 	var status string
-	q.store.DB().QueryRowContext(ctx, `SELECT extraction_status FROM sessions WHERE id = 'sess-1'`).Scan(&status)
+	if err := q.store.DB().QueryRowContext(ctx, `SELECT extraction_status FROM sessions WHERE id = 'sess-1'`).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
 	if status != "failed" {
 		t.Errorf("status = %q, want failed", status)
 	}
 
 	// Should not be claimable.
-	entry, _ := q.Claim(ctx, "worker-1")
+	entry, err := q.Claim(ctx, "worker-1")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if entry != nil {
 		t.Fatal("expected nil for permanently failed session")
 	}
@@ -208,23 +221,32 @@ func TestDepth(t *testing.T) {
 	q, _ := setupQueue(t)
 	ctx := context.Background()
 
-	depth, _ := q.Depth(ctx)
+	depth, err := q.Depth(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if depth != 0 {
 		t.Errorf("initial depth = %d, want 0", depth)
 	}
 
 	for i := 0; i < 3; i++ {
-		q.Enqueue(ctx, makeSession(fmt.Sprintf("sess-%d", i)), []byte("log"))
+		if err := q.Enqueue(ctx, makeSession(fmt.Sprintf("sess-%d", i)), []byte("log")); err != nil { t.Fatal(err) }
 	}
 
-	depth, _ = q.Depth(ctx)
+	depth, err = q.Depth(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if depth != 3 {
 		t.Errorf("depth = %d, want 3", depth)
 	}
 
 	// Claim one — depth should decrease.
-	q.Claim(ctx, "worker-1")
-	depth, _ = q.Depth(ctx)
+	_, _ = q.Claim(ctx, "worker-1")
+	depth, err = q.Depth(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if depth != 2 {
 		t.Errorf("depth after claim = %d, want 2", depth)
 	}
@@ -256,13 +278,18 @@ func TestRequeueStale(t *testing.T) {
 		t.Fatalf("enqueue: %v", err)
 	}
 
-	entry, _ := q.Claim(ctx, "worker-1")
+	entry, err := q.Claim(ctx, "worker-1")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if entry == nil {
 		t.Fatal("expected entry")
 	}
 
 	// Set claimed_at to 20 minutes ago.
-	q.store.DB().ExecContext(ctx, `UPDATE sessions SET claimed_at = datetime('now', '-20 minutes') WHERE id = 'sess-1'`)
+	if _, err := q.store.DB().ExecContext(ctx, `UPDATE sessions SET claimed_at = datetime('now', '-20 minutes') WHERE id = 'sess-1'`); err != nil {
+		t.Fatal(err)
+	}
 
 	n, err := q.RequeueStale(ctx, 10*time.Minute)
 	if err != nil {
@@ -273,7 +300,10 @@ func TestRequeueStale(t *testing.T) {
 	}
 
 	// Should be claimable again.
-	entry, _ = q.Claim(ctx, "worker-2")
+	entry, err = q.Claim(ctx, "worker-2")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if entry == nil {
 		t.Fatal("expected entry after requeue")
 	}
@@ -285,12 +315,15 @@ func TestFIFOOrdering(t *testing.T) {
 
 	// Enqueue in order with slight delay to ensure different created_at.
 	for i := 0; i < 3; i++ {
-		q.Enqueue(ctx, makeSession(fmt.Sprintf("sess-%d", i)), []byte("log"))
+		if err := q.Enqueue(ctx, makeSession(fmt.Sprintf("sess-%d", i)), []byte("log")); err != nil { t.Fatal(err) }
 	}
 
 	// Claims should come back in FIFO order.
 	for i := 0; i < 3; i++ {
-		entry, _ := q.Claim(ctx, "worker-1")
+		entry, err := q.Claim(ctx, "worker-1")
+	if err != nil {
+		t.Fatal(err)
+	}
 		if entry == nil {
 			t.Fatalf("claim %d: expected entry", i)
 		}
@@ -305,8 +338,8 @@ func TestComplete(t *testing.T) {
 	q, _ := setupQueue(t)
 	ctx := context.Background()
 
-	q.Enqueue(ctx, makeSession("sess-1"), []byte("log"))
-	q.Claim(ctx, "worker-1")
+	if err := q.Enqueue(ctx, makeSession("sess-1"), []byte("log")); err != nil { t.Fatal(err) }
+	_, _ = q.Claim(ctx, "worker-1")
 
 	result := &model.ExtractionResult{
 		Status: model.StatusExtracted,
@@ -317,7 +350,9 @@ func TestComplete(t *testing.T) {
 	}
 
 	var status, skillID string
-	q.store.DB().QueryRowContext(ctx, `SELECT extraction_status, COALESCE(extracted_skill_id,'') FROM sessions WHERE id = 'sess-1'`).Scan(&status, &skillID)
+	if err := q.store.DB().QueryRowContext(ctx, `SELECT extraction_status, COALESCE(extracted_skill_id,'') FROM sessions WHERE id = 'sess-1'`).Scan(&status, &skillID); err != nil {
+		t.Fatal(err)
+	}
 	if status != "extracted" {
 		t.Errorf("status = %q, want extracted", status)
 	}

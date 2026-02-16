@@ -205,8 +205,14 @@ func parseDailyCron(expr string) (hour, minute int, ok bool) {
 	if m == nil {
 		return 0, 0, false
 	}
-	minute, _ = strconv.Atoi(m[1])
-	hour, _ = strconv.Atoi(m[2])
+	minute, err := strconv.Atoi(m[1])
+	if err != nil {
+		return 0, 0, false
+	}
+	hour, err = strconv.Atoi(m[2])
+	if err != nil {
+		return 0, 0, false
+	}
 	if hour < 0 || hour > 23 || minute < 0 || minute > 59 {
 		return 0, 0, false
 	}
