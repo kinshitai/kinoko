@@ -96,10 +96,9 @@ func TestCloneSkill_AlreadyCloned(t *testing.T) {
 	c := New(ClientConfig{CacheDir: dir})
 	// pullRepo will fail (no real git repo) but that exercises the already-cloned path.
 	err := c.CloneSkill(repo, "")
-	if err == nil {
-		// If git is available and the pull somehow works, that's fine too.
-		// The point is we hit the already-cloned branch.
-	}
+	// If err == nil, git is available and the pull somehow works — that's fine too.
+	// The point is we hit the already-cloned branch.
+	_ = err
 }
 
 func TestCloneSkill_NoRemoteURL(t *testing.T) {

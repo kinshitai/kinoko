@@ -11,9 +11,9 @@ func TestEstimateTokens(t *testing.T) {
 	}{
 		{nil, 0},
 		{[]byte(""), 0},
-		{[]byte("hello world!"), 3},   // 12 / 4
-		{[]byte("abcd"), 1},           // 4 / 4
-		{make([]byte, 1000), 250},     // 1000 / 4
+		{[]byte("hello world!"), 3}, // 12 / 4
+		{[]byte("abcd"), 1},         // 4 / 4
+		{make([]byte, 1000), 250},   // 1000 / 4
 	}
 	for _, tt := range tests {
 		got := EstimateTokens(tt.input)
