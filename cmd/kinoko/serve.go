@@ -180,6 +180,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("extraction not available on server — use 'kinoko run' to process sessions")
 		},
 	})
+	// Wire embedding engine for /api/v1/embed endpoint.
+	// TODO: use embedding.NewONNXEngine when built with -tags embedding.
+	embedEngine := embedding.NewMockEngine(384)
+	apiSrv.SetEmbedEngine(embedEngine)
+	logger.Info("embed engine configured", "engine", embedEngine.ModelID())
+
+	// TODO: Phase A3.5 — reindex on model change
+
 	if err := apiSrv.Start(); err != nil {
 		logger.Error("failed to start API server", "error", err)
 	} else {
