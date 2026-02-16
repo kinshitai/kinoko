@@ -144,13 +144,13 @@ func (nc *NoveltyChecker) traceNovelty(content string, threshold, maxScore float
 	}
 
 	entry := map[string]any{
-		"timestamp":  time.Now().UTC().Format(time.RFC3339),
-		"content":    truncateForTrace(content, 500),
-		"threshold":  threshold,
-		"max_score":  maxScore,
-		"novel":      novel,
-		"similar":    similar,
-		"model":      "",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"content":   truncateForTrace(content, 500),
+		"threshold": threshold,
+		"max_score": maxScore,
+		"novel":     novel,
+		"similar":   similar,
+		"model":     "",
 	}
 	if nc.engine != nil {
 		entry["model"] = nc.engine.ModelID()
