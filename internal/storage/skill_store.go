@@ -50,83 +50,13 @@ func scanSkillFrom(sc scanner) (*model.SkillRecord, error) {
 	return &s, nil
 }
 
+// Put indexes a skill into SQLite and optionally writes the body to disk.
+// It delegates to IndexSkill for the database upsert, avoiding SQL duplication.
+// Production code should use IndexSkill directly; Put exists for test convenience.
 func (s *SQLiteStore) Put(ctx context.Context, skill *model.SkillRecord, body []byte) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	now := time.Now().UTC()
-	if skill.CreatedAt.IsZero() {
-		skill.CreatedAt = now
-	}
-	skill.UpdatedAt = now
-
-	// Clean up child rows for any existing skill with same name+library (upsert may change id).
-	if _, err = tx.ExecContext(ctx, `DELETE FROM skill_patterns WHERE skill_id IN (SELECT id FROM skills WHERE name = ? AND library_id = ?)`, skill.Name, skill.LibraryID); err != nil {
-		return fmt.Errorf("delete old patterns: %w", err)
-	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM skill_embeddings WHERE skill_id IN (SELECT id FROM skills WHERE name = ? AND library_id = ?)`, skill.Name, skill.LibraryID); err != nil {
-		return fmt.Errorf("delete old embeddings: %w", err)
-	}
-
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO skills (
-			id, name, version, parent_id, library_id, category,
-			q_problem_specificity, q_solution_completeness, q_context_portability,
-			q_reasoning_transparency, q_technical_accuracy, q_verification_evidence,
-			q_innovation_level, q_composite_score, q_critic_confidence,
-			injection_count, last_injected_at, success_correlation, decay_score,
-			source_session_id, extracted_by, file_path, created_at, updated_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(name, library_id) DO UPDATE SET
-			id=excluded.id, version=excluded.version, parent_id=excluded.parent_id,
-			category=excluded.category,
-			q_problem_specificity=excluded.q_problem_specificity,
-			q_solution_completeness=excluded.q_solution_completeness,
-			q_context_portability=excluded.q_context_portability,
-			q_reasoning_transparency=excluded.q_reasoning_transparency,
-			q_technical_accuracy=excluded.q_technical_accuracy,
-			q_verification_evidence=excluded.q_verification_evidence,
-			q_innovation_level=excluded.q_innovation_level,
-			q_composite_score=excluded.q_composite_score,
-			q_critic_confidence=excluded.q_critic_confidence,
-			injection_count=excluded.injection_count,
-			last_injected_at=excluded.last_injected_at,
-			success_correlation=excluded.success_correlation,
-			decay_score=excluded.decay_score,
-			source_session_id=excluded.source_session_id,
-			extracted_by=excluded.extracted_by,
-			file_path=excluded.file_path,
-			updated_at=excluded.updated_at`,
-		skill.ID, skill.Name, skill.Version, nullString(skill.ParentID), skill.LibraryID, string(skill.Category),
-		skill.Quality.ProblemSpecificity, skill.Quality.SolutionCompleteness, skill.Quality.ContextPortability,
-		skill.Quality.ReasoningTransparency, skill.Quality.TechnicalAccuracy, skill.Quality.VerificationEvidence,
-		skill.Quality.InnovationLevel, skill.Quality.CompositeScore, skill.Quality.CriticConfidence,
-		skill.InjectionCount, nullTime(skill.LastInjectedAt), skill.SuccessCorrelation, skill.DecayScore,
-		nullString(skill.SourceSessionID), skill.ExtractedBy, skill.FilePath, skill.CreatedAt, skill.UpdatedAt,
-	)
-	if err != nil {
-		return fmt.Errorf("upsert skill: %w", err)
-	}
-
-	for _, p := range skill.Patterns {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO skill_patterns (skill_id, pattern) VALUES (?, ?)`, skill.ID, p); err != nil {
-			return fmt.Errorf("insert pattern: %w", err)
-		}
-	}
-
-	if len(skill.Embedding) > 0 {
-		blob := float32sToBytes(skill.Embedding)
-		if _, err := tx.ExecContext(ctx, `INSERT INTO skill_embeddings (skill_id, embedding, model, created_at) VALUES (?, ?, ?, ?)`,
-			skill.ID, blob, s.embeddingModel, now); err != nil {
-			return fmt.Errorf("insert embedding: %w", err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit skill: %w", err)
+	idx := NewSQLiteIndexer(s)
+	if err := idx.IndexSkill(ctx, skill, skill.Embedding); err != nil {
+		return err
 	}
 
 	if len(body) > 0 && skill.FilePath != "" {

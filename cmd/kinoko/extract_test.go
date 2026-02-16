@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/kinoko-dev/kinoko/internal/extraction"
+	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
@@ -177,8 +178,8 @@ func TestEstimateTokens(t *testing.T) {
 }
 
 func TestStoreQuerier_NilResult(t *testing.T) {
-	// Verify that storage.NewSkillQuerier returns extraction.SkillQuerier.
-	var _ extraction.SkillQuerier = storage.NewSkillQuerier(nil)
+	// Verify that storage.NewSkillQuerier returns model.SkillQuerier.
+	var _ model.SkillQuerier = storage.NewSkillQuerier(nil)
 }
 
 func TestExitError(t *testing.T) {

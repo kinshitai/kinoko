@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/kinoko-dev/kinoko/internal/extraction"
+	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
@@ -166,5 +167,5 @@ func TestQueueRetryRequiresArg(t *testing.T) {
 
 func TestStoreQuerierInterface(t *testing.T) {
 	// Compile-time check that storage.NewSkillQuerier returns SkillQuerier.
-	var _ extraction.SkillQuerier = storage.NewSkillQuerier(nil)
+	var _ model.SkillQuerier = storage.NewSkillQuerier(nil)
 }

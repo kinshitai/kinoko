@@ -60,7 +60,7 @@ func TestPipeline_CommitterCalledOnExtract(t *testing.T) {
 }
 
 func TestPipeline_CommitterErrorIsFatal(t *testing.T) {
-	c := &mockCommitter{err: errors.New("push failed")}
+	c := &mockCommitter{err: errors.New("commit failed")}
 
 	p, err := NewPipeline(PipelineConfig{
 		Stage1:    &mockStage1{result: passStage1()},

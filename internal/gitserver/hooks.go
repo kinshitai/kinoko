@@ -36,7 +36,7 @@ func InstallHooks(dataDir, kinokoBinary string, apiPort int) error {
 	}
 
 	postReceive := fmt.Sprintf(`#!/bin/sh
-# Kinoko post-receive hook: index skills after push.
+# Kinoko post-receive hook: index skills after git push.
 # Soft Serve sets GIT_DIR; we derive repo name from it.
 KINOKO_DATA_DIR="%s"
 while read oldrev newrev refname; do

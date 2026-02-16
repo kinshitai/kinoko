@@ -17,7 +17,7 @@ import (
 // Compile-time check.
 var _ model.SkillCommitter = (*GitCommitter)(nil)
 
-// GitCommitter pushes skills to Soft Serve repos. Indexing is handled by
+// GitCommitter commits skills to Soft Serve repos. Indexing is handled by
 // the post-receive hook, not by the committer.
 type GitCommitter struct {
 	server  *Server

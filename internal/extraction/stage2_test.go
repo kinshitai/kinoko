@@ -38,10 +38,10 @@ func (m *mockEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]floa
 func (m *mockEmbedder) Dimensions() int { return 1536 }
 
 type mockQuerier struct {
-	queryFn func(ctx context.Context, embedding []float32, libraryID string) (*SkillQueryResult, error)
+	queryFn func(ctx context.Context, embedding []float32, libraryID string) (*model.SkillQueryResult, error)
 }
 
-func (m *mockQuerier) QueryNearest(ctx context.Context, embedding []float32, libraryID string) (*SkillQueryResult, error) {
+func (m *mockQuerier) QueryNearest(ctx context.Context, embedding []float32, libraryID string) (*model.SkillQueryResult, error) {
 	return m.queryFn(ctx, embedding, libraryID)
 }
 
@@ -110,15 +110,15 @@ func failRubricJSON() string {
 // querierWithSimilarity returns a mock querier with the given cosine similarity.
 func querierWithSimilarity(sim float64) *mockQuerier {
 	return &mockQuerier{
-		queryFn: func(_ context.Context, _ []float32, _ string) (*SkillQueryResult, error) {
-			return &SkillQueryResult{CosineSim: sim}, nil
+		queryFn: func(_ context.Context, _ []float32, _ string) (*model.SkillQueryResult, error) {
+			return &model.SkillQueryResult{CosineSim: sim}, nil
 		},
 	}
 }
 
 func emptyQuerier() *mockQuerier {
 	return &mockQuerier{
-		queryFn: func(_ context.Context, _ []float32, _ string) (*SkillQueryResult, error) {
+		queryFn: func(_ context.Context, _ []float32, _ string) (*model.SkillQueryResult, error) {
 			return nil, nil
 		},
 	}
@@ -250,7 +250,7 @@ func TestStage2Scorer(t *testing.T) {
 			name:     "store error",
 			embedder: okEmbedder(),
 			querier: &mockQuerier{
-				queryFn: func(_ context.Context, _ []float32, _ string) (*SkillQueryResult, error) {
+				queryFn: func(_ context.Context, _ []float32, _ string) (*model.SkillQueryResult, error) {
 					return nil, errors.New("db locked")
 				},
 			},

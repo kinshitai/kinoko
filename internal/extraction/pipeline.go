@@ -39,7 +39,7 @@ type Pipeline struct {
 	log        *slog.Logger
 	sampleRate float64 // 0.0–1.0, e.g. 0.01 for 1%
 	randIntn   RandIntn
-	novelty    NoveltyChecker          // optional: checks skill novelty before push
+	novelty    NoveltyChecker          // optional: checks skill novelty before commit
 	committer  model.SkillCommitter    // required: commits skills to git
 	scanner    *sanitize.Scanner       // optional: credential scanner
 	tracer     *debug.Tracer           // optional: pipeline debug tracing
@@ -71,7 +71,7 @@ type PipelineConfig struct {
 }
 
 // NewPipeline creates a Pipeline. If RandIntn is nil, crypto/rand is used.
-// Returns an error if required dependencies (Stage1, Stage2, Stage3, Writer, Log) are nil.
+// Returns an error if required dependencies (Stage1, Stage2, Stage3, Committer, Log) are nil.
 func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 	if cfg.Stage1 == nil {
 		return nil, fmt.Errorf("pipeline: Stage1 is required")

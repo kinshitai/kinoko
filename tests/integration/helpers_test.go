@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/extraction"
 	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 )
@@ -128,8 +127,8 @@ type mockQuerier struct {
 	sim float64
 }
 
-func (m *mockQuerier) QueryNearest(_ context.Context, _ []float32, _ string) (*extraction.SkillQueryResult, error) {
-	return &extraction.SkillQueryResult{CosineSim: m.sim}, nil
+func (m *mockQuerier) QueryNearest(_ context.Context, _ []float32, _ string) (*model.SkillQueryResult, error) {
+	return &model.SkillQueryResult{CosineSim: m.sim}, nil
 }
 
 // --- Mock HumanReviewWriter ---

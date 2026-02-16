@@ -44,6 +44,16 @@ func (idx *SQLiteIndexer) IndexSkill(ctx context.Context, skill *model.SkillReco
 	}
 	updatedAt := now
 
+	// Pre-clean child rows for any existing skill with same name+library.
+	// Required because the upsert may change the skill ID, which would violate
+	// foreign key constraints on skill_patterns and skill_embeddings (no ON UPDATE CASCADE).
+	if _, err = tx.ExecContext(ctx, `DELETE FROM skill_patterns WHERE skill_id IN (SELECT id FROM skills WHERE name = ? AND library_id = ?)`, skill.Name, skill.LibraryID); err != nil {
+		return fmt.Errorf("delete old patterns: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM skill_embeddings WHERE skill_id IN (SELECT id FROM skills WHERE name = ? AND library_id = ?)`, skill.Name, skill.LibraryID); err != nil {
+		return fmt.Errorf("delete old embeddings: %w", err)
+	}
+
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO skills (
 			id, name, version, parent_id, library_id, category,

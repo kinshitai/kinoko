@@ -48,14 +48,6 @@ func init() {
 	}
 }
 
-// SkillQuerier finds nearest-neighbor skills by embedding.
-// Deprecated: Use model.SkillQuerier directly. This alias exists for backward compatibility.
-type SkillQuerier = model.SkillQuerier
-
-// SkillQueryResult holds the nearest-neighbor result from a skill store query.
-// Deprecated: Use model.SkillQueryResult directly. This alias exists for backward compatibility.
-type SkillQueryResult = model.SkillQueryResult
-
 // Stage2Scorer runs embedding novelty + structured rubric scoring.
 type Stage2Scorer interface {
 	Score(ctx context.Context, session model.SessionRecord, content []byte) (*model.Stage2Result, error)
@@ -63,7 +55,7 @@ type Stage2Scorer interface {
 
 type stage2Scorer struct {
 	embedder embedding.Embedder
-	querier  SkillQuerier
+	querier  model.SkillQuerier
 	llm      llm.LLMClient
 	minDist  float64
 	maxDist  float64
@@ -73,7 +65,7 @@ type stage2Scorer struct {
 // NewStage2Scorer creates a Stage2Scorer from dependencies and config.
 func NewStage2Scorer(
 	embedder embedding.Embedder,
-	querier SkillQuerier,
+	querier model.SkillQuerier,
 	llmClient llm.LLMClient,
 	cfg config.ExtractionConfig,
 	log *slog.Logger,
