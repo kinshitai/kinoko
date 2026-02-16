@@ -74,9 +74,12 @@ jobs:
           tail -n +2 unit.cov >> combined.cov
           tail -n +2 integration.cov >> combined.cov
           tail -n +2 e2e.cov >> combined.cov
-          echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
-          go tool cover -func=combined.cov | grep 'total:' | awk '{print "**Combined coverage: " $NF "**"}' >> $GITHUB_STEP_SUMMARY
-          go tool cover -func=combined.cov | grep 'total:'
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-test
+          path: combined.cov
 
   test-embedding:
     name: Test (embedding)
@@ -122,11 +125,37 @@ jobs:
           go test -v -tags embedding -coverpkg=./internal/...,./cmd/...,./pkg/... \
             -coverprofile=embedding.cov ./internal/embedding/... -timeout 120s
 
-      - name: Embedding coverage
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-embedding
+          path: embedding.cov
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs: [test, test-embedding]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+
+      - name: Merge all coverage
         run: |
-          echo "## Embedding Coverage" >> $GITHUB_STEP_SUMMARY
-          go tool cover -func=embedding.cov | grep 'total:' | awk '{print "**Embedding coverage: " $NF "**"}' >> $GITHUB_STEP_SUMMARY
-          go tool cover -func=embedding.cov | grep 'total:'
+          head -1 coverage-test/combined.cov > all.cov
+          tail -n +2 coverage-test/combined.cov >> all.cov
+          tail -n +2 coverage-embedding/embedding.cov >> all.cov
+          echo "## Combined Coverage (all jobs)" >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=all.cov | grep 'total:' | awk '{print "**Combined coverage: " $NF "**"}' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=all.cov | grep 'total:'
 
   build:
     name: Build
