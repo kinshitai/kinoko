@@ -63,6 +63,14 @@ func (s *SQLiteStore) Put(ctx context.Context, skill *model.SkillRecord, body []
 	}
 	skill.UpdatedAt = now
 
+	// Clean up child rows for any existing skill with same name+library (upsert may change id).
+	if _, err = tx.ExecContext(ctx, `DELETE FROM skill_patterns WHERE skill_id IN (SELECT id FROM skills WHERE name = ? AND library_id = ?)`, skill.Name, skill.LibraryID); err != nil {
+		return fmt.Errorf("delete old patterns: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM skill_embeddings WHERE skill_id IN (SELECT id FROM skills WHERE name = ? AND library_id = ?)`, skill.Name, skill.LibraryID); err != nil {
+		return fmt.Errorf("delete old embeddings: %w", err)
+	}
+
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO skills (
 			id, name, version, parent_id, library_id, category,
@@ -71,7 +79,27 @@ func (s *SQLiteStore) Put(ctx context.Context, skill *model.SkillRecord, body []
 			q_innovation_level, q_composite_score, q_critic_confidence,
 			injection_count, last_injected_at, success_correlation, decay_score,
 			source_session_id, extracted_by, file_path, created_at, updated_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(name, library_id) DO UPDATE SET
+			id=excluded.id, version=excluded.version, parent_id=excluded.parent_id,
+			category=excluded.category,
+			q_problem_specificity=excluded.q_problem_specificity,
+			q_solution_completeness=excluded.q_solution_completeness,
+			q_context_portability=excluded.q_context_portability,
+			q_reasoning_transparency=excluded.q_reasoning_transparency,
+			q_technical_accuracy=excluded.q_technical_accuracy,
+			q_verification_evidence=excluded.q_verification_evidence,
+			q_innovation_level=excluded.q_innovation_level,
+			q_composite_score=excluded.q_composite_score,
+			q_critic_confidence=excluded.q_critic_confidence,
+			injection_count=excluded.injection_count,
+			last_injected_at=excluded.last_injected_at,
+			success_correlation=excluded.success_correlation,
+			decay_score=excluded.decay_score,
+			source_session_id=excluded.source_session_id,
+			extracted_by=excluded.extracted_by,
+			file_path=excluded.file_path,
+			updated_at=excluded.updated_at`,
 		skill.ID, skill.Name, skill.Version, nullString(skill.ParentID), skill.LibraryID, string(skill.Category),
 		skill.Quality.ProblemSpecificity, skill.Quality.SolutionCompleteness, skill.Quality.ContextPortability,
 		skill.Quality.ReasoningTransparency, skill.Quality.TechnicalAccuracy, skill.Quality.VerificationEvidence,
@@ -80,10 +108,7 @@ func (s *SQLiteStore) Put(ctx context.Context, skill *model.SkillRecord, body []
 		nullString(skill.SourceSessionID), skill.ExtractedBy, skill.FilePath, skill.CreatedAt, skill.UpdatedAt,
 	)
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint") {
-			return fmt.Errorf("%w: %s v%d in %s", ErrDuplicate, skill.Name, skill.Version, skill.LibraryID)
-		}
-		return fmt.Errorf("insert skill: %w", err)
+		return fmt.Errorf("upsert skill: %w", err)
 	}
 
 	for _, p := range skill.Patterns {
