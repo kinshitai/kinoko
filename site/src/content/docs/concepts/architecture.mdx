@@ -1,0 +1,103 @@
+---
+title: Architecture
+description: "How Kinoko's three commands split responsibilities: init, serve, and run."
+slug: concepts/architecture
+---
+
+## Three Commands
+
+Kinoko is built around three commands, each with a clear responsibility:
+
+| Command | Role | What it runs |
+|---------|------|-------------|
+| `kinoko init` | **Setup** | Creates workspace, config, client SSH key, cache directory |
+| `kinoko serve` | **Infrastructure** | Git server, Discovery API, hooks, SQLite indexer |
+| `kinoko run` | **Agent daemon** | Worker pool, scheduler, injection engine |
+
+This separation means the shared infrastructure can run on one machine while multiple developers each run their own local daemon.
+
+## What Runs Where
+
+### `kinoko serve` — Shared Infrastructure
+
+The server is pure infrastructure. It doesn't run extraction or injection itself — it hosts the data and provides APIs:
+
+- **Soft Serve git server** (SSH) — the source of truth for all skills
+- **Discovery API** (HTTP) — `GET /api/v1/discover`, `GET /api/v1/health`, `POST /api/v1/ingest`
+- **Pre-receive hook** — scans for credentials, rejects pushes with secrets
+- **Post-receive hook** — parses SKILL.md and indexes into SQLite
+- **SQLite** — a derived cache for fast search; git is the write path
+
+### `kinoko run` — Local Agent Daemon
+
+The daemon runs alongside your AI agents on your machine:
+
+- **Worker pool** — picks up session logs and runs the extraction pipeline
+- **Scheduler** — periodic decay cycles, stale sweeps, stats
+- **Injection engine** — loads relevant skills into agent sessions based on context
+
+This is where the intelligence lives. Extraction, quality assessment, injection — all happen locally.
+
+### `kinoko init` — One-time Setup
+
+Sets up the workspace. Run once per machine:
+
+- Creates `~/.kinoko/` with config, cache dir, and client SSH key
+- With `--connect <url>`, configures as a client of a remote server
+- Without `--connect`, defaults to `localhost:23231` for solo use
+
+## Git as Write Path
+
+A key architectural decision: **git is the source of truth**, SQLite is derived.
+
+```
+Agent session → extraction (run) → git push → pre-receive hook (serve)
+                                            → post-receive hook (serve) → SQLite index
+```
+
+This means:
+- You can rebuild the entire SQLite database from git at any time
+- The security boundary is the git server (pre-receive hooks)
+- Skills have full version history via git
+
+## Deployment Patterns
+
+### Solo
+
+Everything on one machine. Simplest setup.
+
+```bash
+kinoko init
+kinoko serve    # terminal 1
+kinoko run      # terminal 2
+```
+
+### Team
+
+One server, multiple developers.
+
+**Server machine:**
+```bash
+kinoko init
+kinoko serve
+```
+
+**Each developer's machine:**
+```bash
+kinoko init --connect server-host:23231
+kinoko run
+```
+
+Each developer's `run` daemon extracts knowledge locally and pushes to the shared server. Injection pulls from the same shared pool.
+
+## Degraded Mode
+
+`kinoko run` gracefully degrades when API keys are missing:
+
+| Missing Key | Effect |
+|-------------|--------|
+| LLM key | Extraction disabled; scheduler + injection still work |
+| Embedding key | Injection disabled; scheduler still works |
+| Both | Scheduler only (decay, stats) |
+
+This means you can start using Kinoko immediately and add API keys later.

@@ -28,7 +28,19 @@ The four models form a coherent pipeline:
 
 Each model addresses a different challenge (volume, quality, relevance, freshness), and each produces a different type of signal that the next stage depends on.
 
+## Architecture: Three Commands
+
+Kinoko splits into three commands that work together:
+
+- **`kinoko init`** — sets up your workspace (config, SSH key, cache)
+- **`kinoko serve`** — shared infrastructure (git server, Discovery API, hooks)
+- **`kinoko run`** — local agent daemon (extraction workers, scheduler, injection)
+
+The extraction, quality, injection, and decay pipelines described above all execute inside `kinoko run`. The server (`kinoko serve`) is pure infrastructure — git repos, API endpoints, and hooks. See [Architecture](/concepts/architecture/) for the full picture.
+
 ## Further Reading
 
+- [Architecture](/concepts/architecture/) — the init/run/serve split
+- [Security](/concepts/security/) — credential scanning and safety
 - [CLI Reference](/reference/cli/) — commands and flags
 - [Glossary](/reference/glossary/) — definitions of terms used throughout the project

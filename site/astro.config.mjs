@@ -42,6 +42,8 @@ export default defineConfig({
           label: 'Concepts',
           items: [
             { label: 'Overview', slug: 'concepts/overview' },
+            { label: 'Architecture', slug: 'concepts/architecture' },
+            { label: 'Security', slug: 'concepts/security' },
             { label: 'Extraction (Gold Panning)', slug: 'concepts/extraction' },
             { label: 'Quality (Wine Tasting)', slug: 'concepts/quality' },
             { label: 'Injection (Reference Librarian)', slug: 'concepts/injection' },

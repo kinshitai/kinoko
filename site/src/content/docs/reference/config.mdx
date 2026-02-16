@@ -6,6 +6,14 @@ slug: reference/config
 
 Kinoko configuration lives at `~/.kinoko/config.yaml`. Created by `kinoko init` with sensible defaults.
 
+## Client vs Server Config
+
+The same config file is used by both `kinoko serve` (infrastructure) and `kinoko run` (agent daemon). In a **solo** setup, one config file drives both. In a **team** setup:
+
+- The **server** machine uses `server`, `storage`, `hooks`, and `libraries` sections
+- Each **client** machine primarily uses `extraction`, `decay`, `embedding`, `llm`, and `defaults`
+- `kinoko init --connect` creates a client-oriented config pointing at the remote server
+
 ## Full Configuration
 
 ```yaml

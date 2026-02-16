@@ -14,9 +14,13 @@ USAGE:
 
 AVAILABLE COMMANDS:
   init      Initialize Kinoko workspace
-  serve     Start the Kinoko git server
+  serve     Start the Kinoko infrastructure server
+  run       Start the local agent daemon
   extract   Run extraction pipeline on a session log file
   decay     Run one decay cycle
+  scan      Scan files for credentials and secrets
+  index     Index a skill repo into SQLite
+  pull      Clone or update skill repositories
   stats     Print pipeline metrics
   help      Help about any command
 
@@ -32,24 +36,31 @@ GLOBAL FLAGS:
 Initialize a new Kinoko workspace in `~/.kinoko/`.
 
 ```bash
-kinoko init
+kinoko init [flags]
 ```
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--connect` | string | `""` | Connect to a Kinoko server URL (e.g. `localhost:23231`) |
 
 **Creates:**
 - `~/.kinoko/` — workspace root
 - `~/.kinoko/config.yaml` — default configuration
-- `~/.kinoko/skills/` — local skills directory (initialized as a git repo)
+- `~/.kinoko/cache/` — local skill cache directory
+- Client SSH key for server authentication
 
 **Behavior:**
 - Safe to run multiple times — won't overwrite existing files
-- Skips git init gracefully if git isn't installed
-- Creates an initial commit with `.gitignore`
+- With `--connect`, configures the workspace as a client of the given server
+- Without `--connect`, sets up for solo use (localhost)
 
 ---
 
 ## `kinoko serve`
 
-Start the Soft Serve git server for hosting skill repositories.
+Start the shared Kinoko infrastructure server.
 
 ```bash
 kinoko serve [flags]
@@ -61,12 +72,57 @@ kinoko serve [flags]
 |------|------|---------|-------------|
 | `--config` | string | `~/.kinoko/config.yaml` | Path to config file |
 
+**What it starts:**
+- **Soft Serve git server** (SSH) — skill repos live here
+- **Discovery API** (HTTP) — `/api/v1/discover`, `/api/v1/health`, `/api/v1/ingest`
+- **Git hooks** — credential scanning (pre-receive) and auto-indexing (post-receive)
+- **SQLite indexer** — derived cache from git repos
+
 **Behavior:**
+- Self-bootstraps on first run: creates data dir and admin keypair
 - Binds to `server.host`:`server.port` from config (default `127.0.0.1:23231`)
-- Opens SQLite database and builds extraction + injection pipelines
-- Registers `OnSessionStart` (injection) and `OnSessionEnd` (extraction) hooks
-- When A/B testing is enabled, wraps injection with `ABInjector`
-- Degrades gracefully: no embedding key → injection disabled; no LLM key → extraction disabled
+- Handles SIGINT/SIGTERM for graceful shutdown
+- This is **pure infrastructure** — run `kinoko run` separately for the agent daemon
+
+**Environment variables:**
+
+| Variable | Purpose |
+|---|---|
+| `OPENAI_API_KEY` | Fallback API key for embeddings (used by indexer) |
+| `KINOKO_EMBEDDING_API_KEY` | API key for embeddings (overrides `OPENAI_API_KEY`) |
+
+**Example:**
+```bash
+kinoko serve
+kinoko serve --config ./my-config.yaml
+```
+
+---
+
+## `kinoko run`
+
+Start the local agent daemon that runs alongside your AI agents.
+
+```bash
+kinoko run [flags]
+```
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--config` | string | `~/.kinoko/config.yaml` | Path to config file |
+| `--server` | string | from config | Server URL override (e.g. `localhost:23231`) |
+
+**What it starts:**
+- **Worker pool** — extracts knowledge from local session logs
+- **Scheduler** — decay cron, stale sweep, periodic stats
+- **Injection** — loads relevant skills into agent sessions
+
+**Behavior:**
+- Reads server URL from config to push extracted skills
+- **Degraded mode:** works without LLM key — scheduler and injection still run, only extraction is disabled
+- Without embedding key, injection is disabled
 - Handles SIGINT/SIGTERM for graceful shutdown
 
 **Environment variables:**
@@ -80,8 +136,8 @@ kinoko serve [flags]
 **Example:**
 ```bash
 export OPENAI_API_KEY=sk-...
-kinoko serve
-kinoko serve --config ./my-config.yaml
+kinoko run
+kinoko run --server my-server:23231
 ```
 
 ---
@@ -146,7 +202,6 @@ kinoko decay [flags]
 ```bash
 kinoko decay --library my-team
 kinoko decay --dry-run
-kinoko decay --config ./config.yaml --library local
 ```
 
 **Output:**
@@ -157,6 +212,97 @@ Decay cycle complete for library "local"
   Deprecated: 3
   Rescued:    2
 ```
+
+---
+
+## `kinoko scan`
+
+Scan files for embedded credentials, API keys, tokens, and other secrets.
+
+```bash
+kinoko scan [file] [flags]
+```
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--dir` | string | `""` | Scan a directory recursively |
+| `--stdin` | bool | `false` | Read content from stdin (for git hooks) |
+| `--reject` | bool | `false` | Exit 1 on findings (for git hooks) |
+
+**Examples:**
+```bash
+kinoko scan config.yaml          # Scan a single file
+kinoko scan --dir ./skills       # Scan a directory recursively
+kinoko scan --stdin              # Scan stdin (for git hooks)
+echo "sk-abc123..." | kinoko scan --stdin --reject
+```
+
+**Behavior:**
+- Uses the same 14-pattern credential scanner as the pre-receive hook
+- High-confidence findings (≥0.7) are reported
+- With `--reject`, exits with code 1 when credentials are found
+- Stdin is limited to 10 MB
+
+See [Security](/concepts/security/) for details on the scanning patterns.
+
+---
+
+## `kinoko index`
+
+Index a skill repo into SQLite. Typically invoked by the post-receive hook, but can be run manually.
+
+```bash
+kinoko index [flags]
+```
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--repo` | string | `$KINOKO_REPO` | Repo name (e.g. `local/fix-nplus1`) |
+| `--rev` | string | `$KINOKO_REV` | Git revision (commit hash) |
+| `--dsn` | string | `$KINOKO_STORAGE_DSN` | SQLite database path |
+
+**Environment variables:**
+
+| Variable | Purpose |
+|---|---|
+| `KINOKO_REPO` | Repo name (fallback for `--repo`) |
+| `KINOKO_REV` | Git revision (fallback for `--rev`) |
+| `KINOKO_STORAGE_DSN` | SQLite path (fallback for `--dsn`, default `~/.kinoko/kinoko.db`) |
+
+**Example:**
+```bash
+kinoko index --repo local/fix-nplus1 --rev HEAD
+```
+
+---
+
+## `kinoko pull`
+
+Clone or update skill repositories from the connected Kinoko server.
+
+```bash
+kinoko pull [skill-repo] [flags]
+```
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--all` | bool | `false` | Sync all cached skills |
+
+**Examples:**
+```bash
+kinoko pull local/fix-nplus1     # Clone or update a specific skill
+kinoko pull --all                # Sync all cached skills
+```
+
+**Behavior:**
+- Requires a server connection (set up via `kinoko init --connect`)
+- Skills are cached locally in `~/.kinoko/cache/`
 
 ---
 
@@ -204,7 +350,7 @@ kinoko --version
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | Error (config issues, startup failures, runtime errors) |
+| 1 | Error (config issues, startup failures, runtime errors, credential scan findings) |
 | 2 | Extraction rejected (`kinoko extract` only) |
 | 3 | Extraction error (`kinoko extract` only) |
 | 130 | Interrupted (Ctrl+C) |

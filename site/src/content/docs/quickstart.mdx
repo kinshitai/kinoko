@@ -27,7 +27,8 @@ kinoko init
 
 This creates:
 - `~/.kinoko/config.yaml` — configuration
-- `~/.kinoko/skills/` — local skills (git repo)
+- `~/.kinoko/cache/` — local skill cache
+- Client SSH key for server authentication
 
 You'll see:
 ```
@@ -53,15 +54,36 @@ kinoko serve
 
 Output:
 ```
-INFO Kinoko serve command started
-INFO Configuration loaded successfully host=127.0.0.1 port=23231 ...
-INFO Kinoko git server is ready ssh_url=ssh://localhost:23231
-INFO Kinoko is ready. Use Ctrl+C to shutdown gracefully.
+INFO Kinoko infrastructure server started
+INFO Git server ready                    ssh_url=ssh://localhost:23231
+INFO Discovery API ready                 http=:23232
+INFO Hooks enabled                       credential_scan=true indexing=true
 ```
 
-Keep this terminal open.
+Keep this terminal open. The server self-bootstraps on first run — it creates its data directory and admin keypair automatically.
 
-## 5. Test It
+## 5. Start the Agent Daemon
+
+In another terminal:
+
+```bash
+export OPENAI_API_KEY=sk-...
+kinoko run
+```
+
+Output:
+```
+INFO Kinoko agent daemon started
+INFO Worker pool ready                   workers=4
+INFO Scheduler started                   decay_interval=24h
+INFO Injection enabled                   skills_loaded=0
+```
+
+:::tip[No API key?]
+`kinoko run` works without an LLM key in degraded mode — the scheduler and injection still function, only extraction is disabled.
+:::
+
+## 6. Test It
 
 In another terminal:
 
@@ -71,43 +93,36 @@ ssh -p 23231 localhost
 
 You should see a Soft Serve TUI or connection info. Press `q` to quit.
 
-## 6. Create a Test Skill
+You can also check the API:
 
 ```bash
-mkdir -p ~/.kinoko/skills/test-skill
-cat > ~/.kinoko/skills/test-skill/SKILL.md << 'EOF'
----
-name: test-skill
-version: 1
-tags: [test]
-author: you@example.com
-confidence: 0.8
-created: 2026-02-15
----
-
-# Test Skill
-
-## When to Use
-Verifying your Kinoko setup works.
-
-## Solution
-If you can read this, your installation is working.
-EOF
-
-cd ~/.kinoko/skills
-git add test-skill/
-git commit -m "Add test skill"
+curl http://localhost:23232/api/v1/health
 ```
 
 ## What You Have Now
 
-- ✅ Kinoko server on `ssh://localhost:23231`
-- ✅ Local skills repo at `~/.kinoko/skills/`
-- ✅ A test skill demonstrating the format
+- ✅ Infrastructure server on `ssh://localhost:23231` with Discovery API
+- ✅ Local agent daemon running extraction, injection, and decay
+- ✅ Credential scanning active on all pushes
+- ✅ Ready for agents to start generating knowledge
+
+## Solo vs Team
+
+What you just set up is the **solo** configuration — all three components on one machine:
+
+| Command | Purpose |
+|---------|---------|
+| `kinoko init` | Set up your workspace and client config |
+| `kinoko serve` | Shared infrastructure (git server, API, hooks) |
+| `kinoko run` | Local agent daemon (extraction, injection, decay) |
+
+For **team** use, one machine runs `kinoko serve`, and each team member runs `kinoko init --connect <server-url>` + `kinoko run` locally. See [Architecture](/concepts/architecture/) for details.
 
 ## Next Steps
 
+- [Architecture](/concepts/architecture/) — understand the init/run/serve split
 - [Configuration Reference](/reference/config/) — customize your setup
 - [Skill Format](/reference/skill-format/) — understand SKILL.md
 - [CLI Reference](/reference/cli/) — all commands and flags
+- [Security](/concepts/security/) — credential scanning and safety guarantees
 - [Troubleshooting](/operations/troubleshooting/) — if something went wrong

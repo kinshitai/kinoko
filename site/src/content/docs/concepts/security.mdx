@@ -1,0 +1,73 @@
+---
+title: Security
+description: How Kinoko prevents credential leaks, validates content, and keeps your knowledge base safe.
+slug: concepts/security
+---
+
+## The Problem
+
+AI agents work with real credentials — API keys, tokens, passwords. When Kinoko extracts knowledge from agent sessions, there's a risk of capturing those secrets and storing them in shared skill repos. A single leaked credential in a SKILL.md file could propagate across an entire team.
+
+## Credential Scanning
+
+Kinoko includes a built-in credential scanner (`internal/sanitize`) that detects **14 secret patterns** including:
+
+- AWS access keys and secret keys
+- OpenAI / Anthropic / Google API keys
+- GitHub tokens (classic and fine-grained)
+- Slack tokens and webhook URLs
+- Generic high-entropy strings that look like secrets
+- Private keys (PEM blocks)
+- Database connection strings with embedded passwords
+
+Each pattern has a confidence score. Findings at or above the redaction threshold (default 0.7) are flagged or auto-redacted.
+
+### Where scanning runs
+
+| Context | When | Action |
+|---------|------|--------|
+| **Pre-receive hook** | Every `git push` to the server | Rejects the push if credentials found |
+| **Extraction pipeline** | During knowledge extraction | Redacts before skill is written |
+| **Manual scan** | `kinoko scan` CLI | Reports findings to stdout |
+
+### Using the CLI
+
+```bash
+# Scan a file
+kinoko scan config.yaml
+
+# Scan a directory
+kinoko scan --dir ./skills
+
+# Use in a script (exit 1 on findings)
+kinoko scan --reject --dir ./output
+```
+
+## Git Hooks
+
+The `kinoko serve` git server installs two hooks automatically:
+
+### Pre-receive: Credential Scanning
+
+Every push is scanned before it's accepted. If high-confidence credentials are detected, the push is **rejected** with a message explaining what was found and where.
+
+This means secrets cannot enter the shared knowledge base through normal git operations.
+
+### Post-receive: Auto-indexing
+
+After a successful push, the skill is automatically parsed and indexed into SQLite. This keeps the search index in sync with the git repos without manual intervention.
+
+## Path Validation
+
+File paths in skill repos are validated to prevent directory traversal attacks. Paths containing `..`, absolute paths, and symlinks outside the repo boundary are rejected.
+
+## Defense in Depth
+
+Kinoko's security is layered:
+
+1. **Extraction time** — scanner redacts secrets before skills are written
+2. **Push time** — pre-receive hook rejects any secrets that slip through
+3. **Manual audit** — `kinoko scan --dir` lets you verify your repos at any time
+4. **Git as source of truth** — SQLite is a derived cache, so the security boundary is the git server
+
+No single layer needs to be perfect. Each catches what the others might miss.

@@ -45,3 +45,7 @@ When working on extraction, think about which stage a filter belongs in:
 - Does it require judgment? → **Stage 3**
 
 Moving a filter to an earlier stage saves cost. Moving it later improves precision.
+
+## Credential Scanning
+
+Before any extracted skill is written, it passes through a credential scanner that detects 14 secret patterns (API keys, tokens, private keys, etc.). Findings above the confidence threshold are automatically redacted. This runs again at the git level via a pre-receive hook — see [Security](/concepts/security/) for details.

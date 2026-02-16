@@ -54,15 +54,27 @@ Pre-installed on macOS, most Linux distros, and Windows 10+.
 
 ## Post-Install Setup
 
+Kinoko uses three commands — one for setup, one for infrastructure, one for the local daemon:
+
 ```bash
-# Initialize workspace
+# 1. Initialize workspace (config, SSH key, cache dir)
 kinoko init
 
-# Start server
+# 2. Start shared infrastructure (git server, API, hooks)
 kinoko serve
+
+# 3. Start local agent daemon (workers, scheduler, injection)
+kinoko run
 ```
 
-See the [Quickstart](/quickstart/) for a complete walkthrough.
+For team setups, connect to an existing server instead:
+
+```bash
+kinoko init --connect your-server:23231
+kinoko run
+```
+
+See the [Quickstart](/quickstart/) for a complete walkthrough and [Architecture](/concepts/architecture/) for deployment patterns.
 
 ## Common Issues
 
@@ -85,5 +97,5 @@ Go isn't installed or isn't in PATH. Install from https://golang.org/dl/ and ens
 
 ```bash
 rm $(which kinoko)
-rm -rf ~/.kinoko  # WARNING: deletes all local skills and config
+rm -rf ~/.kinoko  # WARNING: deletes all local skills, config, and cache
 ```
