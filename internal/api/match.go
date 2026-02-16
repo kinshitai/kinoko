@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 // MatchRequest is the JSON body for POST /api/v1/match.
@@ -53,7 +55,7 @@ func (s *Server) handleMatch(w http.ResponseWriter, r *http.Request) {
 	if req.Limit <= 0 {
 		req.Limit = 5
 	}
-	if req.MinScore < 0 {
+	if req.MinScore <= 0 {
 		req.MinScore = 0.5
 	}
 
@@ -73,9 +75,24 @@ func (s *Server) handleMatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	const maxResponseBytes = 64 * 1024 // 64KB cap on total skill content
+
 	skills := make([]MatchedSkillDTO, 0, len(similar))
+	totalSize := 0
 	for _, sim := range similar {
 		content := readSkillContent(sim.FilePath)
+		totalSize += len(content)
+		if totalSize > maxResponseBytes {
+			// Truncate this skill's content to stay within budget.
+			overage := totalSize - maxResponseBytes
+			content = content[:len(content)-overage]
+			skills = append(skills, MatchedSkillDTO{
+				Name:    sim.Name,
+				Score:   sim.Score,
+				Content: content,
+			})
+			break
+		}
 		skills = append(skills, MatchedSkillDTO{
 			Name:    sim.Name,
 			Score:   sim.Score,
@@ -87,11 +104,17 @@ func (s *Server) handleMatch(w http.ResponseWriter, r *http.Request) {
 }
 
 // readSkillContent reads a SKILL.md file from disk. Returns empty string on error.
+// Rejects paths containing traversal sequences to prevent path traversal attacks.
 func readSkillContent(filePath string) string {
 	if filePath == "" {
 		return ""
 	}
-	data, err := os.ReadFile(filePath)
+	// Block any path containing traversal components.
+	cleaned := filepath.Clean(filePath)
+	if strings.Contains(cleaned, "..") {
+		return ""
+	}
+	data, err := os.ReadFile(cleaned)
 	if err != nil {
 		return ""
 	}
