@@ -142,7 +142,6 @@ func runExtract(cmd *cobra.Command, args []string) error {
 		Stage1:     stage1,
 		Stage2:     stage2,
 		Stage3:     stage3,
-		Writer:     store,
 		Sessions:   store,
 		Reviewer:   store,
 		Novelty:    novelty,

@@ -66,7 +66,6 @@ func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, gitSrv *gitse
 		Stage1:    stage1,
 		Stage2:    stage2,
 		Stage3:    stage3,
-		Writer:    store,
 		Sessions:  store,
 		Reviewer:  store,
 		Committer: committer,

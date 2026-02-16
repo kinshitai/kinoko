@@ -18,11 +18,6 @@ import (
 // Compile-time interface check.
 var _ model.Extractor = (*Pipeline)(nil)
 
-// SkillWriter persists a skill record and its SKILL.md body.
-type SkillWriter interface {
-	Put(ctx context.Context, skill *model.SkillRecord, body []byte) error
-}
-
 // SessionWriter persists and updates session records.
 type SessionWriter interface {
 	InsertSession(ctx context.Context, session *model.SessionRecord) error
@@ -34,12 +29,11 @@ type HumanReviewWriter interface {
 	InsertReviewSample(ctx context.Context, sessionID string, resultJSON []byte) error
 }
 
-// Pipeline implements model.Extractor by wiring Stage1 → Stage2 → Stage3 → SkillWriter.
+// Pipeline implements model.Extractor by wiring Stage1 → Stage2 → Stage3 → git commit.
 type Pipeline struct {
 	stage1     Stage1Filter
 	stage2     Stage2Scorer
 	stage3     Stage3Critic
-	writer     SkillWriter
 	sessions   SessionWriter
 	reviewer   HumanReviewWriter
 	log        *slog.Logger
@@ -63,7 +57,6 @@ type PipelineConfig struct {
 	Stage1     Stage1Filter
 	Stage2     Stage2Scorer
 	Stage3     Stage3Critic
-	Writer     SkillWriter
 	Sessions   SessionWriter
 	Reviewer   HumanReviewWriter
 	Log        *slog.Logger
@@ -107,7 +100,6 @@ func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 		stage1:     cfg.Stage1,
 		stage2:     cfg.Stage2,
 		stage3:     cfg.Stage3,
-		writer:     cfg.Writer,
 		sessions:   cfg.Sessions,
 		reviewer:   cfg.Reviewer,
 		novelty:    cfg.Novelty,
@@ -435,7 +427,7 @@ func (p *Pipeline) publish(run *extractionRun) (*model.ExtractionResult, error) 
 			if len(noveltyResult.Similar) > 0 {
 				similarName = noveltyResult.Similar[0].Name
 			}
-			p.log.Info("skill not novel, skipping push",
+			p.log.Info("skill not novel, skipping commit",
 				"session_id", run.session.ID,
 				"skill_name", skillName,
 				"score", noveltyResult.Score,
