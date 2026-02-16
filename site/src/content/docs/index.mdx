@@ -3,7 +3,7 @@ title: Kinoko
 description: Knowledge-sharing infrastructure for AI agents.
 template: splash
 hero:
-  tagline: "Every problem solved once is solved for everyone."
+  tagline: "Your AI agents solve the same problems over and over. Kinoko makes them stop."
   actions:
     - text: Get Started
       link: /what-is-kinoko/
@@ -17,76 +17,139 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## What Kinoko Does
-
-AI agents solve problems all day — debugging breakthroughs, architecture insights, clever workarounds. Every solution dies when the session ends. The next person with the same problem starts from zero.
-
-Kinoko captures what agents learn and delivers it to future sessions. Automatically, securely, without anyone lifting a finger.
-
+<div class="kinoko-hero-art">
 ```
-Agent solves problem → Knowledge extracted → Stored in git → Injected into future sessions
-        ↑                                                              |
-        └──────────────────────────────────────────────────────────────┘
+                    🍄
+                   ╱  ╲
+                  ╱    ╲
+     ┌──────────┐      ┌──────────┐      ┌──────────┐
+     │ Agent A  │      │ Agent B  │      │ Agent C  │
+     │ solves   │      │ inherits │      │ inherits │
+     │ problem  │      │ solution │      │ solution │
+     └────┬─────┘      └────┬─────┘      └────┬─────┘
+          │                 │                  │
+     ─────┴────────── mycelium ────────────────┴─────
+          ·    ·    ·    ·    ·    ·    ·    ·    ·
+           ·      ·      ·      ·      ·      ·
+             ·       ·       ·       ·       ·
+```
+</div>
+
+<div class="kinoko-pitch">
+
+**Agent A** debugs a CORS misconfiguration for 20 minutes. Finds the fix. Session ends. Knowledge gone.
+
+**Agent B** hits the same CORS issue next week. Another 20 minutes. Another API call. Same answer.
+
+**Kinoko** extracts the fix from Agent A's session, scores it, stores it. When Agent B starts working, the answer is already there. Injected automatically. Problem solved in seconds, not minutes.
+
+</div>
+
+## How It Works
+
+<div class="kinoko-flow">
+
+<div class="flow-step">
+<div class="flow-number">1</div>
+<div class="flow-content">
+
+### Extract
+
+```bash
+kinoko extract session.log
 ```
 
-Like mycelium connecting trees in a forest, Kinoko connects agents through shared knowledge — nutrients flowing invisibly through the network, making every node stronger.
+Three-stage pipeline filters noise cheaply. Metadata check → embedding similarity → LLM critique. Only ~5% of sessions contain reusable knowledge. Kinoko finds them without burning tokens on the rest.
 
-## The Pipeline
+</div>
+</div>
+
+<div class="flow-connector">▼</div>
+
+<div class="flow-step">
+<div class="flow-number">2</div>
+<div class="flow-content">
+
+### Store
+
+```bash
+kinoko ingest skill.md
+```
+
+Skills live in **git repos you control**. Not a cloud service, not a database you can't inspect. Plain markdown files with structured frontmatter. Version-controlled, diffable, auditable.
+
+</div>
+</div>
+
+<div class="flow-connector">▼</div>
+
+<div class="flow-step">
+<div class="flow-number">3</div>
+<div class="flow-content">
+
+### Inject
+
+```bash
+kinoko match "CORS error in Express middleware"
+```
+
+Pattern matching powered by local vector embeddings (~4ms). Finds relevant skills and injects them into agent context. The right knowledge at the right time — no manual searching.
+
+</div>
+</div>
+
+</div>
+
+## Why Kinoko?
 
 <CardGrid>
-  <Card title="Extraction" icon="seti:pipeline">
-    Multi-stage filtering eliminates noise cheaply. Metadata checks first, LLM critique last. Most sessions aren't worth keeping — Kinoko finds the ones that are.
-
-    [How extraction works →](/concepts/extraction/)
+  <Card title="Zero-cost embeddings" icon="rocket">
+    Local ONNX Runtime inference. No API calls for vector operations. Embed in 4ms, not 400ms. Your data never leaves your machine.
   </Card>
 
-  <Card title="Quality Scoring" icon="star">
-    7-dimension evaluation, not thumbs up/down. Each skill is scored on specificity, completeness, portability, accuracy, and more. Structured judgment you can debug.
-
-    [How quality works →](/concepts/quality/)
+  <Card title="Git-native storage" icon="seti:git">
+    Skills are markdown files in git repos. `git log` is your audit trail. `git diff` shows what changed. Fork, branch, merge — knowledge management with tools you already know.
   </Card>
 
-  <Card title="Injection" icon="open-book">
-    Pattern matching, not just keyword search. Understands the problem beneath the question. The most useful knowledge often doesn't look like what you asked for.
-
-    [How injection works →](/concepts/injection/)
+  <Card title="Smart filtering" icon="star">
+    Most sessions aren't worth keeping. Three-stage extraction rejects 95% of noise before touching an LLM. You pay for intelligence only when it matters.
   </Card>
 
-  <Card title="Decay" icon="warning">
-    Knowledge has a half-life. Tactical fixes expire faster than foundational patterns. The system forgets gracefully — and can remember again when evidence warrants it.
+  <Card title="Knowledge decay" icon="warning">
+    Tactical fixes expire. Foundational patterns persist. Skills have a half-life that reflects how knowledge actually works. Outdated advice fades away automatically.
+  </Card>
 
-    [How decay works →](/concepts/decay/)
+  <Card title="Multi-provider LLM" icon="setting">
+    OpenAI or Anthropic — switch with one config field. Factory pattern, same interface. Bring your preferred model.
+  </Card>
+
+  <Card title="Single binary" icon="seti:config">
+    One `go install`. No Docker required. No microservices. SQLite for speed, git for truth. Runs anywhere Go runs.
   </Card>
 </CardGrid>
 
 ## Quick Start
 
 ```bash
+# Install
 git clone https://github.com/kinshitai/kinoko.git
 cd kinoko && go install ./cmd/kinoko
-kinoko init && kinoko serve
+
+# Initialize and run
+kinoko init
+kinoko serve
 ```
 
-[Full quickstart guide →](/quickstart/)
+Three commands. Under a minute. [Full quickstart guide →](/quickstart/)
 
-## Built for Developers
+## The Name
 
-<CardGrid>
-  <Card title="Who it's for" icon="laptop">
-    Teams running AI agents at scale — Claude, OpenAI, Codex, or your own. If your agents solve the same problems twice, Kinoko pays for itself on day one.
-  </Card>
+*Kinoko* (きのこ) means mushroom in Japanese. Like mycelium connecting trees in a forest — sharing nutrients invisibly through the network, making every organism stronger — Kinoko connects AI agents through shared knowledge.
 
-  <Card title="How it's built" icon="seti:config">
-    Single Go binary. Git-first — your knowledge lives in repos you control, not someone else's cloud. SQLite for speed, git for truth. Self-host everything.
-  </Card>
-</CardGrid>
+Every problem solved once is solved for everyone. 🍄
 
-## Get Involved
+<div class="kinoko-links">
 
-Kinoko is open source and early. That means you can shape it.
+[What is Kinoko?](/what-is-kinoko/) · [Concepts](/concepts/overview/) · [CLI Reference](/reference/cli/) · [API Reference](/reference/api/) · [Project Status](/project-status/)
 
-- ⭐ [Star the repo](https://github.com/kinshitai/kinoko) to follow along
-- 🐛 [Open an issue](https://github.com/kinshitai/kinoko/issues) — bug reports, feature ideas, questions
-- 🔧 [Contribute](https://github.com/kinshitai/kinoko/blob/main/CONTRIBUTING.md) — PRs welcome, especially around new extraction strategies and injection patterns
-
-[Project status & roadmap →](/project-status/)
+</div>
