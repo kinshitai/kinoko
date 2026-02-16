@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: "How Kinoko's three commands split responsibilities: init, serve, and run."
+description: "How Kinoko's three commands split responsibilities, the git-first data model, and the end-to-end data flow."
 slug: concepts/architecture
 ---
 
@@ -11,54 +11,164 @@ Kinoko is built around three commands, each with a clear responsibility:
 | Command | Role | What it runs |
 |---------|------|-------------|
 | `kinoko init` | **Setup** | Creates workspace, config, client SSH key, cache directory |
-| `kinoko serve` | **Infrastructure** | Git server, Discovery API, hooks, SQLite indexer |
-| `kinoko run` | **Agent daemon** | Worker pool, scheduler, injection engine |
+| `kinoko serve` | **Infrastructure** | Git server, embedding engine, APIs, hooks, SQLite indexer |
+| `kinoko run` | **Agent daemon** | Worker pool, scheduler, extraction pipeline, injection client |
 
 This separation means the shared infrastructure can run on one machine while multiple developers each run their own local daemon.
+
+## End-to-End Data Flow
+
+From agent session to injected knowledge:
+
+```
+  ┌─────────────────┐
+  │  Agent session   │
+  └────────┬────────┘
+           ▼
+  ┌─────────────────────────────────┐
+  │  kinoko run: extraction pipeline │
+  └────────┬────────────────────────┘
+           ▼
+  ┌──────────────────────┐
+  │ Stage 1: metadata    │───reject──▶ discard
+  │ pre-filter           │
+  └────────┬─────────────┘
+           │ pass
+           ▼
+  ┌──────────────────────┐
+  │ Stage 2: embedding   │───reject──▶ discard
+  │ novelty + rubric     │
+  └────────┬─────────────┘
+           │ pass
+           ▼
+  ┌──────────────────────┐
+  │ Stage 3: LLM critic  │───reject──▶ discard
+  │ + SKILL.md generation │
+  └────────┬─────────────┘
+           │ extract
+           ▼
+  ┌──────────────────────┐
+  │ Novelty check via    │──duplicate─▶ discard
+  │ server API           │
+  └────────┬─────────────┘
+           │ novel
+           ▼
+  ┌──────────────────────┐
+  │ git push to skill    │
+  │ repo                 │
+  └────────┬─────────────┘
+           ▼
+  ┌──────────────────────┐    secrets
+  │ kinoko serve:        │───found───▶ reject push
+  │ pre-receive hook     │
+  └────────┬─────────────┘
+           │ clean
+           ▼
+  ┌──────────────────────┐
+  │ post-receive hook    │
+  └───┬──────────┬───────┘
+      ▼          ▼
+  Parse &    Embed skill
+  index into  & store
+  SQLite      vector
+
+  ════════════════════════════════════
+
+  ┌─────────────────┐
+  │ New agent session│
+  └────────┬────────┘
+           ▼
+  ┌──────────────────────┐
+  │ kinoko run:          │
+  │ injection client     │
+  └────────┬─────────────┘
+           ▼
+  ┌──────────────────────┐
+  │ POST /api/v1/match   │
+  │ (server)             │
+  └────────┬─────────────┘
+           ▼
+  ┌──────────────────────┐
+  │ Embed context →      │
+  │ find similar skills  │
+  └────────┬─────────────┘
+           ▼
+  ┌──────────────────────┐
+  │ Return skill content │
+  │ to agent             │
+  └──────────────────────┘
+```
 
 ## What Runs Where
 
 ### `kinoko serve` — Shared Infrastructure
 
-The server is pure infrastructure. It doesn't run extraction or injection itself — it hosts the data and provides APIs:
+The server is pure infrastructure. It doesn't run extraction — it hosts data, runs embeddings, and provides APIs:
 
 - **Soft Serve git server** (SSH) — the source of truth for all skills
-- **Discovery API** (HTTP) — `GET /api/v1/discover`, `GET /api/v1/health`, `POST /api/v1/ingest`
-- **Pre-receive hook** — scans for credentials, rejects pushes with secrets
-- **Post-receive hook** — parses SKILL.md and indexes into SQLite
-- **SQLite** — a derived cache for fast search; git is the write path
+- **Embedding engine** (ONNX, `bge-small-en-v1.5`) — all embedding runs server-side, clients stay pure Go
+- **Novelty API** — `POST /api/v1/novelty` checks if a skill is too similar to existing ones
+- **Match API** — `POST /api/v1/match` finds relevant skills for a given context
+- **Health/Discovery API** — `GET /api/v1/health`, `GET /api/v1/discover`
+- **Pre-receive hook** — credential scanning, rejects pushes with secrets
+- **Post-receive hook** — parses SKILL.md, embeds content, indexes into SQLite
+- **SQLite + vec extension** — derived cache for fast vector search; git is the write path
 
 ### `kinoko run` — Local Agent Daemon
 
 The daemon runs alongside your AI agents on your machine:
 
-- **Worker pool** — picks up session logs and runs the extraction pipeline
+- **Worker pool** — picks up session logs and runs the extraction pipeline (Stages 1→2→3)
+- **Injection client** — queries the server match API and injects skill content into agent sessions
 - **Scheduler** — periodic decay cycles, stale sweeps, stats
-- **Injection engine** — loads relevant skills into agent sessions based on context
 
-This is where the intelligence lives. Extraction, quality assessment, injection — all happen locally.
+This is where extraction intelligence lives. The heavy LLM calls happen here, distributing compute across clients rather than concentrating it on the server.
 
 ### `kinoko init` — One-time Setup
 
 Sets up the workspace. Run once per machine:
 
 - Creates `~/.kinoko/` with config, cache dir, and client SSH key
-- With `--connect <url>`, configures as a client of a remote server
+- With `--connect &lt;url&gt;`, configures as a client of a remote server
 - Without `--connect`, defaults to `localhost:23231` for solo use
 
-## Git as Write Path
+## Port Layout
 
-A key architectural decision: **git is the source of truth**, SQLite is derived.
+`kinoko serve` listens on three consecutive ports from a single `--port` flag (default `23231`):
 
-```
-Agent session → extraction (run) → git push → pre-receive hook (serve)
-                                            → post-receive hook (serve) → SQLite index
-```
+| Port | Service | Protocol |
+|------|---------|----------|
+| Port (23231) | Soft Serve git server | SSH |
+| Port+1 (23232) | Soft Serve HTTP / TUI | HTTP |
+| Port+2 (23233) | Kinoko API (match, novelty, health) | HTTP |
+
+All three share the same base. Change `--port 9000` and you get SSH on 9000, HTTP on 9001, API on 9002.
+
+## Git-First Architecture
+
+A key architectural decision: **git is the source of truth**, everything else is derived.
+
+- Each skill lives in its own git repo on the server (repo-per-skill)
+- SQLite is a cache — blow it away and rebuild from git at any time
+- Embeddings are stored in SQLite vec but can be re-generated from skill content
+- The security boundary is the git server (pre-receive hooks scan for credentials)
+- Skills have full version history, branching, and independent versioning
 
 This means:
-- You can rebuild the entire SQLite database from git at any time
-- The security boundary is the git server (pre-receive hooks)
-- Skills have full version history via git
+- `kinoko serve --reindex` rebuilds the entire index from git
+- No data loss if SQLite corrupts — git is the recovery path
+- Skills can be forked, overridden, and layered like Docker images
+
+## Server-Side Embeddings
+
+Embedding runs **only on the server**, using ONNX Runtime with `bge-small-en-v1.5`:
+
+- **Why server-side:** keeps `kinoko run` (the client) as a pure Go binary with zero native dependencies
+- **Model:** `bge-small-en-v1.5` (~127MB ONNX, 384-dim vectors) — downloaded automatically on first `kinoko serve` start
+- **Storage:** `~/.kinoko/models/bge-small-en-v1.5/` (model.onnx, tokenizer.json, libonnxruntime.so)
+- **Vector search:** SQLite vec extension, cosine similarity
+
+Clients call the server's novelty and match APIs over HTTP — they never touch embedding models directly.
 
 ## Deployment Patterns
 
@@ -88,16 +198,16 @@ kinoko init --connect server-host:23231
 kinoko run
 ```
 
-Each developer's `run` daemon extracts knowledge locally and pushes to the shared server. Injection pulls from the same shared pool.
+Each developer's `run` daemon extracts knowledge locally (bearing the LLM cost) and pushes to the shared server. Injection pulls from the same shared pool.
 
 ## Degraded Mode
 
-`kinoko run` gracefully degrades when API keys are missing:
+`kinoko run` gracefully degrades when API keys or services are missing:
 
-| Missing Key | Effect |
-|-------------|--------|
+| Missing | Effect |
+|---------|--------|
 | LLM key | Extraction disabled; scheduler + injection still work |
-| Embedding key | Injection disabled; scheduler still works |
+| Server unreachable | Novelty check fails open (skills still extracted); injection disabled |
 | Both | Scheduler only (decay, stats) |
 
 This means you can start using Kinoko immediately and add API keys later.
