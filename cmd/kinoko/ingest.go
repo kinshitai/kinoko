@@ -108,7 +108,6 @@ func runIngest(cmd *cobra.Command, args []string) error {
 		// --force: skip critic, but validate basic structure.
 		verdict = "force"
 		skillBody = body
-		skillVersion = 1
 
 		// Validate: non-empty, valid UTF-8, reasonable size.
 		if len(body) == 0 {
@@ -254,18 +253,18 @@ func runIngest(cmd *cobra.Command, args []string) error {
 
 	now := time.Now()
 	skill := &model.SkillRecord{
-		ID:          uuid.Must(uuid.NewV7()).String(),
-		Name:        skillName,
-		Version:     skillVersion,
-		LibraryID:   ingestLibrary,
-		Category:    model.SkillCategory(skillCategory),
-		Patterns:    skillTags,
+		ID:              uuid.Must(uuid.NewV7()).String(),
+		Name:            skillName,
+		Version:         skillVersion,
+		LibraryID:       ingestLibrary,
+		Category:        model.SkillCategory(skillCategory),
+		Patterns:        skillTags,
 		SourceSessionID: sourceSessionID,
 		ExtractedBy:     "cli-ingest",
-		FilePath:    fmt.Sprintf("skills/%s/v%d/SKILL.md", skillName, skillVersion),
-		DecayScore:  1.0,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		FilePath:        fmt.Sprintf("skills/%s/v%d/SKILL.md", skillName, skillVersion),
+		DecayScore:      1.0,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
 	// Novelty check BEFORE push — gate duplicates.

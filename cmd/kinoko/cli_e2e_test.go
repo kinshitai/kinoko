@@ -296,8 +296,8 @@ func TestPrintExtractSummary_ExtractedDryRun(t *testing.T) {
 
 func TestPrintExtractSummary_RejectedStage1(t *testing.T) {
 	result := &model.ExtractionResult{
-		Status: model.StatusRejected,
-		Stage1: &model.Stage1Result{Passed: false, Reason: "too short"},
+		Status:     model.StatusRejected,
+		Stage1:     &model.Stage1Result{Passed: false, Reason: "too short"},
 		DurationMs: 10,
 	}
 
@@ -311,9 +311,9 @@ func TestPrintExtractSummary_RejectedStage1(t *testing.T) {
 
 func TestPrintExtractSummary_RejectedStage2(t *testing.T) {
 	result := &model.ExtractionResult{
-		Status: model.StatusRejected,
-		Stage1: &model.Stage1Result{Passed: true},
-		Stage2: &model.Stage2Result{Passed: false, Reason: "low novelty"},
+		Status:     model.StatusRejected,
+		Stage1:     &model.Stage1Result{Passed: true},
+		Stage2:     &model.Stage2Result{Passed: false, Reason: "low novelty"},
 		DurationMs: 20,
 	}
 
@@ -327,10 +327,10 @@ func TestPrintExtractSummary_RejectedStage2(t *testing.T) {
 
 func TestPrintExtractSummary_RejectedStage3(t *testing.T) {
 	result := &model.ExtractionResult{
-		Status: model.StatusRejected,
-		Stage1: &model.Stage1Result{Passed: true},
-		Stage2: &model.Stage2Result{Passed: true},
-		Stage3: &model.Stage3Result{Passed: false, CriticReasoning: "not reusable"},
+		Status:     model.StatusRejected,
+		Stage1:     &model.Stage1Result{Passed: true},
+		Stage2:     &model.Stage2Result{Passed: true},
+		Stage3:     &model.Stage3Result{Passed: false, CriticReasoning: "not reusable"},
 		DurationMs: 30,
 	}
 
