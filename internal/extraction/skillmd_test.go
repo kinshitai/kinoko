@@ -100,6 +100,108 @@ func TestBuildSkillMD_EmptyContent(t *testing.T) {
 	}
 }
 
+func TestParseGeneratedSkillMD_Valid(t *testing.T) {
+	raw := `---
+name: fix-database-timeout
+version: 2
+category: FIX
+tags:
+  - databases/connection-pooling
+  - go/sql
+---
+
+# Fix Database Timeout
+
+## Problem
+Connection timeouts under load.
+`
+	name, version, category, tags, err := parseGeneratedSkillMD(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "fix-database-timeout" {
+		t.Errorf("name = %q, want fix-database-timeout", name)
+	}
+	if version != 2 {
+		t.Errorf("version = %d, want 2", version)
+	}
+	if category != "FIX" {
+		t.Errorf("category = %q, want FIX", category)
+	}
+	if len(tags) != 2 || tags[0] != "databases/connection-pooling" || tags[1] != "go/sql" {
+		t.Errorf("tags = %v, want [databases/connection-pooling go/sql]", tags)
+	}
+}
+
+func TestParseGeneratedSkillMD_DefaultVersion(t *testing.T) {
+	raw := `---
+name: simple-skill
+category: BUILD
+---
+
+# Simple
+`
+	_, version, _, _, err := parseGeneratedSkillMD(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if version != 1 {
+		t.Errorf("version = %d, want 1 (default)", version)
+	}
+}
+
+func TestParseGeneratedSkillMD_MissingFrontMatter(t *testing.T) {
+	_, _, _, _, err := parseGeneratedSkillMD("# Just a heading\nNo front matter.")
+	if err == nil {
+		t.Error("expected error for missing front matter")
+	}
+}
+
+func TestParseGeneratedSkillMD_MissingName(t *testing.T) {
+	raw := `---
+category: FIX
+version: 1
+---
+
+# No name field
+`
+	_, _, _, _, err := parseGeneratedSkillMD(raw)
+	if err == nil {
+		t.Error("expected error for missing name")
+	}
+}
+
+func TestParseGeneratedSkillMD_MissingClosingDelimiter(t *testing.T) {
+	raw := `---
+name: broken
+category: FIX
+`
+	_, _, _, _, err := parseGeneratedSkillMD(raw)
+	if err == nil {
+		t.Error("expected error for missing closing delimiter")
+	}
+}
+
+func TestParseGeneratedSkillMD_CRLFLineEndings(t *testing.T) {
+	raw := "---\r\nname: crlf-skill\r\nversion: 1\r\ncategory: BUILD\r\ntags:\r\n  - go/testing\r\n---\r\n\r\n# CRLF Skill\r\n"
+	name, version, category, tags, err := parseGeneratedSkillMD(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "crlf-skill" {
+		t.Errorf("name = %q, want crlf-skill", name)
+	}
+	if version != 1 {
+		t.Errorf("version = %d, want 1", version)
+	}
+	if category != "BUILD" {
+		t.Errorf("category = %q, want BUILD", category)
+	}
+	if len(tags) != 1 || tags[0] != "go/testing" {
+		t.Errorf("tags = %v, want [go/testing]", tags)
+	}
+}
+
 func TestBuildSkillMD_ContradictionWarning(t *testing.T) {
 	skill := &model.SkillRecord{Name: "test", Version: 1, Category: model.CategoryTactical}
 

@@ -107,7 +107,7 @@ func (c *stage3Critic) Evaluate(ctx context.Context, session model.SessionRecord
 	}
 
 	// Build prompt
-	prompt := buildCriticPrompt(truncated, stage2)
+	prompt := buildCombinedPrompt(truncated, stage2)
 
 	// Call LLM with retry
 	retryResult, err := c.callWithRetry(ctx, prompt, session.ID)
@@ -158,6 +158,7 @@ type criticResponse struct {
 	Reusable    bool             `json:"reusable_pattern"`
 	Explicit    bool             `json:"explicit_reasoning"`
 	Contradicts bool             `json:"contradicts_best_practices"`
+	SkillMD     string           `json:"skill_md"`
 }
 
 func (c *stage3Critic) parseAndValidate(resp string) (*model.Stage3Result, error) {
@@ -204,7 +205,7 @@ func (c *stage3Critic) parseAndValidate(resp string) (*model.Stage3Result, error
 
 	passed := verdict == "extract"
 
-	return &model.Stage3Result{
+	result := &model.Stage3Result{
 		Passed:                   passed,
 		CriticVerdict:            verdict,
 		CriticReasoning:          cr.Reasoning,
@@ -212,7 +213,11 @@ func (c *stage3Critic) parseAndValidate(resp string) (*model.Stage3Result, error
 		ReusablePattern:          cr.Reusable,
 		ExplicitReasoning:        cr.Explicit,
 		ContradictsBestPractices: cr.Contradicts,
-	}, nil
+	}
+	if passed && cr.SkillMD != "" {
+		result.SkillMD = cr.SkillMD
+	}
+	return result, nil
 }
 
 // averageScore returns the mean of all 7 rubric scores.
