@@ -181,12 +181,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 		},
 	})
 	// Wire embedding engine for /api/v1/embed endpoint.
-	// TODO: use embedding.NewONNXEngine when built with -tags embedding.
-	// TODO: Initialize real ONNX embedding engine when build tag "embedding" is active.
-	// Without native deps, embed endpoint returns 503 (no engine).
-	// Phase A3.5: reindex on model change.
-	// embedEngine := onnx.NewEngine(cfg.Embedding, logger)
-	// apiSrv.SetEmbedEngine(embedEngine)
+	// Built with -tags embedding: real ONNX engine. Without: nil (503).
+	embedEngine, err := initEmbedEngine(cfg, logger)
+	if err != nil {
+		logger.Error("failed to init embedding engine", "error", err)
+	} else if embedEngine != nil {
+		apiSrv.SetEmbedEngine(embedEngine)
+		logger.Info("Embedding engine enabled", "model", embedEngine.ModelID(), "dims", embedEngine.Dims())
+	} else {
+		logger.Info("Embedding engine disabled (built without native deps)")
+	}
 
 	if err := apiSrv.Start(); err != nil {
 		logger.Error("failed to start API server", "error", err)
