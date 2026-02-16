@@ -12,24 +12,19 @@ A good reference librarian doesn't just search for your keywords. If you ask abo
 
 When an agent session starts, `kinoko run` captures the session context and queries the server for relevant skills:
 
-```
-  Agent Session        kinoko run          kinoko serve        SQLite + vec
-       │                   │               (Match API)              │
-       │  session starts   │                    │                   │
-       │  (context)        │                    │                   │
-       │──────────────────▶│                    │                   │
-       │                   │  POST /api/v1/match│                   │
-       │                   │───────────────────▶│                   │
-       │                   │                    │  embed context →  │
-       │                   │                    │  cosine similarity│
-       │                   │                    │─────────────────▶│
-       │                   │                    │  top-K similar   │
-       │                   │                    │◀─────────────────│
-       │                   │  skills w/ scores  │                   │
-       │                   │◀───────────────────│                   │
-       │  inject SKILL.md  │                    │                   │
-       │◀──────────────────│                    │                   │
-       │                   │                    │                   │
+```mermaid
+sequenceDiagram
+    participant Agent as Agent Session
+    participant Run as kinoko run
+    participant API as kinoko serve (Match API)
+    participant DB as SQLite + vec
+
+    Agent->>Run: Session starts (context)
+    Run->>API: POST /api/v1/match
+    API->>DB: Embed context → cosine similarity search
+    DB-->>API: Top-K similar skills
+    API-->>Run: Skills with scores + content
+    Run->>Agent: Inject relevant SKILL.md content
 ```
 
 ### The Match API

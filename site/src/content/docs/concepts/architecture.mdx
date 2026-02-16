@@ -20,83 +20,27 @@ This separation means the shared infrastructure can run on one machine while mul
 
 From agent session to injected knowledge:
 
-```
-  ┌─────────────────┐
-  │  Agent session   │
-  └────────┬────────┘
-           ▼
-  ┌─────────────────────────────────┐
-  │  kinoko run: extraction pipeline │
-  └────────┬────────────────────────┘
-           ▼
-  ┌──────────────────────┐
-  │ Stage 1: metadata    │───reject──▶ discard
-  │ pre-filter           │
-  └────────┬─────────────┘
-           │ pass
-           ▼
-  ┌──────────────────────┐
-  │ Stage 2: embedding   │───reject──▶ discard
-  │ novelty + rubric     │
-  └────────┬─────────────┘
-           │ pass
-           ▼
-  ┌──────────────────────┐
-  │ Stage 3: LLM critic  │───reject──▶ discard
-  │ + SKILL.md generation │
-  └────────┬─────────────┘
-           │ extract
-           ▼
-  ┌──────────────────────┐
-  │ Novelty check via    │──duplicate─▶ discard
-  │ server API           │
-  └────────┬─────────────┘
-           │ novel
-           ▼
-  ┌──────────────────────┐
-  │ git push to skill    │
-  │ repo                 │
-  └────────┬─────────────┘
-           ▼
-  ┌──────────────────────┐    secrets
-  │ kinoko serve:        │───found───▶ reject push
-  │ pre-receive hook     │
-  └────────┬─────────────┘
-           │ clean
-           ▼
-  ┌──────────────────────┐
-  │ post-receive hook    │
-  └───┬──────────┬───────┘
-      ▼          ▼
-  Parse &    Embed skill
-  index into  & store
-  SQLite      vector
-
-  ════════════════════════════════════
-
-  ┌─────────────────┐
-  │ New agent session│
-  └────────┬────────┘
-           ▼
-  ┌──────────────────────┐
-  │ kinoko run:          │
-  │ injection client     │
-  └────────┬─────────────┘
-           ▼
-  ┌──────────────────────┐
-  │ POST /api/v1/match   │
-  │ (server)             │
-  └────────┬─────────────┘
-           ▼
-  ┌──────────────────────┐
-  │ Embed context →      │
-  │ find similar skills  │
-  └────────┬─────────────┘
-           ▼
-  ┌──────────────────────┐
-  │ Return skill content │
-  │ to agent             │
-  └──────────────────────┘
+```mermaid
+flowchart TD
+    A[Agent session] --> B[kinoko run: extraction pipeline]
+    B --> B1[Stage 1: metadata pre-filter]
+    B1 -->|pass| B2[Stage 2: embedding novelty + rubric]
+    B2 -->|pass| B3[Stage 3: LLM critic + SKILL.md generation]
+    B1 -->|reject| X1[discard]
+    B2 -->|reject| X2[discard]
+    B3 -->|reject| X3[discard]
+    B3 -->|extract| C[Novelty check via server API]
+    C -->|novel| D[git push to skill repo]
+    C -->|duplicate| X4[discard]
+    D --> E[kinoko serve: pre-receive hook]
+    E -->|clean| F[post-receive hook]
+    E -->|secrets found| X5[reject push]
+    F --> G[Parse SKILL.md → index into SQLite]
+    F --> H[Embed skill → store vector]
+    I[New agent session] --> J[kinoko run: injection client]
+    J --> K["POST /api/v1/match (server)"]
+    K --> L[Embed context → find similar skills]
+    L --> M[Return skill content to agent]
 ```
 
 ## What Runs Where
@@ -129,7 +73,7 @@ This is where extraction intelligence lives. The heavy LLM calls happen here, di
 Sets up the workspace. Run once per machine:
 
 - Creates `~/.kinoko/` with config, cache dir, and client SSH key
-- With `--connect &lt;url&gt;`, configures as a client of a remote server
+- With `--connect <url>`, configures as a client of a remote server
 - Without `--connect`, defaults to `localhost:23231` for solo use
 
 ## Port Layout
