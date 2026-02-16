@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/kinoko-dev/kinoko/internal/embedding"
+	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
@@ -168,6 +169,62 @@ func TestTruncateForTrace(t *testing.T) {
 	}
 	if got := truncateForTrace("a long string", 5); got != "a lon..." {
 		t.Errorf("got %q", got)
+	}
+}
+
+func TestNoveltyHandler_NotNovel(t *testing.T) {
+	nc, store := setupNoveltyTest(t)
+
+	// Store a skill with an embedding so the novelty check finds a match.
+	engine := embedding.NewMockEngine(384)
+	content := "how to deploy to kubernetes"
+	vec, err := engine.Embed(context.Background(), content)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	skill := &model.SkillRecord{
+		ID:        "skill-k8s-deploy",
+		Name:      "kubernetes-deploy",
+		Version:   1,
+		LibraryID: "test-lib",
+		Category:  model.CategoryTactical,
+		Quality: model.QualityScores{
+			ProblemSpecificity:    3,
+			SolutionCompleteness:  3,
+			ContextPortability:    3,
+			ReasoningTransparency: 3,
+			TechnicalAccuracy:     3,
+			VerificationEvidence:  3,
+			InnovationLevel:       3,
+			CompositeScore:        3,
+			CriticConfidence:      0.8,
+		},
+		Embedding: vec,
+	}
+	if err := store.Put(context.Background(), skill, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Query with the same content — should be novel=false with score ≥ threshold.
+	body, _ := json.Marshal(NoveltyRequest{Content: content})
+	req := httptest.NewRequest("POST", "/api/v1/novelty", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+
+	nc.HandleNovelty(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	var resp NoveltyResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	if resp.Novel {
+		t.Errorf("expected novel=false, got true (score=%f)", resp.Score)
+	}
+	if resp.Score < 0.85 {
+		t.Errorf("score = %f, want >= 0.85 (threshold)", resp.Score)
 	}
 }
 

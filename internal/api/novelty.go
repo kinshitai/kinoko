@@ -70,6 +70,8 @@ func NewNoveltyChecker(cfg NoveltyCheckerConfig) *NoveltyChecker {
 
 // HandleNovelty is the HTTP handler for POST /api/v1/novelty.
 func (nc *NoveltyChecker) HandleNovelty(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
 	var req NoveltyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)

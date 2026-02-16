@@ -17,6 +17,9 @@ type SimilarSkill struct {
 
 // FindSimilar returns skill embeddings ranked by cosine similarity to the query vector.
 // Returns at most limit results with similarity >= minScore.
+//
+// NOTE: This is a brute-force scan over all embeddings. Adequate for small corpora
+// but will not scale. TODO: migrate to pgvector or sqlite-vss for ANN indexing.
 func (s *SQLiteStore) FindSimilar(ctx context.Context, queryVec []float32, minScore float64, limit int) ([]SimilarSkill, error) {
 	if limit <= 0 {
 		limit = 10
