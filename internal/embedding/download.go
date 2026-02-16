@@ -5,12 +5,16 @@ package embedding
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Model and runtime download URLs.
@@ -25,6 +29,18 @@ const (
 	minTokenizerSize = 500_000    // ~695KB
 	minORTLibSize    = 10_000_000 // ~25MB
 )
+
+// Known-good SHA-256 hashes for downloaded files.
+var knownHashes = map[string]string{
+	"model.onnx":        "be24f138b5cb0456981760e5dc5a26ed6847e233e3a8dd36a3eb0bd2e68e5a44",
+	"tokenizer.json":    "b6e8e5df8eba38e34907e4c8a3cac3e093dcc05b22c8f205c9c2c38cbac58b7b",
+	"libonnxruntime.so": "c4e9e3c6c209fc0e7f2bbbb10c4458bd683ac1e854aed7b944e51ed5e99e0c82",
+}
+
+// httpClient is used for all downloads, with a 5-minute timeout.
+var httpClient = &http.Client{
+	Timeout: 5 * time.Minute,
+}
 
 // EnsureModel checks that modelDir contains all required files.
 // Missing files are downloaded. Returns an error if any download fails.
@@ -67,7 +83,7 @@ func EnsureModel(modelDir string) error {
 }
 
 func downloadFile(dst, url string, minSize int64) error {
-	resp, err := http.Get(url)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return err
 	}
@@ -83,9 +99,10 @@ func downloadFile(dst, url string, minSize int64) error {
 		return err
 	}
 
-	var w io.Writer = f
+	h := sha256.New()
+	var w io.Writer = io.MultiWriter(f, h)
 	if resp.ContentLength > 0 {
-		w = &progressWriter{w: f, total: resp.ContentLength}
+		w = &progressWriter{w: io.MultiWriter(f, h), total: resp.ContentLength}
 	}
 
 	n, err := io.Copy(w, resp.Body)
@@ -99,13 +116,31 @@ func downloadFile(dst, url string, minSize int64) error {
 		return fmt.Errorf("file too small: got %d bytes, expected at least %d", n, minSize)
 	}
 
+	if err := verifyChecksum(filepath.Base(dst), h); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+
 	return os.Rename(tmp, dst)
+}
+
+// verifyChecksum checks the computed hash against the known-good hash for the given filename.
+func verifyChecksum(filename string, h hash.Hash) error {
+	expected, ok := knownHashes[filename]
+	if !ok {
+		return nil // no known hash, skip verification
+	}
+	got := hex.EncodeToString(h.Sum(nil))
+	if got != expected {
+		return fmt.Errorf("checksum mismatch for %s: got %s, expected %s", filename, got, expected)
+	}
+	return nil
 }
 
 func downloadORT(modelDir string) error {
 	fmt.Println("Downloading ONNX Runtime...")
 
-	resp, err := http.Get(ortDownloadURL)
+	resp, err := httpClient.Get(ortDownloadURL)
 	if err != nil {
 		return fmt.Errorf("download ORT: %w", err)
 	}
@@ -142,13 +177,18 @@ func downloadORT(modelDir string) error {
 			if err != nil {
 				return err
 			}
-			pw := &progressWriter{w: f, total: hdr.Size}
+			h := sha256.New()
+			pw := &progressWriter{w: io.MultiWriter(f, h), total: hdr.Size}
 			if _, err := io.Copy(pw, tr); err != nil {
 				f.Close()
 				os.Remove(tmp)
 				return err
 			}
 			f.Close()
+			if err := verifyChecksum("libonnxruntime.so", h); err != nil {
+				os.Remove(tmp)
+				return err
+			}
 			if err := os.Rename(tmp, dst); err != nil {
 				return err
 			}
