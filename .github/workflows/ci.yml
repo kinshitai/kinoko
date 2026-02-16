@@ -104,7 +104,7 @@ jobs:
           curl -sSL -o libtokenizers.tar.gz \
             https://github.com/daulet/tokenizers/releases/download/v1.25.0/libtokenizers.linux-amd64.tar.gz
           tar xzf libtokenizers.tar.gz
-          sudo cp libtokenizers.a /usr/lib/
+          sudo cp libtokenizers.a /usr/lib/x86_64-linux-gnu/libtokenizers.a
 
       - name: Download BGE-small-en-v1.5 ONNX model
         run: |
@@ -118,8 +118,10 @@ jobs:
       - name: Verify native libs
         run: |
           echo "=== libtokenizers ==="
-          ls -la /usr/local/lib/libtokenizers* || echo "NOT FOUND"
-          nm /usr/local/lib/libtokenizers.a 2>/dev/null | grep tokenizers_version || echo "NO VERSION SYMBOL"
+          ls -la /usr/lib/x86_64-linux-gnu/libtokenizers* /usr/lib/libtokenizers* 2>/dev/null || echo "NOT FOUND"
+          echo "=== test link ==="
+          echo 'void tokenizers_version_1_23_0(void); int main(){return 0;}' > /tmp/test.c
+          gcc /tmp/test.c -ltokenizers -ldl -lm -lstdc++ -o /tmp/test 2>&1 || echo "LINK FAILED"
           echo "=== onnxruntime ==="
           ls -la ${{ github.workspace }}/onnxruntime-linux-x64-1.22.0/lib/ || echo "NOT FOUND"
           echo "=== CGO env ==="
