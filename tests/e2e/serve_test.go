@@ -5,7 +5,6 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -211,8 +210,6 @@ func TestKinokoServePortConflicts(t *testing.T) {
 		}
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		cmd.Dir = env2.TempDir
-		cmd.Stdout = io.Discard
-		cmd.Stderr = io.Discard
 
 		if err := cmd.Start(); err != nil {
 			cancel()
@@ -228,6 +225,8 @@ func TestKinokoServePortConflicts(t *testing.T) {
 			cancel()
 			t.Log("Second server correctly handled port conflict")
 		case <-time.After(10 * time.Second):
+			// Force kill the process group, then cancel context
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 			cancel()
 			_ = cmd.Wait()
 			t.Log("Second server timed out, killed via process group")
