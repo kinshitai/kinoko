@@ -81,6 +81,9 @@ jobs:
   test-embedding:
     name: Test (embedding)
     runs-on: ubuntu-latest
+    env:
+      CGO_LDFLAGS: -L/usr/local/lib -L${{ github.workspace }}/onnxruntime-linux-x64-1.22.0/lib
+      LD_LIBRARY_PATH: ${{ github.workspace }}/onnxruntime-linux-x64-1.22.0/lib
     steps:
       - uses: actions/checkout@v4
 
@@ -105,6 +108,7 @@ jobs:
             https://github.com/daulet/tokenizers/releases/download/v1.25.0/libtokenizers.linux-amd64.tar.gz
           tar xzf libtokenizers.tar.gz
           sudo cp libtokenizers.a /usr/local/lib/
+          sudo ldconfig
 
       - name: Download BGE-small-en-v1.5 ONNX model
         run: |
@@ -116,9 +120,6 @@ jobs:
             "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer.json"
 
       - name: Embedding tests
-        env:
-          LD_LIBRARY_PATH: ${{ github.workspace }}/onnxruntime-linux-x64-1.22.0/lib
-          CGO_LDFLAGS: -L/usr/local/lib -L${{ github.workspace }}/onnxruntime-linux-x64-1.22.0/lib
         run: |
           go test -tags embedding -coverpkg=./internal/...,./cmd/...,./pkg/... \
             -coverprofile=embedding.cov ./internal/embedding/... -timeout 120s
