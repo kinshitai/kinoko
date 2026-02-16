@@ -63,7 +63,7 @@ func runRebuild(cmd *cobra.Command, args []string) error {
 	if rebuildClean {
 		db := store.DB()
 		for _, table := range []string{"skill_embeddings", "skill_patterns", "skills"} {
-			if _, err := db.ExecContext(cmd.Context(), "DELETE FROM "+table); err != nil {
+			if _, err := db.ExecContext(cmd.Context(), "DELETE FROM "+table); err != nil { //nolint:gosec // table names are hardcoded constants
 				return fmt.Errorf("clean table %s: %w", table, err)
 			}
 		}
