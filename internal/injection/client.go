@@ -53,14 +53,23 @@ type matchRequest struct {
 // Match queries the match API for skills relevant to the session context.
 // Fails open: returns empty result on error.
 func (c *Client) Match(ctx context.Context, sessionContext string, limit int) (*MatchResult, error) {
+	return c.MatchWithMinScore(ctx, sessionContext, limit, 0.5)
+}
+
+// MatchWithMinScore queries the match API with a configurable minimum score threshold.
+// Fails open: returns empty result on error.
+func (c *Client) MatchWithMinScore(ctx context.Context, sessionContext string, limit int, minScore float64) (*MatchResult, error) {
 	if limit <= 0 {
 		limit = 5
+	}
+	if minScore <= 0 {
+		minScore = 0.5
 	}
 
 	body, err := json.Marshal(matchRequest{
 		Context:  sessionContext,
 		Limit:    limit,
-		MinScore: 0.5,
+		MinScore: minScore,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)

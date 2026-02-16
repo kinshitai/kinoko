@@ -115,7 +115,7 @@ tags:
 ## Problem
 Connection timeouts under load.
 `
-	name, version, category, tags, err := parseGeneratedSkillMD(raw)
+	name, version, category, tags, err := ParseGeneratedSkillMD(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -141,7 +141,7 @@ category: BUILD
 
 # Simple
 `
-	_, version, _, _, err := parseGeneratedSkillMD(raw)
+	_, version, _, _, err := ParseGeneratedSkillMD(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -151,7 +151,7 @@ category: BUILD
 }
 
 func TestParseGeneratedSkillMD_MissingFrontMatter(t *testing.T) {
-	_, _, _, _, err := parseGeneratedSkillMD("# Just a heading\nNo front matter.")
+	_, _, _, _, err := ParseGeneratedSkillMD("# Just a heading\nNo front matter.")
 	if err == nil {
 		t.Error("expected error for missing front matter")
 	}
@@ -165,7 +165,7 @@ version: 1
 
 # No name field
 `
-	_, _, _, _, err := parseGeneratedSkillMD(raw)
+	_, _, _, _, err := ParseGeneratedSkillMD(raw)
 	if err == nil {
 		t.Error("expected error for missing name")
 	}
@@ -176,7 +176,7 @@ func TestParseGeneratedSkillMD_MissingClosingDelimiter(t *testing.T) {
 name: broken
 category: FIX
 `
-	_, _, _, _, err := parseGeneratedSkillMD(raw)
+	_, _, _, _, err := ParseGeneratedSkillMD(raw)
 	if err == nil {
 		t.Error("expected error for missing closing delimiter")
 	}
@@ -184,7 +184,7 @@ category: FIX
 
 func TestParseGeneratedSkillMD_CRLFLineEndings(t *testing.T) {
 	raw := "---\r\nname: crlf-skill\r\nversion: 1\r\ncategory: BUILD\r\ntags:\r\n  - go/testing\r\n---\r\n\r\n# CRLF Skill\r\n"
-	name, version, category, tags, err := parseGeneratedSkillMD(raw)
+	name, version, category, tags, err := ParseGeneratedSkillMD(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
