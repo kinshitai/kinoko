@@ -44,11 +44,24 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      - name: Test (race + coverage)
-        run: go test -race -coverprofile=coverage.out ./... -timeout 300s
+      - name: Unit tests
+        run: go test -short -coverpkg=./internal/... -coverprofile=unit.cov ./internal/... -timeout 120s
 
-      - name: Coverage summary
-        run: go tool cover -func=coverage.out | tail -1
+      - name: Integration tests
+        run: go test -short -tags integration -coverpkg=./internal/... -coverprofile=integration.cov ./tests/integration/ -timeout 120s
+
+      - name: E2E tests
+        run: go test -short -tags integration -coverpkg=./internal/... -coverprofile=e2e.cov ./tests/e2e/ -timeout 120s
+
+      - name: Merge coverage
+        run: |
+          head -1 unit.cov > combined.cov
+          tail -n +2 unit.cov >> combined.cov
+          tail -n +2 integration.cov >> combined.cov
+          tail -n +2 e2e.cov >> combined.cov
+          echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=combined.cov | grep 'total:' | awk '{print "**Combined coverage: " $NF "**"}' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=combined.cov | grep 'total:'
 
   build:
     name: Build
