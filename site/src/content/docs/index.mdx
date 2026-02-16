@@ -10,7 +10,7 @@ hero:
       icon: right-arrow
       variant: primary
     - text: View on GitHub
-      link: https://github.com/kinoko-dev/kinoko
+      link: https://github.com/kinshitai/kinoko
       icon: external
       variant: minimal
 ---
@@ -56,7 +56,7 @@ Agent solves problem → Knowledge extracted → Stored in git → Injected into
 ## Quick Start
 
 ```bash
-git clone https://github.com/kinoko-dev/kinoko.git
+git clone https://github.com/kinshitai/kinoko.git
 cd kinoko && go install ./cmd/kinoko
 kinoko init && kinoko serve
 ```
@@ -65,7 +65,7 @@ kinoko init && kinoko serve
 
 Kinoko is in active development. What exists today:
 
-- 11 packages, 373 tests, ~17K lines of Go
+- 117 Go files · 456 tests · ~30K lines · 16 internal packages · 73.6% test coverage
 - 3-stage extraction pipeline with LLM critic
 - 7-dimension quality scoring
 - Pattern-based injection with embedding similarity
@@ -73,5 +73,7 @@ Kinoko is in active development. What exists today:
 - A/B testing framework
 - SQLite storage with WAL mode
 - Soft Serve git server integration
+- Three-command architecture: `init` (setup), `serve` (infrastructure), `run` (agent daemon)
+- Git-first design — git is truth, SQLite is derived cache
 
 The system is functional end-to-end. The API surface is stabilizing but not yet frozen.
