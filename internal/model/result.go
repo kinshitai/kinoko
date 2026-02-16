@@ -52,4 +52,5 @@ type Stage3Result struct {
 	Retries                  int           `json:"retries"`
 	ModelName                string        `json:"model_name,omitempty"`
 	CircuitBreakerState      string        `json:"circuit_breaker_state,omitempty"`
+	SkillMD                  string        `json:"skill_md,omitempty"`
 }

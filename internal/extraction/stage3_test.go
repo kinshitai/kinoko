@@ -114,6 +114,27 @@ func extractVerdictJSON() string {
 		"confidence": 0.87,
 		"reusable_pattern": true,
 		"explicit_reasoning": true,
+		"contradicts_best_practices": false,
+		"skill_md": "---\nname: fix-db-timeout\nversion: 1\ncategory: FIX\ntags:\n  - databases/timeouts\n---\n\n# Fix DB Timeout\n\n## Problem\nConnection pool exhaustion.\n\n## Solution\nIncrease pool size and add retry logic.\n\n## Why It Works\nMore connections handle burst traffic.\n\n## Pitfalls\nToo many connections can overwhelm the DB.\n\n## References\nNone."
+	}`
+}
+
+func extractVerdictJSONNoSkillMD() string {
+	return `{
+		"verdict": "extract",
+		"reasoning": "This session demonstrates a clear problem-solution pattern with verified results.",
+		"refined_scores": {
+			"problem_specificity": 4,
+			"solution_completeness": 4,
+			"context_portability": 3,
+			"reasoning_transparency": 4,
+			"technical_accuracy": 4,
+			"verification_evidence": 3,
+			"innovation_level": 3
+		},
+		"confidence": 0.87,
+		"reusable_pattern": true,
+		"explicit_reasoning": true,
 		"contradicts_best_practices": false
 	}`
 }
@@ -514,6 +535,44 @@ func TestStage3Critic(t *testing.T) {
 				tt.checkResult(t, result)
 			}
 		})
+	}
+}
+
+// --- SkillMD in Response ---
+
+func TestStage3Critic_SkillMDParsed(t *testing.T) {
+	critic := newTestCritic(s3okLLM(extractVerdictJSON()))
+	result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SkillMD == "" {
+		t.Error("expected non-empty SkillMD for extract verdict")
+	}
+	if !strings.Contains(result.SkillMD, "fix-db-timeout") {
+		t.Error("SkillMD should contain the skill name")
+	}
+}
+
+func TestStage3Critic_SkillMDEmptyOnReject(t *testing.T) {
+	critic := newTestCritic(s3okLLM(rejectVerdictJSON()))
+	result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SkillMD != "" {
+		t.Error("SkillMD should be empty for reject verdict")
+	}
+}
+
+func TestStage3Critic_SkillMDEmptyWhenNotProvided(t *testing.T) {
+	critic := newTestCritic(s3okLLM(extractVerdictJSONNoSkillMD()))
+	result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SkillMD != "" {
+		t.Error("SkillMD should be empty when not in LLM response")
 	}
 }
 

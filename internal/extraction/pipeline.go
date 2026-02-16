@@ -333,22 +333,46 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 	}
 	p.log.Info("stage3 pass", "session_id", session.ID, "stage3_ms", s3Ms)
 
-	// Build skill and persist
+	// Build skill and persist.
+	// Use LLM-generated SKILL.md if available; fall back to template.
 	skillName := skillNameFromClassification(s2.ClassifiedPatterns, s2.ClassifiedCategory)
+	skillCategory := s2.ClassifiedCategory
+	skillPatterns := s2.ClassifiedPatterns
+	skillVersion := 1
+	var generatedBody []byte
+
+	if s3.SkillMD != "" {
+		parsedName, parsedVersion, parsedCategory, parsedTags, parseErr := parseGeneratedSkillMD(s3.SkillMD)
+		if parseErr != nil {
+			p.log.Warn("failed to parse LLM-generated SKILL.md, falling back to template",
+				"session_id", session.ID, "error", parseErr)
+		} else {
+			skillName = parsedName
+			skillVersion = parsedVersion
+			if parsedCategory != "" {
+				skillCategory = model.SkillCategory(parsedCategory)
+			}
+			if len(parsedTags) > 0 {
+				skillPatterns = parsedTags
+			}
+			generatedBody = []byte(s3.SkillMD)
+		}
+	}
+
 	skillID := uuid.Must(uuid.NewV7()).String()
 	now := time.Now()
 
 	skill := &model.SkillRecord{
 		ID:              skillID,
 		Name:            skillName,
-		Version:         1,
+		Version:         skillVersion,
 		LibraryID:       session.LibraryID,
-		Category:        s2.ClassifiedCategory,
-		Patterns:        s2.ClassifiedPatterns,
+		Category:        skillCategory,
+		Patterns:        skillPatterns,
 		Quality:         s3.RefinedScores,
 		SourceSessionID: session.ID,
 		ExtractedBy:     p.extractor,
-		FilePath:        fmt.Sprintf("skills/%s/v1/SKILL.md", skillName),
+		FilePath:        fmt.Sprintf("skills/%s/v%d/SKILL.md", skillName, skillVersion),
 		DecayScore:      1.0, // New skills start fully active; 0.0 would hide them from injection queries.
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -364,7 +388,12 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 		}
 	}
 
-	body := buildSkillMD(skill, s3, content)
+	var body []byte
+	if generatedBody != nil {
+		body = generatedBody
+	} else {
+		body = buildSkillMD(skill, s3, content)
+	}
 
 	// Debug: write extracted skill
 	trace.WriteSkill(skillName, body)

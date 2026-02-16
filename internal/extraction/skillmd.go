@@ -2,11 +2,78 @@ package extraction
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
+
+// parseGeneratedSkillMD extracts name, version, category, and tags from the
+// YAML front matter of an LLM-generated SKILL.md. Returns an error if the
+// front matter is missing or the name field is absent.
+func parseGeneratedSkillMD(raw string) (name string, version int, category string, tags []string, err error) {
+	raw = strings.TrimSpace(raw)
+	if !strings.HasPrefix(raw, "---") {
+		return "", 0, "", nil, fmt.Errorf("missing YAML front matter delimiter")
+	}
+	// Find closing delimiter.
+	rest := raw[3:] // skip opening "---"
+	rest = strings.TrimLeft(rest, " \t")
+	if len(rest) > 0 && rest[0] == '\n' {
+		rest = rest[1:]
+	} else if len(rest) > 1 && rest[0] == '\r' && rest[1] == '\n' {
+		rest = rest[2:]
+	}
+
+	endIdx := strings.Index(rest, "\n---")
+	if endIdx < 0 {
+		return "", 0, "", nil, fmt.Errorf("missing closing YAML front matter delimiter")
+	}
+	frontMatter := rest[:endIdx]
+
+	version = 1 // default
+	var inTags bool
+
+	for _, line := range strings.Split(frontMatter, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		// Check if this is a tag list item.
+		if inTags {
+			if strings.HasPrefix(trimmed, "- ") {
+				tags = append(tags, strings.TrimSpace(trimmed[2:]))
+				continue
+			}
+			inTags = false
+		}
+		// Key-value pair.
+		parts := strings.SplitN(trimmed, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		val := strings.TrimSpace(parts[1])
+		switch key {
+		case "name":
+			name = val
+		case "version":
+			if v, e := strconv.Atoi(val); e == nil {
+				version = v
+			}
+		case "category":
+			category = val
+		case "tags":
+			inTags = true
+		}
+	}
+
+	if name == "" {
+		return "", 0, "", nil, fmt.Errorf("missing name in front matter")
+	}
+	return name, version, category, tags, nil
+}
 
 // skillNameFromClassification derives a kebab-case skill name from classified
 // patterns and category. E.g. "FIX/Backend/DatabaseConnection" → "fix-backend-database-connection".
