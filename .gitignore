@@ -33,3 +33,4 @@ docs/
 # Go test artifacts
 *.test
 coverage.out
+combined.cov
