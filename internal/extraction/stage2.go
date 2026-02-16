@@ -48,16 +48,13 @@ func init() {
 	}
 }
 
-// SkillQueryResult holds the nearest-neighbor result from a skill store query.
-type SkillQueryResult struct {
-	CosineSim float64
-	SkillName string
-}
-
 // SkillQuerier finds nearest-neighbor skills by embedding.
-type SkillQuerier interface {
-	QueryNearest(ctx context.Context, embedding []float32, libraryID string) (*SkillQueryResult, error)
-}
+// Deprecated: Use model.SkillQuerier directly. This alias exists for backward compatibility.
+type SkillQuerier = model.SkillQuerier
+
+// SkillQueryResult holds the nearest-neighbor result from a skill store query.
+// Deprecated: Use model.SkillQueryResult directly. This alias exists for backward compatibility.
+type SkillQueryResult = model.SkillQueryResult
 
 // Stage2Scorer runs embedding novelty + structured rubric scoring.
 type Stage2Scorer interface {
