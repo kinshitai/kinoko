@@ -34,10 +34,10 @@ type DebugConfig struct {
 
 // EmbeddingConfig configures the embedding provider.
 type EmbeddingConfig struct {
-	Provider string `yaml:"provider"`  // e.g. "openai"
-	Model    string `yaml:"model"`     // e.g. "text-embedding-3-small"
-	BaseURL  string `yaml:"base_url"`  // e.g. "https://api.openai.com"
-	APIKey   string `yaml:"api_key"`   // provider API key
+	Provider string `yaml:"provider"` // e.g. "openai"
+	Model    string `yaml:"model"`    // e.g. "text-embedding-3-small"
+	BaseURL  string `yaml:"base_url"` // e.g. "https://api.openai.com"
+	APIKey   string `yaml:"api_key"`  // provider API key
 }
 
 // LLMConfig configures the LLM used for extraction and injection.
