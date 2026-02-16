@@ -31,8 +31,8 @@ func (m *MockEngine) EmbedBatch(_ context.Context, texts []string) ([][]float32,
 }
 
 func (m *MockEngine) Dims() int       { return m.dims }
-func (m *MockEngine) ModelID() string  { return m.modelID }
-func (m *MockEngine) Close() error     { return nil }
+func (m *MockEngine) ModelID() string { return m.modelID }
+func (m *MockEngine) Close() error    { return nil }
 
 // deterministicVector produces a reproducible L2-normalized vector from text.
 func (m *MockEngine) deterministicVector(text string) []float32 {
@@ -46,7 +46,7 @@ func (m *MockEngine) deterministicVector(text string) []float32 {
 		h ^= h << 13
 		h ^= h >> 7
 		h ^= h << 17
-		v[i] = float32(int32(h&0xFFFF)-0x8000) / 0x8000
+		v[i] = float32(int32(h&0xFFFF)-0x8000) / 0x8000 //nolint:gosec // deterministic mock, overflow is intentional
 	}
 	// L2 normalize.
 	var norm float64
