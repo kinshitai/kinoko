@@ -23,6 +23,7 @@ type Server struct {
 	config         *config.Config
 	dataDir        string
 	cmd            *exec.Cmd
+	cmdDone        chan error // result of cmd.Wait(), populated by Start
 	logger         *slog.Logger
 	softBinary     string
 	adminKeyPath   string
@@ -104,6 +105,7 @@ func (s *Server) Start() error {
 	s.cmd = exec.Command(s.softBinary, "serve") //nolint:gosec // controlled input from config
 	s.cmd.Env = env
 	s.cmd.Dir = s.dataDir
+	s.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	// Start the server
 	if err := s.cmd.Start(); err != nil {
@@ -112,11 +114,17 @@ func (s *Server) Start() error {
 
 	s.logger.Info("Soft Serve process started", "pid", s.cmd.Process.Pid)
 
+	// Monitor subprocess in background (used by waitForReady and Stop).
+	s.cmdDone = make(chan error, 1)
+	go func() {
+		s.cmdDone <- s.cmd.Wait()
+	}()
+
 	// Wait for the server to be ready
 	if err := s.waitForReady(); err != nil {
-		// Kill the process if it's still running
+		// Kill the process group if it's still running
 		if s.cmd.Process != nil {
-			_ = s.cmd.Process.Kill()
+			_ = syscall.Kill(-s.cmd.Process.Pid, syscall.SIGKILL)
 		}
 		return fmt.Errorf("soft serve failed to start properly: %w", err)
 	}
@@ -128,18 +136,29 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// waitForReady waits for Soft Serve to be ready by attempting SSH connections
+// waitForReady waits for Soft Serve to be ready by attempting SSH connections.
+// It also monitors the subprocess for early exit (e.g. port conflict).
 func (s *Server) waitForReady() error {
-	timeout := 30 * time.Second
+	timeout := 10 * time.Second
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
+		// Check if process already exited (port conflict, etc.).
+		select {
+		case err := <-s.cmdDone:
+			if err != nil {
+				return fmt.Errorf("soft serve exited early: %w", err)
+			}
+			return fmt.Errorf("soft serve exited early with status 0")
+		default:
+		}
+
 		// Try to connect via SSH to test if server is ready
 		testCmd := exec.Command("ssh", //nolint:gosec // controlled input from config
 			"-p", strconv.Itoa(s.config.Server.Port),
 			"-i", s.adminKeyPath,
 			"-o", "StrictHostKeyChecking=no",
-			"-o", "ConnectTimeout=5",
+			"-o", "ConnectTimeout=2",
 			s.config.Server.Host,
 			"repo", "list")
 
@@ -147,15 +166,14 @@ func (s *Server) waitForReady() error {
 			return nil // Server is ready
 		}
 
-		// Check if the process is still running
-		if s.cmd.ProcessState != nil && s.cmd.ProcessState.Exited() {
-			return fmt.Errorf("soft serve process exited unexpectedly")
-		}
-
-		time.Sleep(1 * time.Second)
+		time.Sleep(500 * time.Millisecond)
 	}
 
-	return fmt.Errorf("timeout waiting for server to be ready")
+	// Timed out — kill the process group.
+	if s.cmd.Process != nil {
+		_ = syscall.Kill(-s.cmd.Process.Pid, syscall.SIGKILL)
+	}
+	return fmt.Errorf("timeout after %s waiting for soft serve to be ready", timeout)
 }
 
 // Stop gracefully shuts down the git server
@@ -173,13 +191,8 @@ func (s *Server) Stop() error {
 	}
 
 	// Wait for graceful shutdown with timeout
-	done := make(chan error, 1)
-	go func() {
-		done <- s.cmd.Wait()
-	}()
-
 	select {
-	case <-done:
+	case <-s.cmdDone:
 		s.logger.Info("Git server stopped gracefully")
 	case <-time.After(10 * time.Second):
 		s.logger.Warn("Graceful shutdown timed out, sending SIGKILL")
@@ -187,7 +200,7 @@ func (s *Server) Stop() error {
 			s.logger.Error("Failed to kill process", "error", err)
 			return err
 		}
-		<-done // Wait for the process to actually exit
+		<-s.cmdDone // Wait for the process to actually exit
 		s.logger.Info("Git server stopped forcefully")
 	}
 

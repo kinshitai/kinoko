@@ -185,6 +185,11 @@ func (s *Server) discover(w http.ResponseWriter, r *http.Request, prompt string,
 	}
 	ctx := r.Context()
 
+	if s.embedder == nil {
+		http.Error(w, `{"error":"embedding not configured — set KINOKO_EMBEDDING_API_KEY or OPENAI_API_KEY"}`, http.StatusServiceUnavailable)
+		return
+	}
+
 	// Embed the prompt
 	vec, err := s.embedder.Embed(ctx, prompt)
 	if err != nil {
