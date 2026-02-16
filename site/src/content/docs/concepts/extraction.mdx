@@ -8,44 +8,114 @@ slug: concepts/extraction
 
 A gold miner doesn't analyze every grain of sand with a microscope. They start with a pan, washing away the obviously worthless material. What survives gets progressively finer treatment — magnetic separation, chemical assays — until only gold remains. Each stage is more precise *and* more expensive than the last.
 
-## How It Maps
+## Pipeline Overview
 
-Most agent sessions don't produce reusable knowledge. They're routine work, failed experiments, or exploration with no conclusion. Running an expensive LLM critic on every session would be wasteful and slow.
+Most agent sessions don't produce reusable knowledge. Running an expensive LLM critic on every session would be wasteful. Instead, Kinoko filters in three stages, rejecting early and cheap:
 
-Instead, Kinoko filters in stages:
+```mermaid
+flowchart LR
+    S[Session] --> S1[Stage 1\nMetadata]
+    S1 -->|~70% rejected| S2[Stage 2\nNovelty + Rubric]
+    S2 -->|~50% rejected| S3[Stage 3\nLLM Critic]
+    S3 -->|~60% rejected| N[Novelty Check]
+    N -->|novel| G[git push]
+    N -->|duplicate| X4[discard]
+    S1 -->|reject| X1[ ]
+    S2 -->|reject| X2[ ]
+    S3 -->|reject| X3[ ]
 
-### Stage 1 — Panning
+    style X1 fill:none,stroke:none
+    style X2 fill:none,stroke:none
+    style X3 fill:none,stroke:none
+    style X4 fill:none,stroke:none
+```
 
-Cheap metadata checks. Is the session long enough? Did the agent actually execute anything successfully? Sessions that are obviously worthless get rejected instantly, at near-zero cost.
+## Stage 1 — Metadata Pre-filter
 
-**Checks:** minimum duration, minimum tool calls, maximum error rate.
+**Cost:** near-zero. **Purpose:** eliminate the obviously worthless.
 
-### Stage 2 — Sifting
+Fast checks against session metadata — no content analysis needed:
 
-Content analysis with lightweight classifiers. Does the session contain a problem-solution structure? Is the solution novel compared to what we already know? This costs more than checking metadata, but far less than an LLM call.
+- **Minimum duration** — sessions too short to contain meaningful work
+- **Minimum tool calls** — sessions where the agent didn't actually do anything
+- **Maximum error rate** — sessions that were mostly failures
 
-**Checks:** embedding novelty, rubric scoring across 7 quality dimensions.
+This stage rejects the bulk of sessions instantly. A session that lasted 3 seconds with zero tool calls isn't worth analyzing further.
 
-### Stage 3 — Assaying
+## Stage 2 — Embedding Novelty + Rubric Scoring
 
-An LLM critic examines the survivors with focused questions. Not "is this good?" but "is the reasoning explicit?" and "does this contradict known practices?" This is expensive, but it only runs on the small fraction that passed earlier stages.
+**Cost:** moderate (embedding + lightweight scoring). **Purpose:** filter noise and duplicates.
 
-**Features:** retry logic, circuit breaker (5 failures → 5 min cooldown), contradiction detection.
+Two checks run in parallel:
 
-## The Key Insight
+1. **Embedding novelty** — the session content is embedded and compared against existing skills via the server's novelty API (`POST /api/v1/novelty`). If the session is too similar to something already known (above the `novelty_threshold`, default 0.85), it's rejected as a duplicate.
 
-You can afford expensive quality checks if you first eliminate the noise cheaply. Each stage has a different cost-precision tradeoff, and they're ordered from cheapest to most precise.
+2. **LLM rubric scoring** — a lightweight LLM call scores the session across 7 quality dimensions (problem specificity, solution completeness, context portability, reasoning transparency, technical accuracy, verification evidence, innovation level). Sessions below threshold are rejected.
+
+The novelty check is **fail-open**: if the server is unreachable, the session passes through. Better to extract a potential duplicate than lose novel knowledge.
+
+## Stage 3 — Combined Critic + SKILL.md Generation
+
+**Cost:** high (full LLM call). **Purpose:** final quality gate + knowledge synthesis.
+
+This is the expensive stage — and it only runs on the ~15% of sessions that survived Stages 1 and 2. A single LLM call does both:
+
+1. **Evaluate** the session with a detailed critic rubric
+2. **Generate** the SKILL.md content if the verdict is "extract"
+
+### Quality Controls
+
+Three mechanisms from the [brief-010 prompt tuning](https://github.com/kinshitai/kinoko) prevent project-specific false positives:
+
+- **"Different Project" preamble** — the prompt tells the LLM: *"You are extracting skills for a DIFFERENT agent working on a DIFFERENT project. That agent has never heard of this project."* This reframes the evaluation from "is this useful?" to "is this transferable?"
+
+- **Substitution test** — *"Replace all project-specific names with generic placeholders. Does the remaining skill still contain non-obvious, actionable knowledge?"* If context portability scores below 3/5, the skill is rejected regardless of other scores.
+
+- **Hard reject triggers** — automatic rejection if:
+  - ≥3 proper nouns from the source project are essential to the solution
+  - Removing project context reduces the skill to <2 sentences
+  - The skill documents *what* was built rather than reusable *how/why*
+  - A competent developer would say "that's just how you'd do it"
+
+### Output
+
+If verdict is "extract", Stage 3 produces a complete SKILL.md with front matter, problem statement, solution steps, reasoning, and pitfalls — ready to push to git.
+
+## After Extraction
+
+Skills that pass Stage 3 go through:
+
+1. **Credential scanning** — 14 secret patterns checked, findings above confidence threshold redacted
+2. **Novelty check** — final server-side duplicate check
+3. **Git push** — skill is pushed as its own repo to the server
+4. **Post-receive hook** — server parses the SKILL.md, embeds it, indexes into SQLite
+
+## Cost Model
+
+The staged approach keeps costs practical:
+
+| Stage | Cost per session | % of sessions reaching it |
+|-------|-----------------|--------------------------|
+| Stage 1 | ~$0 | 100% |
+| Stage 2 | ~$0.001 | ~30% |
+| Stage 3 | ~$0.04 | ~15% |
+
+**Stage 3 accounts for ~98% of total extraction cost.** Overall: roughly **$6 per 1,000 sessions** processed. The staged filtering means you only pay the expensive price for sessions likely to yield real knowledge.
+
+## Resilience
+
+The pipeline includes built-in resilience for LLM calls:
+
+- **Retry logic** with exponential backoff for transient failures
+- **Circuit breaker** — 5 consecutive failures triggers a 5-minute cooldown
+- **Fail-open novelty** — server unavailability doesn't block extraction
 
 ## For Contributors
 
 When working on extraction, think about which stage a filter belongs in:
 
 - Can it be evaluated from metadata alone? → **Stage 1**
-- Does it need content analysis? → **Stage 2**
-- Does it require judgment? → **Stage 3**
+- Does it need content analysis but not judgment? → **Stage 2**
+- Does it require nuanced evaluation? → **Stage 3**
 
 Moving a filter to an earlier stage saves cost. Moving it later improves precision.
-
-## Credential Scanning
-
-Before any extracted skill is written, it passes through a credential scanner that detects 14 secret patterns (API keys, tokens, private keys, etc.). Findings above the confidence threshold are automatically redacted. This runs again at the git level via a pre-receive hook — see [Security](/concepts/security/) for details.

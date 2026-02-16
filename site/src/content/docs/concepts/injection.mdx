@@ -1,39 +1,113 @@
 ---
 title: "Injection: Reference Librarian"
-description: How Kinoko matches knowledge to needs by understanding the problem, not just the words.
+description: How Kinoko matches knowledge to needs and delivers it to agent sessions automatically.
 slug: concepts/injection
 ---
 
 ## The Model
 
-A good reference librarian doesn't just search for your keywords. If you ask about "debugging a slow React app," they don't hand you every document containing "React" and "slow." They think about what you actually need — maybe a guide to browser profiling tools, or a piece on database query optimization. They understand the *problem beneath the question*.
+A good reference librarian doesn't just search for your keywords. If you ask about "debugging a slow React app," they don't hand you every document containing "React" and "slow." They understand the *problem beneath the question* and find resources that address the actual need — maybe a guide to browser profiling tools or a piece on database query optimization.
 
-## How It Maps
+## How Injection Works
 
-Text similarity is a blunt instrument for matching knowledge to needs. A prompt about "React performance" is most *textually* similar to other documents mentioning React and performance. But the most *useful* skill might be about JavaScript memory profiling or browser DevTools — related by problem pattern, not by vocabulary.
+When an agent session starts, `kinoko run` captures the session context and queries the server for relevant skills:
 
-Kinoko matches in multiple steps:
+```mermaid
+sequenceDiagram
+    participant Agent as Agent Session
+    participant Run as kinoko run
+    participant API as kinoko serve (Match API)
+    participant DB as SQLite + vec
 
-### 1. Understand the Question
+    Agent->>Run: Session starts (context)
+    Run->>API: POST /api/v1/match
+    API->>DB: Embed context → cosine similarity search
+    DB-->>API: Top-K similar skills
+    API-->>Run: Skills with scores + content
+    Run->>Agent: Inject relevant SKILL.md content
+```
 
-Classify the prompt's intent (building, fixing, optimizing), domain (frontend, backend, infrastructure), and specific problem pattern.
+### The Match API
 
-### 2. Search by Pattern, Not Just Text
+The server endpoint that powers injection:
 
-Find skills that address the same *type* of problem, even if they use different technology or terminology.
+```
+POST /api/v1/match
+{
+  "context": "session context text",
+  "limit": 5,
+  "min_score": 0.5
+}
+```
 
-### 3. Rank by Multiple Signals
+Returns:
+```json
+{
+  "skills": [
+    {"name": "fix-database-timeout", "score": 0.87, "content": "...SKILL.md..."},
+    {"name": "go-subprocess-management", "score": 0.72, "content": "..."}
+  ]
+}
+```
 
-Combine pattern overlap, embedding similarity, and historical success rate. A skill that has consistently helped with similar problems ranks higher than one that merely uses similar words.
+The server:
+1. Embeds the context using the ONNX engine (`bge-small-en-v1.5`)
+2. Runs cosine similarity search against all stored skill vectors (SQLite vec)
+3. Reads matching SKILL.md content from the bare git repos
+4. Returns skill content inline — the client never needs direct git access for injection
 
-## Degraded Mode
+### Thresholds and Limits
 
-When embeddings are unavailable, injection still works — re-ranking skills as `0.7 × PatternOverlap + 0.3 × HistoricalRate` instead of using the full composite score.
+| Parameter | Default | Purpose |
+|-----------|---------|---------|
+| `min_score` | 0.5 | Minimum cosine similarity to include a skill |
+| `limit` | 5 | Maximum number of skills returned |
+| Response cap | 64KB | Hard limit on total response size |
+
+The `min_score` threshold prevents low-relevance noise. Skills below this score are omitted even if they're the "best" matches available — no match is better than a bad match.
+
+### What Gets Injected
+
+Matched skills are formatted as a prompt section and injected into the agent session:
+
+```markdown
+## Relevant Knowledge (auto-injected by Kinoko)
+
+The following skills may be relevant to your current task.
+
+### fix-database-timeout (relevance: 0.87)
+[Full SKILL.md content]
+
+### go-subprocess-management (relevance: 0.72)
+[Full SKILL.md content]
+```
+
+The agent sees this as part of its context — it doesn't know or care where the knowledge came from. It just gets better answers.
+
+## Matching Strategy
+
+Injection matches on multiple signals, not just text similarity:
+
+- **Embedding similarity** — semantic closeness between session context and skill content
+- **Problem pattern overlap** — skills addressing the same *type* of problem (building, fixing, optimizing)
+- **Historical success rate** — skills that have helped in similar situations before
+
+When embeddings are unavailable (server unreachable), injection degrades to pattern-based ranking: `0.7 × PatternOverlap + 0.3 × HistoricalRate`.
+
+## Configuration
+
+```yaml
+injection:
+  api_url: "http://127.0.0.1:23233"
+  max_skills: 5
+  min_score: 0.5
+  max_content_bytes: 65536  # 64KB response cap
+```
+
+## Future: Automatic Injection via `kinoko run`
+
+Currently, injection requires integration hooks in your agent framework. The roadmap includes a session watcher in `kinoko run` that automatically detects new agent sessions and injects relevant skills — zero configuration, zero framework coupling.
 
 ## The Key Insight
 
-The most useful knowledge often doesn't look like what you asked for. Matching by problem pattern surfaces solutions that keyword search would miss entirely.
-
-## For Contributors
-
-When working on injection, resist the temptation to optimize for embedding similarity alone. The problem pattern taxonomy is the librarian's expertise — it encodes the understanding of what problems are *actually* related, beyond surface text. Improving the taxonomy or the prompt classifier has a bigger impact on injection quality than tuning embedding weights.
+The most useful knowledge often doesn't look like what you asked for. Matching by problem pattern surfaces solutions that keyword search would miss entirely. A skill about debugging Go memory leaks might help someone debugging a Python memory leak — because the *diagnostic approach* transfers, even if the language doesn't.

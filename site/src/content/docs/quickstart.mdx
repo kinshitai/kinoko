@@ -52,13 +52,19 @@ defaults:
 kinoko serve
 ```
 
+On first start, the server downloads the embedding model (`bge-small-en-v1.5`, ~127MB) — this only happens once.
+
 Output:
 ```
 INFO Kinoko infrastructure server started
+INFO Embedding engine ready              model=bge-small-en-v1.5 dims=384
 INFO Git server ready                    ssh_url=ssh://localhost:23231
-INFO Discovery API ready                 http=:23232
+INFO Soft Serve HTTP ready               http=:23232
+INFO Kinoko API ready                    http=:23233
 INFO Hooks enabled                       credential_scan=true indexing=true
 ```
+
+Three ports open: SSH (23231), Soft Serve HTTP (23232), and the Kinoko API (23233). See [Architecture](/concepts/architecture/#port-layout) for details.
 
 Keep this terminal open. The server self-bootstraps on first run — it creates its data directory and admin keypair automatically.
 
@@ -101,7 +107,8 @@ curl http://localhost:23232/api/v1/health
 
 ## What You Have Now
 
-- ✅ Infrastructure server on `ssh://localhost:23231` with Discovery API
+- ✅ Infrastructure server on `ssh://localhost:23231` with API on `:23233`
+- ✅ Server-side embedding engine (ONNX, `bge-small-en-v1.5`) — clients stay pure Go
 - ✅ Local agent daemon running extraction, injection, and decay
 - ✅ Credential scanning active on all pushes
 - ✅ Ready for agents to start generating knowledge
