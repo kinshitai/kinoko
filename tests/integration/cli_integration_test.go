@@ -5,6 +5,7 @@
 package integration
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -96,6 +97,7 @@ libraries: []
 func startServeProcess(t *testing.T, bin, cfgPath string) *exec.Cmd {
 	t.Helper()
 	cmd := exec.Command(bin, "serve", "--config", cfgPath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stdout = &testWriter{t, "serve-out"}
 	cmd.Stderr = &testWriter{t, "serve-err"}
 	if err := cmd.Start(); err != nil {
@@ -109,13 +111,16 @@ func stopProcess(t *testing.T, cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
-	cmd.Process.Signal(syscall.SIGTERM)
+	// Send SIGTERM to the entire process group so child processes (e.g. soft
+	// serve) are also terminated. The negative PID targets the group.
+	syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	select {
 	case <-done:
 	case <-time.After(10 * time.Second):
-		cmd.Process.Kill()
+		// Escalate: SIGKILL the process group
+		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		<-done
 	}
 }
@@ -384,8 +389,12 @@ func TestRun_WorkerStartsAndProcesses(t *testing.T) {
 
 	writeMinimalConfig(t, cfgPath, dataDir, dbPath, sshPort)
 
-	// Without OPENAI_API_KEY, run should fail with a clear error (not panic)
-	cmd := exec.Command(bin, "run", "--config", cfgPath)
+	// Without OPENAI_API_KEY, run should fail with a clear error (not panic).
+	// Use a context timeout because `kinoko run` may start a long-lived server
+	// even without an API key.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, "run", "--config", cfgPath)
 	cmd.Env = filterEnv("OPENAI_API_KEY", "KINOKO_LLM_API_KEY")
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -471,6 +480,7 @@ func TestCLI_InitRunServeIntegration(t *testing.T) {
 
 	// Step 2: serve
 	serveCmd := exec.Command(bin, "serve", "--config", cfgPath)
+	serveCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	serveCmd.Env = append(os.Environ(), "HOME="+home)
 	serveCmd.Stdout = &testWriter{t, "serve-out"}
 	serveCmd.Stderr = &testWriter{t, "serve-err"}
@@ -494,7 +504,9 @@ func TestCLI_InitRunServeIntegration(t *testing.T) {
 	}
 
 	// Step 3: run (will likely fail without API key, but shouldn't crash)
-	runCmd := exec.Command(bin, "run", "--config", cfgPath)
+	runCtx, runCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer runCancel()
+	runCmd := exec.CommandContext(runCtx, bin, "run", "--config", cfgPath)
 	runCmd.Env = append(os.Environ(), "HOME="+home)
 	runOut, runErr := runCmd.CombinedOutput()
 	if runErr != nil {
@@ -609,7 +621,9 @@ func TestRun_ServerUnreachable(t *testing.T) {
 	deadPort := freePort(t)
 	writeMinimalConfig(t, cfgPath, dataDir, dbPath, deadPort)
 
-	cmd := exec.Command(bin, "run", "--config", cfgPath)
+	runCtx, runCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer runCancel()
+	cmd := exec.CommandContext(runCtx, bin, "run", "--config", cfgPath)
 	cmd.Env = filterEnv() // keep env as-is
 	out, err := cmd.CombinedOutput()
 	outStr := string(out)
