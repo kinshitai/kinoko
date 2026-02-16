@@ -5,9 +5,25 @@
 // as SKILL.md files with structured front matter.
 package extraction
 
-import "github.com/kinoko-dev/kinoko/internal/model"
+import (
+	"context"
+
+	"github.com/kinoko-dev/kinoko/internal/model"
+)
 
 // Stage1Filter performs metadata pre-filtering. Synchronous, cheap, no I/O.
 type Stage1Filter interface {
 	Filter(session model.SessionRecord) *model.Stage1Result
+}
+
+// NoveltyChecker checks whether extracted content is novel enough to persist.
+// Optional in PipelineConfig — pipeline works without it.
+type NoveltyChecker interface {
+	Check(ctx context.Context, content string) (*NoveltyResult, error)
+}
+
+// SkillPusher pushes an extracted skill to a remote git repository.
+// Optional in PipelineConfig — pipeline works without it.
+type SkillPusher interface {
+	Push(ctx context.Context, skillName string, libraryID string, body []byte) error
 }
