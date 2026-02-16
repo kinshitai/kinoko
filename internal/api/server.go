@@ -76,7 +76,7 @@ func New(cfg Config) *Server {
 		cfg.Logger = slog.Default()
 	}
 	if cfg.Port == 0 {
-		cfg.Port = 23232
+		cfg.Port = 23233
 	}
 	s := &Server{
 		store:       cfg.Store,
