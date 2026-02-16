@@ -1,0 +1,86 @@
+---
+title: "Multi-Provider LLM"
+description: "Factory-pattern LLM client supporting OpenAI and Anthropic — switch providers with one config field."
+slug: reference/llm-providers
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Kinoko uses LLMs for Stage 3 extraction (the critic) and quality scoring. The LLM client is provider-agnostic — switch between OpenAI and Anthropic by changing a single config field.
+
+## Configuration
+
+In your `kinoko.yaml`:
+
+```yaml
+# OpenAI (default)
+llm:
+  provider: openai
+  api_key: sk-...
+  model: gpt-4o-mini
+  # base_url: https://api.openai.com  # optional, for proxies
+
+# Anthropic
+llm:
+  provider: anthropic
+  api_key: sk-ant-...
+  model: claude-sonnet-4-20250514
+  # base_url: https://api.anthropic.com  # optional
+```
+
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `provider` | No | `openai` | `"openai"` or `"anthropic"` |
+| `api_key` | Yes | — | Your API key |
+| `model` | Yes | — | Model identifier |
+| `base_url` | No | Provider default | Custom endpoint (proxies, Azure, etc.) |
+
+<Aside type="tip">
+  Omitting `provider` or setting it to `""` defaults to OpenAI. This is backward-compatible — existing configs without a `provider` field keep working.
+</Aside>
+
+## Factory Pattern
+
+Client creation is a single function call:
+
+```go
+client, err := llm.NewClient(provider, apiKey, model, baseURL)
+```
+
+This returns an `LLMClientV2` — the full-featured interface with token tracking and timeout control:
+
+```go
+type LLMClientV2 interface {
+    LLMClient  // Complete(ctx, prompt) → (string, error)
+    CompleteWithTimeout(ctx context.Context, prompt string,
+        timeout time.Duration) (*LLMCompleteResult, error)
+}
+
+type LLMCompleteResult struct {
+    Content   string
+    TokensIn  int
+    TokensOut int
+}
+```
+
+Both providers implement the same interface. The extraction pipeline, quality scorer, and any other LLM consumer don't know or care which provider is behind the call.
+
+## Provider Details
+
+### OpenAI
+
+Uses the Chat Completions API (`/v1/chat/completions`). Supports custom `base_url` for Azure OpenAI, local proxies, or compatible APIs (Ollama, vLLM, etc.).
+
+### Anthropic
+
+Uses the Messages API (`/v1/messages`) with API version `2023-06-01`. The API key is sent via the `x-api-key` header (not Bearer auth).
+
+## Error Handling
+
+Both providers surface structured errors with HTTP status codes. The extraction pipeline wraps these with circuit breaker logic — 5 consecutive failures trip the breaker, backing off from 5 minutes up to 30 minutes.
+
+## Where It's Used
+
+- **Stage 3 Critic** — evaluates sessions for extractable knowledge
+- **Quality Scoring** — 7-dimension rubric evaluation
+- **Combined Prompt** — single LLM call for both critique and SKILL.md generation

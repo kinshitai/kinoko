@@ -1,0 +1,89 @@
+---
+title: "Embedding Engine"
+description: "Local vector embedding via ONNX Runtime — no API calls, no latency, no cost."
+slug: reference/embedding-engine
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Kinoko embeds text locally using [ONNX Runtime](https://onnxruntime.ai/) and the [bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) model. No external API calls. No per-token costs. Embeddings in ~4ms.
+
+## Why Local Embeddings?
+
+Every novelty check and skill match requires vector similarity. Sending text to OpenAI's embedding API adds latency, cost, and a network dependency. Kinoko runs embeddings on your machine — the same way it runs everything else.
+
+| Property | Value |
+|---|---|
+| Model | `bge-small-en-v1.5` |
+| Dimensions | 384 |
+| Runtime | ONNX Runtime (C library) |
+| Latency | ~4ms per embed |
+| Normalization | L2-normalized vectors |
+
+## The `Engine` Interface
+
+All embedding operations go through a clean interface:
+
+```go
+type Engine interface {
+    Embed(ctx context.Context, text string) ([]float32, error)
+    EmbedBatch(ctx context.Context, texts []string) ([][]float32, error)
+    Dims() int
+    ModelID() string
+    Close() error
+}
+```
+
+- **`Embed`** — single text → 384-dimensional normalized vector
+- **`EmbedBatch`** — multiple texts in one call
+- **`Dims`** — always returns `384` for bge-small
+- **`ModelID`** — returns `"bge-small-en-v1.5"`, stored alongside vectors to detect model changes
+- **`Close`** — releases the ONNX session and tokenizer
+
+## Build Tags
+
+The ONNX implementation requires native C libraries (`libonnxruntime.so` + `libtokenizers.a`). It's gated behind a build tag:
+
+```bash
+# Build with embedding support
+go build -tags embedding ./cmd/kinoko
+
+# Build without (mock engine used instead)
+go build ./cmd/kinoko
+```
+
+<Aside type="tip">
+If you're just developing or testing and don't need real embeddings, skip the `embedding` tag. The `MockEngine` gives you deterministic vectors that work for all code paths.
+</Aside>
+
+## `ONNXEngine`
+
+The production implementation. Requires a model directory containing:
+
+```
+models/
+├── model.onnx          # ONNX model weights
+├── tokenizer.json      # HuggingFace tokenizer
+└── libonnxruntime.so   # ONNX Runtime shared library
+```
+
+Thread-safe — the tokenizer and ONNX session are mutex-protected. Serializes access to avoid tensor reuse issues.
+
+## `MockEngine`
+
+For testing. Produces deterministic, reproducible vectors from a simple hash function — different inputs yield different embeddings, same input always yields the same vector. L2-normalized like the real engine.
+
+```go
+engine := embedding.NewMockEngine(384)
+vec, _ := engine.Embed(ctx, "some text")
+// vec is deterministic and normalized
+```
+
+Used automatically when building without the `embedding` tag, and available for unit tests that need embedding behavior without native dependencies.
+
+## Where It's Used
+
+- **[Novelty checking](/reference/api#post-apiv1novelty)** — embed candidate skills, compare against existing library
+- **[Skill matching](/reference/api#post-apiv1match)** — embed query context, find nearest-neighbor skills
+- **[Embed endpoint](/reference/api#post-apiv1embed)** — expose embedding as an HTTP API
+- **Stage 2 extraction** — compute similarity scores during pipeline filtering

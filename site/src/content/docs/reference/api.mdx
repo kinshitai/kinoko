@@ -1,0 +1,200 @@
+---
+title: "HTTP API Reference"
+description: "Complete reference for Kinoko's REST API — health, embedding, novelty, matching, discovery, and ingestion."
+slug: reference/api
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Kinoko's HTTP API runs on port **23233** by default (configurable). All endpoints accept and return JSON.
+
+## Endpoints at a Glance
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/health` | Server health check |
+| `POST` | `/api/v1/embed` | Generate text embeddings |
+| `POST` | `/api/v1/novelty` | Check if content is novel |
+| `POST` | `/api/v1/match` | Find matching skills for context |
+| `POST` | `/api/v1/discover` | Discover skills by prompt |
+| `GET` | `/api/v1/discover` | Discover skills (query param) |
+| `POST` | `/api/v1/ingest` | Submit a session for extraction |
+
+---
+
+## `GET /api/v1/health`
+
+Health check. Returns server status and skill count.
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "skills": 142
+}
+```
+
+---
+
+## `POST /api/v1/embed`
+
+Generate a vector embedding for text. Requires the [embedding engine](/reference/embedding-engine) to be configured.
+
+**Request:**
+```json
+{
+  "text": "How to fix CORS errors in Express.js"
+}
+```
+
+**Response:**
+```json
+{
+  "vector": [0.023, -0.118, 0.042, "...384 floats"],
+  "model": "bge-small-en-v1.5",
+  "dims": 384
+}
+```
+
+**Errors:**
+- `400` — missing or empty `text`
+- `503` — embedding engine not available (built without `embedding` tag)
+
+---
+
+## `POST /api/v1/novelty`
+
+Check whether content is novel compared to the existing skill library. This is the key deduplication gate — it runs **before** expensive LLM extraction to avoid paying for knowledge you already have.
+
+**Request:**
+```json
+{
+  "content": "Use connection pooling with pgx to avoid per-request TCP handshakes...",
+  "threshold": 0.85
+}
+```
+
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `content` | Yes | — | Text to check for novelty |
+| `threshold` | No | `0.85` | Cosine similarity threshold. Content with a nearest neighbor above this is "not novel" |
+
+**Response:**
+```json
+{
+  "novel": true,
+  "score": 0.42,
+  "similar": [
+    {
+      "name": "postgres-connection-management",
+      "library_id": "default",
+      "score": 0.42
+    }
+  ]
+}
+```
+
+| Field | Description |
+|---|---|
+| `novel` | `true` if highest similarity is below threshold |
+| `score` | Highest cosine similarity found |
+| `similar` | Up to 10 most similar existing skills |
+
+<Aside type="note">
+The novelty check **fails open** — if the embedding engine or database is unavailable, content is treated as novel. Better to extract a duplicate than miss genuine knowledge.
+</Aside>
+
+---
+
+## `POST /api/v1/match`
+
+Find skills matching a given context. This is what powers `kinoko match` and skill injection.
+
+**Request:**
+```json
+{
+  "context": "I'm debugging a React hydration mismatch in Next.js...",
+  "limit": 5,
+  "min_score": 0.5
+}
+```
+
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `context` | Yes | — | Problem context or query |
+| `limit` | No | `5` | Max skills to return |
+| `min_score` | No | `0.5` | Minimum cosine similarity |
+
+**Response:**
+```json
+{
+  "skills": [
+    {
+      "name": "nextjs-hydration-debugging",
+      "score": 0.87,
+      "content": "---\nname: nextjs-hydration-debugging\n..."
+    }
+  ]
+}
+```
+
+Skill content is the full SKILL.md body. Response is capped at 64KB total to prevent oversized payloads.
+
+---
+
+## `POST /api/v1/discover`
+
+Discover skills by natural language prompt. Similar to match but designed for the discovery/browse use case.
+
+**Request:**
+```json
+{
+  "prompt": "database performance optimization",
+  "limit": 10
+}
+```
+
+**Response:**
+```json
+{
+  "skills": [
+    {
+      "repo": "default",
+      "name": "postgres-query-optimization",
+      "description": "...",
+      "score": 0.82,
+      "clone_url": "ssh://localhost:23231/default.git"
+    }
+  ]
+}
+```
+
+Also available as `GET /api/v1/discover?prompt=...&limit=10`.
+
+---
+
+## `POST /api/v1/ingest`
+
+Submit a session log for extraction processing. The log is enqueued for async pipeline processing (Stage 1 → 2 → 3).
+
+**Request:**
+```json
+{
+  "session_id": "abc123",
+  "log": "... session transcript ..."
+}
+```
+
+**Response:** `200 OK` on successful enqueue.
+
+---
+
+## Rate Limiting
+
+The discover endpoint uses a semaphore limiting concurrent requests to 10. Other endpoints have a 1MB request body limit.
+
+## Security
+
+- All request bodies are capped at 1MB (`http.MaxBytesReader`)
+- The match endpoint rejects file paths containing `..` (path traversal protection)
+- No authentication by default — designed for localhost/private network use

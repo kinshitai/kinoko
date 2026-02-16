@@ -110,6 +110,105 @@ code:not(pre code) {
   border-radius: 0.5rem;
 }
 
+/* Landing page: hero ASCII art */
+.kinoko-hero-art {
+  text-align: center;
+  margin: -1rem auto 2rem;
+  max-width: 600px;
+}
+
+.kinoko-hero-art pre {
+  background: transparent !important;
+  border: none !important;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--sl-color-accent);
+  overflow-x: auto;
+}
+
+/* Landing page: pitch section */
+.kinoko-pitch {
+  max-width: 640px;
+  margin: 0 auto 3rem;
+  font-size: 1.05rem;
+  line-height: 1.7;
+  text-align: center;
+  color: var(--sl-color-gray-1);
+}
+
+.kinoko-pitch strong {
+  color: var(--sl-color-accent-high);
+}
+
+/* Landing page: flow steps */
+.kinoko-flow {
+  max-width: 640px;
+  margin: 1.5rem auto 3rem;
+}
+
+.flow-step {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+  padding: 1.25rem;
+  border: 1px solid var(--sl-color-gray-4);
+  border-radius: 0.75rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.flow-step:hover {
+  border-color: var(--sl-color-accent);
+  box-shadow: 0 2px 16px rgba(196, 162, 101, 0.1);
+}
+
+.flow-number {
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sl-color-accent-low);
+  color: var(--sl-color-accent);
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 1rem;
+  margin-top: 0.25rem;
+}
+
+.flow-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.flow-content h3 {
+  margin-top: 0 !important;
+  margin-bottom: 0.5rem;
+  color: var(--sl-color-accent-high);
+}
+
+.flow-content p {
+  margin: 0.5rem 0 0;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--sl-color-gray-2);
+}
+
+.flow-connector {
+  text-align: center;
+  font-size: 1.25rem;
+  color: var(--sl-color-gray-3);
+  padding: 0.5rem 0;
+}
+
+/* Landing page: bottom links */
+.kinoko-links {
+  text-align: center;
+  margin: 2rem 0 1rem;
+  font-size: 0.95rem;
+  color: var(--sl-color-gray-2);
+}
+
 /* Mobile responsiveness */
 @media (max-width: 50rem) {
   .hero {
@@ -118,5 +217,14 @@ code:not(pre code) {
 
   .hero .tagline {
     font-size: 1rem;
+  }
+
+  .flow-step {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .kinoko-hero-art pre {
+    font-size: 0.55rem;
   }
 }

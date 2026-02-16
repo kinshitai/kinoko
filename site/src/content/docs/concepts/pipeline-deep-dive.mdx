@@ -1,0 +1,155 @@
+---
+title: "Extraction Pipeline: Deep Dive"
+description: "Inside the three-stage extraction pipeline — metadata filtering, novelty scoring, LLM critique, and the substitution test."
+slug: concepts/pipeline-deep-dive
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The [extraction overview](/concepts/extraction) covers the gold-panning metaphor. This page gets into the machinery — what each stage actually checks, how the combined prompt works, and what the substitution test is.
+
+## Stage 1: Metadata Filter
+
+**Cost:** Zero. No LLM calls, no embeddings. Pure arithmetic.
+
+Stage 1 looks at session metadata and rejects obviously unproductive sessions:
+
+| Check | What it means |
+|---|---|
+| **Duration** | Too short (nothing happened) or too long (unfocused wandering) |
+| **Tool call count** | Below minimum → no real work was done |
+| **Error rate** | Too many errors → debugging session, not knowledge creation |
+| **Successful exec** | At least one tool call succeeded → something was verified |
+
+All four must pass. This eliminates ~70% of sessions instantly.
+
+**Configurable** via `kinoko.yaml`:
+
+```yaml
+extraction:
+  min_duration_minutes: 2
+  max_duration_minutes: 120
+  min_tool_calls: 3
+  max_error_rate: 0.5
+```
+
+## Stage 2: Novelty + Rubric Scoring
+
+**Cost:** One embedding (~4ms) + database query. Still cheap.
+
+Stage 2 runs two checks:
+
+1. **Embedding similarity** — embed the session content, compare against existing skills. If it's too similar to something you already have, reject early.
+2. **Rubric pre-score** — lightweight scoring of the session's taxonomy classification against known problem patterns.
+
+Kinoko maintains a [taxonomy of 20 problem patterns](/reference/glossary) (e.g., `BUILD/Backend/APIDesign`, `FIX/Performance/MemoryLeak`). Sessions are classified against this taxonomy for routing and deduplication.
+
+~50% of Stage 1 survivors are rejected here.
+
+## Stage 3: LLM Critic + Extraction
+
+**Cost:** One LLM call. This is the expensive stage — and why Stages 1 and 2 exist.
+
+### The Combined Prompt
+
+Kinoko makes a single LLM call that does **both** critique and extraction. No separate "should we extract?" call followed by "OK now extract it." One prompt, one response, one bill.
+
+The prompt asks the LLM to:
+
+1. **Score 7 dimensions** (1–5 each):
+   - Problem Specificity
+   - Solution Completeness
+   - Context Portability (the big one — see below)
+   - Reasoning Transparency
+   - Technical Accuracy
+   - Verification Evidence
+   - Innovation Level
+
+2. **Apply hard reject rules** — automatic rejection if any of these are true:
+   - 3+ project-specific proper nouns are essential to the solution
+   - Removing project context reduces the skill to < 2 sentences
+   - Skill documents WHAT was built rather than HOW/WHY
+   - A competent developer would say "that's just how you'd do it"
+
+3. **If verdict is "extract"**, generate the SKILL.md in the same response
+
+### The Substitution Test
+
+The most important scoring dimension. The prompt instructs the LLM:
+
+> Replace all project-specific names with generic placeholders. Does the remaining skill still contain non-obvious, actionable knowledge?
+
+This is how Kinoko separates **transferable knowledge** from **project documentation**:
+
+```
+Before substitution:
+  "In the Kinoko codebase, we use SQLite for the skill store
+   because it's embedded and needs no separate process."
+
+After substitution:
+  "In [PROJECT], we use SQLite for [COMPONENT] because
+   it's embedded and needs no separate process."
+
+Verdict: That's just... how SQLite works. Score 1. REJECT.
+```
+
+vs.
+
+```
+Before substitution:
+  "When running ONNX models in Go, the tokenizer must be
+   loaded before the ONNX session because..."
+
+After substitution:
+  "When running ONNX models in [LANGUAGE], the tokenizer
+   must be loaded before the ONNX session because..."
+
+Verdict: Non-obvious ordering constraint. Score 4. EXTRACT.
+```
+
+<Aside type="caution">
+Context Portability score below 3 is an automatic reject regardless of how well the skill scores on other dimensions. A perfectly documented, verified, innovative solution that only works for one specific project is documentation, not a skill.
+</Aside>
+
+### Security: Session Sandboxing
+
+Session content sent to the LLM is wrapped in randomized delimiters:
+
+```
+---BEGIN SESSION a7f3c9e2---
+[session content here]
+---END SESSION a7f3c9e2---
+```
+
+The nonce prevents prompt injection via session content. Content is also truncated to 100KB max.
+
+### Circuit Breaker
+
+The Stage 3 critic wraps LLM calls in a circuit breaker:
+- **5 consecutive failures** → breaker trips
+- **Backoff** — 5 minutes, doubling up to 30 minutes
+- Prevents cascading failures when your LLM provider is down
+
+## After Stage 3: The Final Gates
+
+Skills that survive all three stages still face:
+
+1. **Credential scanning** — the sanitizer checks for API keys, tokens, and secrets. Flagged content is scrubbed or rejected.
+2. **Final novelty check** — one last deduplication pass against the freshest state of the library.
+3. **Skill write + embed** — the SKILL.md is written to the git repo and its embedding is stored for future matching.
+4. **Git push** (optional) — committed and pushed to the configured remote.
+
+## The Numbers
+
+For a typical codebase:
+
+```
+100 sessions enter
+ 30 survive Stage 1  (70% rejected — metadata)
+ 15 survive Stage 2  (50% rejected — novelty/rubric)
+  6 survive Stage 3  (60% rejected — LLM critic)
+  5 survive novelty  (1-2 duplicates caught)
+  5 skills extracted  (~5% yield)
+```
+
+This means you pay for LLM calls on only ~15% of sessions. The other 85% are filtered for free (or nearly free).
