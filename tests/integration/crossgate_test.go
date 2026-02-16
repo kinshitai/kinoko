@@ -212,7 +212,7 @@ func TestG1G3_ExtractDiscoverClone(t *testing.T) {
 
 	// Step 3: Discover via API (start real server).
 	port := freePort(t)
-	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Store: store, SSHURL: "ssh://localhost:23231"})
+	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Store: store, Embedder: embedder, SSHURL: "ssh://localhost:23231"})
 	go srv.Start()
 	defer srv.Stop(ctx)
 	waitForServer(t, port)
@@ -292,7 +292,7 @@ Tests passed. Solution verified.`
 
 	// Discover via API.
 	port := freePort(t)
-	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Store: store, SSHURL: "ssh://localhost:23231"})
+	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Store: store, Embedder: embedder, SSHURL: "ssh://localhost:23231"})
 	go srv.Start()
 	defer srv.Stop(ctx)
 	waitForServer(t, port)
@@ -533,10 +533,10 @@ func TestEdge_LargeSessionLog(t *testing.T) {
 func TestEdge_DiscoverNoMatches(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
-	_ = newPredictableEmbedder(3)
+	embedder := newPredictableEmbedder(3)
 
 	port := freePort(t)
-	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Store: store})
+	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Store: store, Embedder: embedder})
 	go srv.Start()
 	defer srv.Stop(ctx)
 	waitForServer(t, port)
@@ -706,10 +706,10 @@ func TestEdge_HookInstallUnsafePath(t *testing.T) {
 func TestEdge_APIDiscoverRateLimit(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
-	_ = &slowEmbedder{delay: 100 * time.Millisecond, dims: 3}
+	embedder := &slowEmbedder{delay: 100 * time.Millisecond, dims: 3}
 
 	port := freePort(t)
-	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Store: store})
+	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Store: store, Embedder: embedder})
 	go srv.Start()
 	defer srv.Stop(ctx)
 	waitForServer(t, port)
