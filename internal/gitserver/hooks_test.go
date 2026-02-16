@@ -175,6 +175,31 @@ func TestInstallHooks_PostReceiveContainsAPIURL(t *testing.T) {
 	}
 }
 
+func TestInstallHooks_PostReceiveAPIURLVariousPorts(t *testing.T) {
+	tests := []struct {
+		name     string
+		port     int
+		expected string
+	}{
+		{"standard port", 23233, `KINOKO_API_URL="http://127.0.0.1:23233"`},
+		{"custom port", 8080, `KINOKO_API_URL="http://127.0.0.1:8080"`},
+		{"zero port", 0, `KINOKO_API_URL="http://127.0.0.1:0"`},
+		{"negative port", -1, `KINOKO_API_URL="http://127.0.0.1:-1"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			if err := InstallHooks(dataDir, "/usr/local/bin/kinoko", tt.port); err != nil {
+				t.Fatal(err)
+			}
+			content, _ := os.ReadFile(filepath.Join(dataDir, "hooks", "post-receive"))
+			if !contains(string(content), tt.expected) {
+				t.Errorf("expected %q in post-receive script", tt.expected)
+			}
+		})
+	}
+}
+
 func TestInstallHooks_PathValidationRejectsMalicious(t *testing.T) {
 	tests := []struct {
 		name    string
