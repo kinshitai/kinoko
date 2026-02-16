@@ -233,7 +233,7 @@ func TestGenericAPIKeyWithContext(t *testing.T) {
 func TestNoFalsePositiveOnPlaceholders(t *testing.T) {
 	s := New(WithMinConfidence(0.7))
 	safes := []string{
-		"Use your-api-key-here as the token",               // placeholder
+		"Use your-api-key-here as the token",                // placeholder
 		"password = ********",                               // masked
 		"the SHA256 hash of 'hello' is 2cf24dba5fb0a30e...", // truncated hex
 	}

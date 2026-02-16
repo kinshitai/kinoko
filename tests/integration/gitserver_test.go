@@ -22,12 +22,12 @@ import (
 
 // GitTestServer wraps a Soft Serve process for integration testing.
 type GitTestServer struct {
-	Port       int
-	HTTPPort   int
-	DataDir    string
-	AdminKey   string // path to private key
-	cmd        *exec.Cmd
-	t          *testing.T
+	Port     int
+	HTTPPort int
+	DataDir  string
+	AdminKey string // path to private key
+	cmd      *exec.Cmd
+	t        *testing.T
 }
 
 // requireSoftBinary skips the test if the `soft` binary is not on PATH.
@@ -199,10 +199,10 @@ func TestGitServer_StartStop(t *testing.T) {
 	gs := StartGitTestServer(t)
 
 	// Verify we can talk to it
-	out, err := gs.SSHCommand("help")
+	_, err := gs.SSHCommand("help")
 	if err != nil {
 		// Some versions don't have "help", try "repo list" instead
-		out, err = gs.SSHCommand("repo", "list")
+		out, err := gs.SSHCommand("repo", "list")
 		if err != nil {
 			t.Fatalf("cannot communicate with soft serve: %v\nOutput: %s", err, out)
 		}

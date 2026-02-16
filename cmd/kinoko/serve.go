@@ -11,13 +11,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/kinoko-dev/kinoko/internal/api"
 	"github.com/kinoko-dev/kinoko/internal/config"
 	"github.com/kinoko-dev/kinoko/internal/embedding"
 	"github.com/kinoko-dev/kinoko/internal/gitserver"
 	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
-	"github.com/spf13/cobra"
 )
 
 var serveCmd = &cobra.Command{

@@ -31,11 +31,11 @@ type TestEnvironment struct {
 	ConfigPath string
 
 	// Server management
-	Server     *gitserver.Server
-	ServerCmd  *exec.Cmd
-	ServerPID  int
-	SSHPort    int
-	HTTPPort   int
+	Server    *gitserver.Server
+	ServerCmd *exec.Cmd
+	ServerPID int
+	SSHPort   int
+	HTTPPort  int
 
 	// SSH keys for testing
 	AdminKeyPath    string
@@ -116,7 +116,7 @@ func (env *TestEnvironment) StartServer() {
 	// Start server process
 	env.ServerCmd = exec.Command(env.BinaryPath, "serve", "--config", env.ConfigPath)
 	env.ServerCmd.Dir = env.TempDir
-	
+
 	// Capture server output for debugging
 	env.ServerCmd.Stdout = &testLogWriter{t: env.t, prefix: "[SERVER-OUT]"}
 	env.ServerCmd.Stderr = &testLogWriter{t: env.t, prefix: "[SERVER-ERR]"}
@@ -200,7 +200,7 @@ func (env *TestEnvironment) RunSSHCommand(args ...string) (string, error) {
 
 	cmd := exec.Command("ssh", cmdArgs...)
 	output, err := cmd.CombinedOutput()
-	
+
 	env.t.Logf("SSH command: ssh %v", cmdArgs)
 	env.t.Logf("SSH output: %s", string(output))
 	if err != nil {
@@ -215,7 +215,7 @@ func (env *TestEnvironment) GitCloneSSH(repoName, cloneDir string) error {
 	env.t.Helper()
 
 	cloneURL := fmt.Sprintf("ssh://127.0.0.1:%d/%s", env.SSHPort, repoName)
-	
+
 	// Set up git SSH command
 	gitSSHCmd := fmt.Sprintf("ssh -p %d -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null -o LogLevel=ERROR",
 		env.SSHPort, env.AdminKeyPath)
@@ -226,7 +226,7 @@ func (env *TestEnvironment) GitCloneSSH(repoName, cloneDir string) error {
 
 	output, err := cmd.CombinedOutput()
 	env.t.Logf("Git clone output: %s", string(output))
-	
+
 	return err
 }
 
@@ -235,13 +235,13 @@ func (env *TestEnvironment) GitCloneHTTP(repoName, cloneDir string) error {
 	env.t.Helper()
 
 	cloneURL := fmt.Sprintf("http://127.0.0.1:%d/%s", env.HTTPPort, repoName)
-	
+
 	cmd := exec.Command("git", "clone", cloneURL, cloneDir)
 	cmd.Dir = env.TempDir
 
 	output, err := cmd.CombinedOutput()
 	env.t.Logf("Git clone HTTP output: %s", string(output))
-	
+
 	return err
 }
 
@@ -268,7 +268,7 @@ func (env *TestEnvironment) Cleanup() {
 	env.t.Helper()
 
 	env.StopServer()
-	
+
 	if env.TempDir != "" {
 		cleanupTempDir(env.TempDir)
 	}
@@ -369,7 +369,7 @@ func (env *TestEnvironment) waitForServerReady() {
 	env.t.Helper()
 
 	env.t.Log("Waiting for server to be ready...")
-	
+
 	timeout := time.After(60 * time.Second)
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -407,16 +407,16 @@ func (w *testLogWriter) Write(p []byte) (n int, err error) {
 // Helper to skip tests if soft binary is not available
 func RequireSoftBinary(t *testing.T) {
 	t.Helper()
-	
+
 	if _, err := exec.LookPath("soft"); err != nil {
 		t.Skip("Skipping test because 'soft' binary is not available")
 	}
 }
 
-// Helper to skip tests if git binary is not available  
+// Helper to skip tests if git binary is not available
 func RequireGitBinary(t *testing.T) {
 	t.Helper()
-	
+
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("Skipping test because 'git' binary is not available")
 	}
@@ -425,7 +425,7 @@ func RequireGitBinary(t *testing.T) {
 // Helper to skip tests if SSH binary is not available
 func RequireSSHBinary(t *testing.T) {
 	t.Helper()
-	
+
 	if _, err := exec.LookPath("ssh"); err != nil {
 		t.Skip("Skipping test because 'ssh' binary is not available")
 	}

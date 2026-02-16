@@ -20,8 +20,8 @@ func (r *recordingEventWriter) WriteInjectionEvent(_ context.Context, ev storage
 }
 
 type stubInjector struct {
-	resp *model.InjectionResponse
-	err  error
+	resp  *model.InjectionResponse
+	err   error
 	calls atomic.Int32
 }
 

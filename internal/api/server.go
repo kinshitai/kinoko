@@ -18,13 +18,13 @@ import (
 
 // Server is the HTTP API server for discovery and ingestion.
 type Server struct {
-	httpServer    *http.Server
-	store         *storage.SQLiteStore
-	embedder      embedding.Embedder
-	sshURL        string // SSH clone base URL
-	logger        *slog.Logger
-	enqueue       func(ctx context.Context, session model.SessionRecord, log []byte) error
-	discoverSem   chan struct{} // P1-7: semaphore to limit concurrent discover requests
+	httpServer  *http.Server
+	store       *storage.SQLiteStore
+	embedder    embedding.Embedder
+	sshURL      string // SSH clone base URL
+	logger      *slog.Logger
+	enqueue     func(ctx context.Context, session model.SessionRecord, log []byte) error
+	discoverSem chan struct{} // P1-7: semaphore to limit concurrent discover requests
 }
 
 // Config configures the API server.
@@ -253,5 +253,7 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+	}
 }

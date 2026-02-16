@@ -12,37 +12,37 @@ import (
 // PipelineMetrics holds all metrics from §3.1-3.2 and A/B results.
 type PipelineMetrics struct {
 	// Sessions
-	TotalSessions    int
-	Extracted        int
-	Rejected         int
-	Errored          int
-	ExtractionYield  float64 // extracted / total
+	TotalSessions   int
+	Extracted       int
+	Rejected        int
+	Errored         int
+	ExtractionYield float64 // extracted / total
 	// Stage pass rates (§3.1)
-	Stage1Total      int
-	Stage1Passed     int
-	Stage1PassRate   float64
-	Stage2Total      int
-	Stage2Passed     int
-	Stage2PassRate   float64
-	Stage3Total      int
-	Stage3Passed     int
-	Stage3PassRate   float64
+	Stage1Total    int
+	Stage1Passed   int
+	Stage1PassRate float64
+	Stage2Total    int
+	Stage2Passed   int
+	Stage2PassRate float64
+	Stage3Total    int
+	Stage3Passed   int
+	Stage3PassRate float64
 	// Human review precision (§3.1)
 	HumanReviewTotal    int
 	HumanReviewUseful   int
 	ExtractionPrecision float64 // useful / total reviewed
 	// Injection metrics (§3.2)
-	InjectionEvents       int
-	SessionsWithInjection int
-	InjectionRate         float64 // sessions with injection / total sessions
-	TotalSkills           int
+	InjectionEvents        int
+	SessionsWithInjection  int
+	InjectionRate          float64 // sessions with injection / total sessions
+	TotalSkills            int
 	InjectedDistinctSkills int
-	SkillUtilization      float64 // distinct injected / total skills
+	SkillUtilization       float64 // distinct injected / total skills
 	// Skills by category
 	SkillsByCategory map[string]int
 	// Quality
-	AvgComposite   float64
-	AvgConfidence  float64
+	AvgComposite  float64
+	AvgConfidence float64
 	// Decay distribution
 	DecayBuckets []DecayBucket
 	// A/B test results (§3.3)
@@ -73,8 +73,8 @@ type ABTestResult struct {
 
 // Collector computes pipeline metrics from the database.
 type Collector struct {
-	db             *sql.DB
-	minSampleSize  int // minimum sessions per A/B group before computing z-test
+	db            *sql.DB
+	minSampleSize int // minimum sessions per A/B group before computing z-test
 }
 
 // NewCollector creates a Collector. Options: WithMinSampleSize.

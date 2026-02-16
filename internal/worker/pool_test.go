@@ -233,7 +233,9 @@ func TestPool_RetryOnPipelineError(t *testing.T) {
 	p := NewPool(q, ext, dummySessionGetter, cfg, testLogger())
 
 	ctx := context.Background()
-	if err := p.Start(ctx); err != nil { t.Fatal(err) }
+	if err := p.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	deadline := time.After(2 * time.Second)
 	for p.Stats().TotalProcessed < 1 {
@@ -279,7 +281,9 @@ func TestPool_FailPermanentAfterMaxRetries(t *testing.T) {
 	p := NewPool(q, ext, dummySessionGetter, cfg, testLogger())
 
 	ctx := context.Background()
-	if err := p.Start(ctx); err != nil { t.Fatal(err) }
+	if err := p.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	deadline := time.After(2 * time.Second)
 	for p.Stats().TotalProcessed < 1 {
@@ -323,7 +327,9 @@ func TestPool_FileReadFailIsPermanent(t *testing.T) {
 	p := NewPool(q, ext, dummySessionGetter, cfg, testLogger())
 
 	ctx := context.Background()
-	if err := p.Start(ctx); err != nil { t.Fatal(err) }
+	if err := p.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	deadline := time.After(2 * time.Second)
 	for p.Stats().TotalProcessed < 1 {
@@ -375,7 +381,9 @@ func TestPool_GracefulShutdown_InFlightCompletes(t *testing.T) {
 	p := NewPool(q, ext, dummySessionGetter, cfg, testLogger())
 
 	ctx := context.Background()
-	if err := p.Start(ctx); err != nil { t.Fatal(err) }
+	if err := p.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	<-extractStarted // Worker is in Extract
 
@@ -419,7 +427,9 @@ func TestPool_StatsCountRejected(t *testing.T) {
 	p := NewPool(q, ext, dummySessionGetter, cfg, testLogger())
 
 	ctx := context.Background()
-	if err := p.Start(ctx); err != nil { t.Fatal(err) }
+	if err := p.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	deadline := time.After(2 * time.Second)
 	for p.Stats().TotalProcessed < 1 {
@@ -460,7 +470,9 @@ func TestPool_GetSessionFailureIsTransient(t *testing.T) {
 	p := NewPool(q, ext, failingSessionGetter, cfg, testLogger())
 
 	ctx := context.Background()
-	if err := p.Start(ctx); err != nil { t.Fatal(err) }
+	if err := p.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	deadline := time.After(2 * time.Second)
 	for p.Stats().TotalProcessed < 1 {
@@ -504,7 +516,9 @@ func TestPool_EmptyQueue_NoSpin(t *testing.T) {
 	p := NewPool(q, ext, dummySessionGetter, cfg, testLogger())
 
 	ctx := context.Background()
-	if err := p.Start(ctx); err != nil { t.Fatal(err) }
+	if err := p.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	// Count claim attempts over 200ms. With 50ms poll, should be ~4-5, not hundreds.
 	var claimCount atomic.Int32

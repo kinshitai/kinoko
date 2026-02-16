@@ -43,7 +43,8 @@ func kebab(s string) string {
 	var out strings.Builder
 	runes := []rune(s)
 	for i, r := range runes {
-		if r >= 'A' && r <= 'Z' {
+		switch {
+		case r >= 'A' && r <= 'Z':
 			// Insert dash before uppercase if preceded by lowercase or
 			// if this is the start of a new word (upper followed by lower, after uppers).
 			if i > 0 {
@@ -56,9 +57,9 @@ func kebab(s string) string {
 				}
 			}
 			out.WriteRune(r + ('a' - 'A'))
-		} else if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
 			out.WriteRune(r)
-		} else if r == '-' || r == '_' || r == ' ' {
+		case r == '-' || r == '_' || r == ' ':
 			if out.Len() > 0 {
 				out.WriteByte('-')
 			}

@@ -32,9 +32,9 @@ type sleepFunc func(d time.Duration)
 type stage3Critic struct {
 	llmClient llm.LLMClient
 	llmV2     llm.LLMClientV2 // optional, for token usage + timeout control
-	cfg   config.ExtractionConfig
-	log   *slog.Logger
-	cb    *circuitbreaker.Breaker
+	cfg       config.ExtractionConfig
+	log       *slog.Logger
+	cb        *circuitbreaker.Breaker
 
 	// Injectable clock/sleep for testing
 	clock clockFunc
@@ -149,13 +149,13 @@ func (c *stage3Critic) Evaluate(ctx context.Context, session model.SessionRecord
 
 // criticResponse is the expected JSON from the LLM.
 type criticResponse struct {
-	Verdict    string           `json:"verdict"`
-	Reasoning  string           `json:"reasoning"`
-	Scores     rubricScoresJSON `json:"refined_scores"`
-	Confidence float64          `json:"confidence"`
-	Reusable   bool             `json:"reusable_pattern"`
-	Explicit   bool             `json:"explicit_reasoning"`
-	Contradicts bool            `json:"contradicts_best_practices"`
+	Verdict     string           `json:"verdict"`
+	Reasoning   string           `json:"reasoning"`
+	Scores      rubricScoresJSON `json:"refined_scores"`
+	Confidence  float64          `json:"confidence"`
+	Reusable    bool             `json:"reusable_pattern"`
+	Explicit    bool             `json:"explicit_reasoning"`
+	Contradicts bool             `json:"contradicts_best_practices"`
 }
 
 func (c *stage3Critic) parseAndValidate(resp string) (*model.Stage3Result, error) {
@@ -312,4 +312,3 @@ func (c *stage3Critic) callLLM(ctx context.Context, prompt string, timeout time.
 func estimateTokens(prompt, response string) int {
 	return (len(prompt) + len(response)) / 4
 }
-

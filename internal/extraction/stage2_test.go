@@ -1,13 +1,14 @@
 package extraction
 
 import (
-	"github.com/kinoko-dev/kinoko/internal/model"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"testing"
+
+	"github.com/kinoko-dev/kinoko/internal/model"
 
 	"github.com/kinoko-dev/kinoko/internal/config"
 )
@@ -143,19 +144,19 @@ func okLLM(json string) *mockLLM {
 
 func TestStage2Scorer(t *testing.T) {
 	tests := []struct {
-		name       string
-		embedder   *mockEmbedder
-		querier    *mockQuerier
-		llm        *mockLLM
-		wantPassed bool
-		wantErr    bool
+		name        string
+		embedder    *mockEmbedder
+		querier     *mockQuerier
+		llm         *mockLLM
+		wantPassed  bool
+		wantErr     bool
 		checkResult func(t *testing.T, r *model.Stage2Result)
 	}{
 		{
-			name:     "novelty too low (too similar)",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.90), // distance = 0.10 < 0.15
-			llm:      okLLM(goodRubricJSON()),
+			name:       "novelty too low (too similar)",
+			embedder:   okEmbedder(),
+			querier:    querierWithSimilarity(0.90), // distance = 0.10 < 0.15
+			llm:        okLLM(goodRubricJSON()),
 			wantPassed: false,
 			checkResult: func(t *testing.T, r *model.Stage2Result) {
 				if r.EmbeddingDistance >= 0.15 {
@@ -167,10 +168,10 @@ func TestStage2Scorer(t *testing.T) {
 			},
 		},
 		{
-			name:     "novelty too high (too unrelated)",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.02), // distance = 0.98 > 0.95
-			llm:      okLLM(goodRubricJSON()),
+			name:       "novelty too high (too unrelated)",
+			embedder:   okEmbedder(),
+			querier:    querierWithSimilarity(0.02), // distance = 0.98 > 0.95
+			llm:        okLLM(goodRubricJSON()),
 			wantPassed: false,
 			checkResult: func(t *testing.T, r *model.Stage2Result) {
 				if r.EmbeddingDistance <= 0.95 {
@@ -179,10 +180,10 @@ func TestStage2Scorer(t *testing.T) {
 			},
 		},
 		{
-			name:     "novelty in range but rubric fails",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.50), // distance = 0.50, in range
-			llm:      okLLM(failRubricJSON()),
+			name:       "novelty in range but rubric fails",
+			embedder:   okEmbedder(),
+			querier:    querierWithSimilarity(0.50), // distance = 0.50, in range
+			llm:        okLLM(failRubricJSON()),
 			wantPassed: false,
 			checkResult: func(t *testing.T, r *model.Stage2Result) {
 				if r.RubricScores.MinimumViable() {
@@ -191,10 +192,10 @@ func TestStage2Scorer(t *testing.T) {
 			},
 		},
 		{
-			name:     "full pass",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.50), // distance = 0.50
-			llm:      okLLM(goodRubricJSON()),
+			name:       "full pass",
+			embedder:   okEmbedder(),
+			querier:    querierWithSimilarity(0.50), // distance = 0.50
+			llm:        okLLM(goodRubricJSON()),
 			wantPassed: true,
 			checkResult: func(t *testing.T, r *model.Stage2Result) {
 				if r.ClassifiedCategory != model.CategoryTactical {
@@ -212,10 +213,10 @@ func TestStage2Scorer(t *testing.T) {
 			},
 		},
 		{
-			name:     "full pass with no existing skills",
-			embedder: okEmbedder(),
-			querier:  emptyQuerier(),
-			llm:      okLLM(goodRubricJSON()),
+			name:       "full pass with no existing skills",
+			embedder:   okEmbedder(),
+			querier:    emptyQuerier(),
+			llm:        okLLM(goodRubricJSON()),
 			wantPassed: false, // distance=1.0 > maxDist=0.95
 			checkResult: func(t *testing.T, r *model.Stage2Result) {
 				if r.EmbeddingDistance != 1.0 {
@@ -224,7 +225,7 @@ func TestStage2Scorer(t *testing.T) {
 			},
 		},
 		{
-			name: "LLM returns bad JSON",
+			name:     "LLM returns bad JSON",
 			embedder: okEmbedder(),
 			querier:  querierWithSimilarity(0.50),
 			llm: &mockLLM{
@@ -257,7 +258,7 @@ func TestStage2Scorer(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "LLM error",
+			name:     "LLM error",
 			embedder: okEmbedder(),
 			querier:  querierWithSimilarity(0.50),
 			llm: &mockLLM{
@@ -268,24 +269,24 @@ func TestStage2Scorer(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:     "LLM response wrapped in markdown code block",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.50),
-			llm: okLLM(fmt.Sprintf("```json\n%s\n```", goodRubricJSON())),
+			name:       "LLM response wrapped in markdown code block",
+			embedder:   okEmbedder(),
+			querier:    querierWithSimilarity(0.50),
+			llm:        okLLM(fmt.Sprintf("```json\n%s\n```", goodRubricJSON())),
 			wantPassed: true,
 		},
 		{
-			name:     "boundary: distance exactly at min",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.85), // distance = 0.15 == minDist
-			llm:      okLLM(goodRubricJSON()),
+			name:       "boundary: distance exactly at min",
+			embedder:   okEmbedder(),
+			querier:    querierWithSimilarity(0.85), // distance = 0.15 == minDist
+			llm:        okLLM(goodRubricJSON()),
 			wantPassed: true,
 		},
 		{
-			name:     "boundary: distance exactly at max",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.05), // distance = 0.95 == maxDist
-			llm:      okLLM(goodRubricJSON()),
+			name:       "boundary: distance exactly at max",
+			embedder:   okEmbedder(),
+			querier:    querierWithSimilarity(0.05), // distance = 0.95 == maxDist
+			llm:        okLLM(goodRubricJSON()),
 			wantPassed: true,
 		},
 		{
@@ -418,17 +419,17 @@ func TestStage2Scorer(t *testing.T) {
 			},
 		},
 		{
-			name:     "P2.1: JSON with preamble containing braces",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.50),
-			llm: okLLM(fmt.Sprintf("Here's my analysis:\n```json\n%s\n```", goodRubricJSON())),
+			name:       "P2.1: JSON with preamble containing braces",
+			embedder:   okEmbedder(),
+			querier:    querierWithSimilarity(0.50),
+			llm:        okLLM(fmt.Sprintf("Here's my analysis:\n```json\n%s\n```", goodRubricJSON())),
 			wantPassed: true,
 		},
 		{
-			name:     "P2.2: novelty score at boundary is nonzero",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.85), // distance = 0.15 = minDist
-			llm:      okLLM(goodRubricJSON()),
+			name:       "P2.2: novelty score at boundary is nonzero",
+			embedder:   okEmbedder(),
+			querier:    querierWithSimilarity(0.85), // distance = 0.15 = minDist
+			llm:        okLLM(goodRubricJSON()),
 			wantPassed: true,
 			checkResult: func(t *testing.T, r *model.Stage2Result) {
 				if r.NoveltyScore < 0.05 {
@@ -437,10 +438,10 @@ func TestStage2Scorer(t *testing.T) {
 			},
 		},
 		{
-			name:     "P2.2: novelty score at midpoint is 1.0",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.45), // distance = 0.55 ≈ midpoint of [0.15, 0.95]
-			llm:      okLLM(goodRubricJSON()),
+			name:       "P2.2: novelty score at midpoint is 1.0",
+			embedder:   okEmbedder(),
+			querier:    querierWithSimilarity(0.45), // distance = 0.55 ≈ midpoint of [0.15, 0.95]
+			llm:        okLLM(goodRubricJSON()),
 			wantPassed: true,
 			checkResult: func(t *testing.T, r *model.Stage2Result) {
 				if r.NoveltyScore < 0.95 {

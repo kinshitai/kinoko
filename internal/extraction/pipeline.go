@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/sanitize"
 )
@@ -49,7 +50,7 @@ type Pipeline struct {
 	sampleRate float64 // 0.0–1.0, e.g. 0.01 for 1%
 	randIntn   RandIntn
 	committer  model.SkillCommitter // optional: pushes skills to git
-	scanner    *sanitize.Scanner   // optional: credential scanner
+	scanner    *sanitize.Scanner    // optional: credential scanner
 	extractor  string               // pipeline version identifier
 
 	// Stratified sampling counters: maintain ~50/50 extracted vs rejected.
@@ -339,23 +340,23 @@ func (p *Pipeline) updateSessionStatus(ctx context.Context, session *model.Sessi
 		return
 	}
 	session.ExtractionStatus = result.Status
-	if result.Status == model.StatusRejected {
-		if result.Stage1 != nil && !result.Stage1.Passed {
+	switch result.Status {
+	case model.StatusRejected:
+		switch {
+		case result.Stage1 != nil && !result.Stage1.Passed:
 			session.RejectedAtStage = 1
 			session.RejectionReason = result.Stage1.Reason
-		} else if result.Stage2 != nil && !result.Stage2.Passed {
+		case result.Stage2 != nil && !result.Stage2.Passed:
 			session.RejectedAtStage = 2
 			session.RejectionReason = result.Stage2.Reason
-		} else if result.Stage3 != nil && !result.Stage3.Passed {
+		case result.Stage3 != nil && !result.Stage3.Passed:
 			session.RejectedAtStage = 3
 			session.RejectionReason = result.Stage3.CriticReasoning
 		}
-	}
-	if result.Status == model.StatusError {
+	case model.StatusError:
 		session.RejectionReason = result.Error
 	}
 	if err := p.sessions.UpdateSessionResult(ctx, session); err != nil {
 		p.log.Error("failed to update session result", "session_id", session.ID, "error", err)
 	}
 }
-

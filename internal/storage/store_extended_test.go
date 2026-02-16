@@ -91,17 +91,17 @@ func TestDuplicateSessionInsert(t *testing.T) {
 	ctx := context.Background()
 
 	sess := &model.SessionRecord{
-		ID:               "sess-dup-1",
-		StartedAt:        time.Now(),
-		EndedAt:          time.Now(),
-		DurationMinutes:  5.0,
-		ToolCallCount:    3,
-		ErrorCount:       0,
-		MessageCount:     10,
-		ErrorRate:        0.0,
+		ID:                "sess-dup-1",
+		StartedAt:         time.Now(),
+		EndedAt:           time.Now(),
+		DurationMinutes:   5.0,
+		ToolCallCount:     3,
+		ErrorCount:        0,
+		MessageCount:      10,
+		ErrorRate:         0.0,
 		HasSuccessfulExec: true,
-		LibraryID:        "default",
-		ExtractionStatus: model.StatusPending,
+		LibraryID:         "default",
+		ExtractionStatus:  model.StatusPending,
 	}
 
 	if err := s.InsertSession(ctx, sess); err != nil {
@@ -123,20 +123,20 @@ func TestSessionInsertAndGet(t *testing.T) {
 	ctx := context.Background()
 
 	sess := &model.SessionRecord{
-		ID:               "sess-ig-1",
-		StartedAt:        time.Now().UTC().Truncate(time.Second),
-		EndedAt:          time.Now().UTC().Truncate(time.Second),
-		DurationMinutes:  12.5,
-		ToolCallCount:    7,
-		ErrorCount:       1,
-		MessageCount:     20,
-		ErrorRate:        0.05,
+		ID:                "sess-ig-1",
+		StartedAt:         time.Now().UTC().Truncate(time.Second),
+		EndedAt:           time.Now().UTC().Truncate(time.Second),
+		DurationMinutes:   12.5,
+		ToolCallCount:     7,
+		ErrorCount:        1,
+		MessageCount:      20,
+		ErrorRate:         0.05,
 		HasSuccessfulExec: true,
-		TokensUsed:       1500,
-		AgentModel:       "gpt-4",
-		UserID:           "user-1",
-		LibraryID:        "lib-1",
-		ExtractionStatus: model.StatusPending,
+		TokensUsed:        1500,
+		AgentModel:        "gpt-4",
+		UserID:            "user-1",
+		LibraryID:         "lib-1",
+		ExtractionStatus:  model.StatusPending,
 	}
 
 	if err := s.InsertSession(ctx, sess); err != nil {

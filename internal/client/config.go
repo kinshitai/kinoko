@@ -16,9 +16,9 @@ type LocalConfig struct {
 // ClientSection holds client connection settings.
 type ClientSection struct {
 	Server       string `yaml:"server"`        // SSH URL for git
-	API          string `yaml:"api"`            // HTTP API URL
-	CacheDir     string `yaml:"cache_dir"`      // Local cache dir
-	PullInterval string `yaml:"pull_interval"`  // e.g. "5m"
+	API          string `yaml:"api"`           // HTTP API URL
+	CacheDir     string `yaml:"cache_dir"`     // Local cache dir
+	PullInterval string `yaml:"pull_interval"` // e.g. "5m"
 }
 
 // DefaultConfigPath returns ~/.kinoko/config.yaml.

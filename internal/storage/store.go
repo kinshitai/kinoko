@@ -12,8 +12,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/kinoko-dev/kinoko/internal/model"
 	_ "modernc.org/sqlite"
+
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 //go:embed schema.sql

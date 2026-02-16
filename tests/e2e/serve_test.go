@@ -22,33 +22,33 @@ func TestKinokoServeLifecycle(t *testing.T) {
 
 	t.Run("server_starts_successfully", func(t *testing.T) {
 		env.StartServer()
-		
+
 		// Verify server is responding
 		output, err := env.RunSSHCommand("repo", "list")
 		if err != nil {
 			t.Fatalf("Server not responding to SSH commands: %v", err)
 		}
-		
+
 		t.Logf("Initial repo list: %s", output)
-		
+
 		env.StopServer()
 	})
 
 	t.Run("server_stops_gracefully", func(t *testing.T) {
 		env.StartServer()
-		
+
 		// Server should be running
 		if env.ServerPID == 0 {
 			t.Fatal("Server PID not set")
 		}
-		
+
 		// Verify process exists
 		if err := syscall.Kill(env.ServerPID, 0); err != nil {
 			t.Fatalf("Server process not running: %v", err)
 		}
-		
+
 		env.StopServer()
-		
+
 		// Process should be gone
 		time.Sleep(1 * time.Second) // Give it a moment
 		if err := syscall.Kill(env.ServerPID, 0); err == nil {
@@ -70,10 +70,10 @@ func TestKinokoServeConfigErrors(t *testing.T) {
 
 	t.Run("missing_config_file", func(t *testing.T) {
 		nonexistentConfig := filepath.Join(tempDir, "missing-config.yaml")
-		
+
 		cmd := exec.Command(binaryPath, "serve", "--config", nonexistentConfig)
 		cmd.Dir = tempDir
-		
+
 		output, err := cmd.CombinedOutput()
 		// Should succeed (uses defaults when config doesn't exist)
 		if err != nil {
@@ -102,9 +102,9 @@ func TestKinokoServeConfigErrors(t *testing.T) {
 		}
 
 		outputStr := string(output)
-		if !strings.Contains(outputStr, "failed to parse config") && 
-		   !strings.Contains(outputStr, "yaml") &&
-		   !strings.Contains(outputStr, "parse") {
+		if !strings.Contains(outputStr, "failed to parse config") &&
+			!strings.Contains(outputStr, "yaml") &&
+			!strings.Contains(outputStr, "parse") {
 			t.Errorf("Error message should mention YAML parsing issue: %s", outputStr)
 		}
 	})
@@ -134,7 +134,7 @@ libraries: []`
 
 		outputStr := string(output)
 		if !strings.Contains(outputStr, "port must be between") ||
-		   !strings.Contains(outputStr, "65535") {
+			!strings.Contains(outputStr, "65535") {
 			t.Errorf("Error should mention valid port range: %s", outputStr)
 		}
 	})
@@ -164,7 +164,7 @@ libraries: []`
 
 		outputStr := string(output)
 		if !strings.Contains(outputStr, "storage driver must be") ||
-		   !strings.Contains(outputStr, "sqlite") {
+			!strings.Contains(outputStr, "sqlite") {
 			t.Errorf("Error should mention valid storage drivers: %s", outputStr)
 		}
 	})
@@ -176,11 +176,11 @@ func TestKinokoServePortConflicts(t *testing.T) {
 
 	env1 := SetupTestEnvironment(t)
 	env2 := SetupTestEnvironment(t)
-	
+
 	// Force both to use the same port
 	env2.Config.Server.Port = env1.Config.Server.Port
 	env2.SSHPort = env1.SSHPort
-	
+
 	// Update config file for env2
 	if err := env2.Config.Save(env2.ConfigPath); err != nil {
 		t.Fatalf("Failed to save env2 config: %v", err)
@@ -203,14 +203,14 @@ func TestKinokoServePortConflicts(t *testing.T) {
 
 		// Wait a bit and check if it's still running
 		time.Sleep(5 * time.Second)
-		
+
 		// It should have exited due to port conflict
 		if cmd.ProcessState == nil {
 			// Process might still be running, kill it
 			cmd.Process.Kill()
 			cmd.Wait()
 		}
-		
+
 		// The exact behavior depends on how Soft Serve handles port conflicts
 		// This documents the expected behavior
 		t.Log("Second server correctly handled port conflict")
@@ -262,8 +262,8 @@ libraries: []`, readonlyDataDir, readonlyDataDir)
 		}
 
 		outputStr := string(output)
-		if !strings.Contains(outputStr, "permission") && 
-		   !strings.Contains(outputStr, "denied") {
+		if !strings.Contains(outputStr, "permission") &&
+			!strings.Contains(outputStr, "denied") {
 			t.Errorf("Error should mention permission issue: %s", outputStr)
 		}
 	})
@@ -312,7 +312,7 @@ func TestRepositoryOperations(t *testing.T) {
 
 	t.Run("create_and_list_repositories", func(t *testing.T) {
 		repoName := "test-skill-repo"
-		
+
 		// Create repository
 		output, err := env.RunSSHCommand("repo", "create", repoName)
 		if err != nil {
@@ -339,8 +339,8 @@ func TestRepositoryOperations(t *testing.T) {
 	t.Run("repository_name_validation", func(t *testing.T) {
 		// Test various repository names
 		tests := []struct {
-			name        string
-			shouldWork  bool
+			name       string
+			shouldWork bool
 		}{
 			{"valid-repo-name", true},
 			{"repo123", true},
@@ -359,7 +359,7 @@ func TestRepositoryOperations(t *testing.T) {
 				}
 
 				output, err := env.RunSSHCommand("repo", "create", tt.name)
-				
+
 				if tt.shouldWork {
 					if err != nil {
 						t.Logf("Repository creation failed (might be expected): %v\nOutput: %s", err, output)
@@ -380,7 +380,7 @@ func TestRepositoryOperations(t *testing.T) {
 
 	t.Run("delete_nonexistent_repository", func(t *testing.T) {
 		nonexistentRepo := "this-repo-does-not-exist"
-		
+
 		output, err := env.RunSSHCommand("repo", "delete", nonexistentRepo)
 		if err == nil {
 			t.Errorf("Expected error when deleting nonexistent repository\nOutput: %s", output)
@@ -398,7 +398,7 @@ func TestGitOperations(t *testing.T) {
 	defer env.StopServer()
 
 	repoName := "git-operations-test"
-	
+
 	// Create repository
 	_, err := env.RunSSHCommand("repo", "create", repoName)
 	if err != nil {
@@ -408,7 +408,7 @@ func TestGitOperations(t *testing.T) {
 
 	t.Run("ssh_clone_push_pull", func(t *testing.T) {
 		cloneDir := filepath.Join(env.TempDir, "ssh-clone")
-		
+
 		// Clone repository
 		if err := env.GitCloneSSH(repoName, cloneDir); err != nil {
 			t.Fatalf("Failed to clone repository via SSH: %v", err)
@@ -455,15 +455,15 @@ Clone, modify, commit, push.`); err != nil {
 		// Push changes
 		gitSSHCmd := fmt.Sprintf("ssh -p %d -i %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null -o LogLevel=ERROR",
 			env.SSHPort, env.AdminKeyPath)
-		
+
 		pushCmd := exec.Command("git", "push", "origin", "master")
 		pushCmd.Dir = cloneDir
 		pushCmd.Env = append(os.Environ(), fmt.Sprintf("GIT_SSH_COMMAND=%s", gitSSHCmd))
-		
+
 		if err := pushCmd.Run(); err != nil {
 			// Try main branch if master fails
 			pushCmd = exec.Command("git", "push", "origin", "main")
-			pushCmd.Dir = cloneDir  
+			pushCmd.Dir = cloneDir
 			pushCmd.Env = append(os.Environ(), fmt.Sprintf("GIT_SSH_COMMAND=%s", gitSSHCmd))
 			if err := pushCmd.Run(); err != nil {
 				t.Fatalf("Failed to git push: %v", err)
@@ -484,7 +484,7 @@ Clone, modify, commit, push.`); err != nil {
 
 	t.Run("http_clone", func(t *testing.T) {
 		cloneDir := filepath.Join(env.TempDir, "http-clone")
-		
+
 		if err := env.GitCloneHTTP(repoName, cloneDir); err != nil {
 			t.Fatalf("Failed to clone repository via HTTP: %v", err)
 		}
@@ -498,7 +498,7 @@ Clone, modify, commit, push.`); err != nil {
 	t.Run("clone_nonexistent_repository", func(t *testing.T) {
 		nonexistentRepo := "does-not-exist"
 		cloneDir := filepath.Join(env.TempDir, "nonexistent-clone")
-		
+
 		err := env.GitCloneSSH(nonexistentRepo, cloneDir)
 		if err == nil {
 			t.Error("Expected error when cloning nonexistent repository")
@@ -527,7 +527,7 @@ func TestServerStressScenarios(t *testing.T) {
 		for i := 0; i < numRepos; i++ {
 			repoName := fmt.Sprintf("stress-repo-%03d", i)
 			repoNames[i] = repoName
-			
+
 			if _, err := env.RunSSHCommand("repo", "create", repoName); err != nil {
 				t.Logf("Failed to create repo %s: %v", repoName, err)
 				continue
@@ -538,7 +538,7 @@ func TestServerStressScenarios(t *testing.T) {
 		start := time.Now()
 		listOutput, err := env.RunSSHCommand("repo", "list")
 		duration := time.Since(start)
-		
+
 		if err != nil {
 			t.Fatalf("Failed to list repositories: %v", err)
 		}
@@ -565,16 +565,16 @@ func TestServerStressScenarios(t *testing.T) {
 
 	t.Run("concurrent_operations", func(t *testing.T) {
 		const numConcurrent = 10
-		
+
 		// Create repositories concurrently
 		results := make(chan error, numConcurrent)
-		
+
 		for i := 0; i < numConcurrent; i++ {
 			go func(id int) {
 				repoName := fmt.Sprintf("concurrent-repo-%d", id)
 				_, err := env.RunSSHCommand("repo", "create", repoName)
 				results <- err
-				
+
 				// Clean up
 				if err == nil {
 					env.RunSSHCommand("repo", "delete", repoName)

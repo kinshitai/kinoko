@@ -77,7 +77,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "empty host",
 			config: &Config{
-				Server: ServerConfig{Host: "", Port: 8080, DataDir: "/tmp"},
+				Server:  ServerConfig{Host: "", Port: 8080, DataDir: "/tmp"},
 				Storage: StorageConfig{Driver: "sqlite", DSN: "/tmp/test.db"},
 				Libraries: []LibraryConfig{
 					{Name: "test", Path: "/tmp", Priority: 1},
@@ -88,7 +88,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "invalid port - too low",
 			config: &Config{
-				Server: ServerConfig{Host: "127.0.0.1", Port: 0, DataDir: "/tmp"},
+				Server:  ServerConfig{Host: "127.0.0.1", Port: 0, DataDir: "/tmp"},
 				Storage: StorageConfig{Driver: "sqlite", DSN: "/tmp/test.db"},
 				Libraries: []LibraryConfig{
 					{Name: "test", Path: "/tmp", Priority: 1},
@@ -99,7 +99,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "invalid port - too high",
 			config: &Config{
-				Server: ServerConfig{Host: "127.0.0.1", Port: 99999, DataDir: "/tmp"},
+				Server:  ServerConfig{Host: "127.0.0.1", Port: 99999, DataDir: "/tmp"},
 				Storage: StorageConfig{Driver: "sqlite", DSN: "/tmp/test.db"},
 				Libraries: []LibraryConfig{
 					{Name: "test", Path: "/tmp", Priority: 1},
@@ -110,7 +110,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "empty data dir",
 			config: &Config{
-				Server: ServerConfig{Host: "127.0.0.1", Port: 8080, DataDir: ""},
+				Server:  ServerConfig{Host: "127.0.0.1", Port: 8080, DataDir: ""},
 				Storage: StorageConfig{Driver: "sqlite", DSN: "/tmp/test.db"},
 				Libraries: []LibraryConfig{
 					{Name: "test", Path: "/tmp", Priority: 1},
@@ -121,7 +121,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "invalid storage driver",
 			config: &Config{
-				Server: ServerConfig{Host: "127.0.0.1", Port: 8080, DataDir: "/tmp"},
+				Server:  ServerConfig{Host: "127.0.0.1", Port: 8080, DataDir: "/tmp"},
 				Storage: StorageConfig{Driver: "redis", DSN: "/tmp/test.db"},
 				Libraries: []LibraryConfig{
 					{Name: "test", Path: "/tmp", Priority: 1},
@@ -132,7 +132,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "empty library name",
 			config: &Config{
-				Server: ServerConfig{Host: "127.0.0.1", Port: 8080, DataDir: "/tmp"},
+				Server:  ServerConfig{Host: "127.0.0.1", Port: 8080, DataDir: "/tmp"},
 				Storage: StorageConfig{Driver: "sqlite", DSN: "/tmp/test.db"},
 				Libraries: []LibraryConfig{
 					{Name: "", Path: "/tmp", Priority: 1},
@@ -143,7 +143,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "library with both path and URL",
 			config: &Config{
-				Server: ServerConfig{Host: "127.0.0.1", Port: 8080, DataDir: "/tmp"},
+				Server:  ServerConfig{Host: "127.0.0.1", Port: 8080, DataDir: "/tmp"},
 				Storage: StorageConfig{Driver: "sqlite", DSN: "/tmp/test.db"},
 				Libraries: []LibraryConfig{
 					{Name: "test", Path: "/tmp", URL: "https://example.com", Priority: 1},
@@ -154,7 +154,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "library with neither path nor URL",
 			config: &Config{
-				Server: ServerConfig{Host: "127.0.0.1", Port: 8080, DataDir: "/tmp"},
+				Server:  ServerConfig{Host: "127.0.0.1", Port: 8080, DataDir: "/tmp"},
 				Storage: StorageConfig{Driver: "sqlite", DSN: "/tmp/test.db"},
 				Libraries: []LibraryConfig{
 					{Name: "test", Priority: 1},
@@ -392,7 +392,7 @@ func TestExpandPathUserLookup(t *testing.T) {
 	// This might work or might not depending on system setup
 	// If it doesn't work (returns original), that's also acceptable
 	if result != userPath && result != expected {
-		t.Errorf("expandPath(%q) = %q, expected either %q (unchanged) or %q (expanded)", 
+		t.Errorf("expandPath(%q) = %q, expected either %q (unchanged) or %q (expanded)",
 			userPath, result, userPath, expected)
 	}
 }
@@ -401,7 +401,7 @@ func TestExpandPathNonexistentUser(t *testing.T) {
 	// Test with a user that definitely doesn't exist
 	nonexistentPath := "~nonexistentuser12345/path"
 	result := expandPath(nonexistentPath)
-	
+
 	// Should return the path unchanged since user doesn't exist
 	if result != nonexistentPath {
 		t.Errorf("expandPath(%q) = %q, expected %q (unchanged)", nonexistentPath, result, nonexistentPath)
@@ -435,7 +435,7 @@ func TestConfigPartialMerging(t *testing.T) {
 				if cfg.Server.Port != 9999 {
 					t.Errorf("expected port 9999, got %d", cfg.Server.Port)
 				}
-				
+
 				// Other sections should use defaults
 				if cfg.Storage.Driver != "sqlite" {
 					t.Errorf("expected default storage driver 'sqlite', got '%s'", cfg.Storage.Driver)
@@ -449,7 +449,7 @@ func TestConfigPartialMerging(t *testing.T) {
 			},
 		},
 		{
-			name: "only storage section", 
+			name: "only storage section",
 			configContent: `storage:
   driver: postgres
   dsn: "postgres://user:pass@localhost/kinoko"
@@ -462,7 +462,7 @@ func TestConfigPartialMerging(t *testing.T) {
 				if cfg.Storage.DSN != "postgres://user:pass@localhost/kinoko" {
 					t.Errorf("expected postgres DSN, got '%s'", cfg.Storage.DSN)
 				}
-				
+
 				// Other sections should use defaults
 				if cfg.Server.Host != "127.0.0.1" {
 					t.Errorf("expected default host '127.0.0.1', got '%s'", cfg.Server.Host)
@@ -493,10 +493,10 @@ func TestConfigPartialMerging(t *testing.T) {
 				if cfg.Libraries[1].Name != "other" {
 					t.Errorf("expected second library name 'other', got '%s'", cfg.Libraries[1].Name)
 				}
-				
+
 				// Other sections should use defaults
 				if cfg.Server.Port != 23231 {
-					t.Errorf("expected default port 23231, got %d", cfg.Server.Port) 
+					t.Errorf("expected default port 23231, got %d", cfg.Server.Port)
 				}
 				if cfg.Storage.Driver != "sqlite" {
 					t.Errorf("expected default storage driver 'sqlite', got '%s'", cfg.Storage.Driver)
@@ -513,7 +513,7 @@ func TestConfigPartialMerging(t *testing.T) {
 				if cfg.Extraction.MinConfidence != 0.8 {
 					t.Errorf("expected min_confidence 0.8, got %f", cfg.Extraction.MinConfidence)
 				}
-				
+
 				// Other extraction fields should use defaults
 				if !cfg.Extraction.AutoExtract {
 					t.Error("expected default auto_extract to be true")
@@ -564,7 +564,7 @@ defaults:
 				if cfg.Defaults.Confidence != 0.9 {
 					t.Errorf("expected defaults confidence 0.9, got %f", cfg.Defaults.Confidence)
 				}
-				
+
 				// Unspecified fields should use defaults
 				if cfg.Server.Host != "127.0.0.1" {
 					t.Errorf("expected default host '127.0.0.1', got '%s'", cfg.Server.Host)
@@ -579,7 +579,7 @@ defaults:
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			configPath := filepath.Join(tempDir, tt.name+".yaml")
-			
+
 			if err := os.WriteFile(configPath, []byte(tt.configContent), 0644); err != nil {
 				t.Fatalf("failed to write config: %v", err)
 			}

@@ -1,12 +1,13 @@
 package extraction
 
 import (
-	"github.com/kinoko-dev/kinoko/internal/model"
 	"log/slog"
 	"math"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kinoko-dev/kinoko/internal/model"
 
 	"github.com/kinoko-dev/kinoko/internal/config"
 )
@@ -36,104 +37,104 @@ func passingSession() model.SessionRecord {
 
 func TestStage1Filter(t *testing.T) {
 	tests := []struct {
-		name           string
-		mutate         func(*model.SessionRecord)
-		cfg            *config.ExtractionConfig
-		passed         bool
-		durationOK     bool
+		name            string
+		mutate          func(*model.SessionRecord)
+		cfg             *config.ExtractionConfig
+		passed          bool
+		durationOK      bool
 		toolCallCountOK bool
-		errorRateOK    bool
-		hasSuccessExec bool
-		reasonContains []string
+		errorRateOK     bool
+		hasSuccessExec  bool
+		reasonContains  []string
 	}{
 		{
-			name:           "happy path",
-			passed:         true,
-			durationOK:     true,
+			name:            "happy path",
+			passed:          true,
+			durationOK:      true,
 			toolCallCountOK: true,
-			errorRateOK:    true,
-			hasSuccessExec: true,
+			errorRateOK:     true,
+			hasSuccessExec:  true,
 		},
 		{
-			name:           "duration too short",
-			mutate:         func(s *model.SessionRecord) { s.DurationMinutes = 1 },
-			durationOK:     false,
+			name:            "duration too short",
+			mutate:          func(s *model.SessionRecord) { s.DurationMinutes = 1 },
+			durationOK:      false,
 			toolCallCountOK: true,
-			errorRateOK:    true,
-			hasSuccessExec: true,
-			reasonContains: []string{"duration"},
+			errorRateOK:     true,
+			hasSuccessExec:  true,
+			reasonContains:  []string{"duration"},
 		},
 		{
-			name:           "duration too long",
-			mutate:         func(s *model.SessionRecord) { s.DurationMinutes = 200 },
-			durationOK:     false,
+			name:            "duration too long",
+			mutate:          func(s *model.SessionRecord) { s.DurationMinutes = 200 },
+			durationOK:      false,
 			toolCallCountOK: true,
-			errorRateOK:    true,
-			hasSuccessExec: true,
-			reasonContains: []string{"duration"},
+			errorRateOK:     true,
+			hasSuccessExec:  true,
+			reasonContains:  []string{"duration"},
 		},
 		{
-			name:           "too few tool calls",
-			mutate:         func(s *model.SessionRecord) { s.ToolCallCount = 2; s.ErrorCount = 0; s.ErrorRate = 0 },
-			durationOK:     true,
+			name:            "too few tool calls",
+			mutate:          func(s *model.SessionRecord) { s.ToolCallCount = 2; s.ErrorCount = 0; s.ErrorRate = 0 },
+			durationOK:      true,
 			toolCallCountOK: false,
-			errorRateOK:    true,
-			hasSuccessExec: true,
-			reasonContains: []string{"tool_calls"},
+			errorRateOK:     true,
+			hasSuccessExec:  true,
+			reasonContains:  []string{"tool_calls"},
 		},
 		{
-			name:           "error rate too high",
-			mutate:         func(s *model.SessionRecord) { s.ErrorRate = 0.8; s.ErrorCount = 4 },
-			durationOK:     true,
+			name:            "error rate too high",
+			mutate:          func(s *model.SessionRecord) { s.ErrorRate = 0.8; s.ErrorCount = 4 },
+			durationOK:      true,
 			toolCallCountOK: true,
-			errorRateOK:    false,
-			hasSuccessExec: true,
-			reasonContains: []string{"error_rate"},
+			errorRateOK:     false,
+			hasSuccessExec:  true,
+			reasonContains:  []string{"error_rate"},
 		},
 		{
-			name:           "no successful exec",
-			mutate:         func(s *model.SessionRecord) { s.HasSuccessfulExec = false },
-			durationOK:     true,
+			name:            "no successful exec",
+			mutate:          func(s *model.SessionRecord) { s.HasSuccessfulExec = false },
+			durationOK:      true,
 			toolCallCountOK: true,
-			errorRateOK:    true,
-			hasSuccessExec: false,
-			reasonContains: []string{"no successful execution"},
+			errorRateOK:     true,
+			hasSuccessExec:  false,
+			reasonContains:  []string{"no successful execution"},
 		},
 		{
-			name:           "boundary min duration",
-			mutate:         func(s *model.SessionRecord) { s.DurationMinutes = 2 },
-			passed:         true,
-			durationOK:     true,
+			name:            "boundary min duration",
+			mutate:          func(s *model.SessionRecord) { s.DurationMinutes = 2 },
+			passed:          true,
+			durationOK:      true,
 			toolCallCountOK: true,
-			errorRateOK:    true,
-			hasSuccessExec: true,
+			errorRateOK:     true,
+			hasSuccessExec:  true,
 		},
 		{
-			name:           "boundary max duration",
-			mutate:         func(s *model.SessionRecord) { s.DurationMinutes = 180 },
-			passed:         true,
-			durationOK:     true,
+			name:            "boundary max duration",
+			mutate:          func(s *model.SessionRecord) { s.DurationMinutes = 180 },
+			passed:          true,
+			durationOK:      true,
 			toolCallCountOK: true,
-			errorRateOK:    true,
-			hasSuccessExec: true,
+			errorRateOK:     true,
+			hasSuccessExec:  true,
 		},
 		{
-			name:           "boundary min tool calls",
-			mutate:         func(s *model.SessionRecord) { s.ToolCallCount = 3; s.ErrorCount = 0; s.ErrorRate = 0 },
-			passed:         true,
-			durationOK:     true,
+			name:            "boundary min tool calls",
+			mutate:          func(s *model.SessionRecord) { s.ToolCallCount = 3; s.ErrorCount = 0; s.ErrorRate = 0 },
+			passed:          true,
+			durationOK:      true,
 			toolCallCountOK: true,
-			errorRateOK:    true,
-			hasSuccessExec: true,
+			errorRateOK:     true,
+			hasSuccessExec:  true,
 		},
 		{
-			name:           "boundary max error rate",
-			mutate:         func(s *model.SessionRecord) { s.ErrorRate = 0.7; s.ErrorCount = 3 },
-			passed:         true,
-			durationOK:     true,
+			name:            "boundary max error rate",
+			mutate:          func(s *model.SessionRecord) { s.ErrorRate = 0.7; s.ErrorCount = 3 },
+			passed:          true,
+			durationOK:      true,
 			toolCallCountOK: true,
-			errorRateOK:    true,
-			hasSuccessExec: true,
+			errorRateOK:     true,
+			hasSuccessExec:  true,
 		},
 		{
 			name: "zero tool calls fails min check",
@@ -142,11 +143,11 @@ func TestStage1Filter(t *testing.T) {
 				s.ErrorCount = 0
 				s.ErrorRate = 0
 			},
-			durationOK:     true,
+			durationOK:      true,
 			toolCallCountOK: false,
-			errorRateOK:    true,
-			hasSuccessExec: true,
-			reasonContains: []string{"tool_calls"},
+			errorRateOK:     true,
+			hasSuccessExec:  true,
+			reasonContains:  []string{"tool_calls"},
 		},
 		{
 			name: "multiple failures",
@@ -157,11 +158,11 @@ func TestStage1Filter(t *testing.T) {
 				s.ErrorRate = 0.9
 				s.HasSuccessfulExec = false
 			},
-			durationOK:     false,
+			durationOK:      false,
 			toolCallCountOK: false,
-			errorRateOK:    false,
-			hasSuccessExec: false,
-			reasonContains: []string{"duration", "tool_calls", "error_rate", "no successful execution"},
+			errorRateOK:     false,
+			hasSuccessExec:  false,
+			reasonContains:  []string{"duration", "tool_calls", "error_rate", "no successful execution"},
 		},
 		{
 			name: "custom config",
@@ -171,22 +172,22 @@ func TestStage1Filter(t *testing.T) {
 				MinToolCalls:       10,
 				MaxErrorRate:       0.3,
 			},
-			mutate:         nil, // uses passingSession (duration=10, tools=5)
-			durationOK:     true,
+			mutate:          nil, // uses passingSession (duration=10, tools=5)
+			durationOK:      true,
 			toolCallCountOK: false,
-			errorRateOK:    true,
-			hasSuccessExec: true,
-			reasonContains: []string{"tool_calls"},
+			errorRateOK:     true,
+			hasSuccessExec:  true,
+			reasonContains:  []string{"tool_calls"},
 		},
 		// Edge cases
 		{
-			name:           "negative duration",
-			mutate:         func(s *model.SessionRecord) { s.DurationMinutes = -5 },
-			durationOK:     false,
+			name:            "negative duration",
+			mutate:          func(s *model.SessionRecord) { s.DurationMinutes = -5 },
+			durationOK:      false,
 			toolCallCountOK: true,
-			errorRateOK:    true,
-			hasSuccessExec: true,
-			reasonContains: []string{"duration"},
+			errorRateOK:     true,
+			hasSuccessExec:  true,
+			reasonContains:  []string{"duration"},
 		},
 		{
 			name: "negative tool calls",
@@ -195,44 +196,44 @@ func TestStage1Filter(t *testing.T) {
 				s.ErrorCount = 0
 				s.ErrorRate = 0
 			},
-			durationOK:     true,
+			durationOK:      true,
 			toolCallCountOK: false,
-			errorRateOK:    true,
-			hasSuccessExec: true,
-			reasonContains: []string{"tool_calls"},
+			errorRateOK:     true,
+			hasSuccessExec:  true,
+			reasonContains:  []string{"tool_calls"},
 		},
 		{
 			name: "NaN duration",
 			mutate: func(s *model.SessionRecord) {
 				s.DurationMinutes = math.NaN()
 			},
-			durationOK:     false,
+			durationOK:      false,
 			toolCallCountOK: true,
-			errorRateOK:    true,
-			hasSuccessExec: true,
-			reasonContains: []string{"duration"},
+			errorRateOK:     true,
+			hasSuccessExec:  true,
+			reasonContains:  []string{"duration"},
 		},
 		{
 			name: "Inf duration",
 			mutate: func(s *model.SessionRecord) {
 				s.DurationMinutes = math.Inf(1)
 			},
-			durationOK:     false,
+			durationOK:      false,
 			toolCallCountOK: true,
-			errorRateOK:    true,
-			hasSuccessExec: true,
-			reasonContains: []string{"duration"},
+			errorRateOK:     true,
+			hasSuccessExec:  true,
+			reasonContains:  []string{"duration"},
 		},
 		{
 			name: "NaN error rate",
 			mutate: func(s *model.SessionRecord) {
 				s.ErrorRate = math.NaN()
 			},
-			durationOK:     true,
+			durationOK:      true,
 			toolCallCountOK: true,
-			errorRateOK:    false,
-			hasSuccessExec: true,
-			reasonContains: []string{"error_rate"},
+			errorRateOK:     false,
+			hasSuccessExec:  true,
+			reasonContains:  []string{"error_rate"},
 		},
 		{
 			name: "zero config values",
@@ -248,11 +249,11 @@ func TestStage1Filter(t *testing.T) {
 				s.ErrorCount = 0
 				s.ErrorRate = 0
 			},
-			passed:         true,
-			durationOK:     true,
+			passed:          true,
+			durationOK:      true,
 			toolCallCountOK: true,
-			errorRateOK:    true,
-			hasSuccessExec: true,
+			errorRateOK:     true,
+			hasSuccessExec:  true,
 		},
 		{
 			name: "inverted min/max duration config",
@@ -262,11 +263,11 @@ func TestStage1Filter(t *testing.T) {
 				MinToolCalls:       3,
 				MaxErrorRate:       0.7,
 			},
-			durationOK:     false,
+			durationOK:      false,
 			toolCallCountOK: true,
-			errorRateOK:    true,
-			hasSuccessExec: true,
-			reasonContains: []string{"duration"},
+			errorRateOK:     true,
+			hasSuccessExec:  true,
+			reasonContains:  []string{"duration"},
 		},
 	}
 

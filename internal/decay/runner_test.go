@@ -192,7 +192,7 @@ func TestRescueLogic(t *testing.T) {
 			successCorr:  0.8,
 			wantRescued:  1,
 			// decay uses LastInjectedAt (5 days ago): 0.6 * 0.5^(5/90) ≈ 0.577, + 0.3 = 0.877
-			wantScore: 0.6 * math.Pow(0.5, 5.0/90.0) + 0.3,
+			wantScore: 0.6*math.Pow(0.5, 5.0/90.0) + 0.3,
 		},
 		{
 			name:         "old_injection_no_rescue",
@@ -322,7 +322,7 @@ func TestDeprecationThreshold(t *testing.T) {
 func TestEmptyLibrary(t *testing.T) {
 	w := &mockWriter{}
 	r := mustNewRunner(t, &mockReader{}, w, DefaultConfig())
-	r.now = func() time.Time { return fixedNow() }
+	r.now = fixedNow
 
 	res, err := r.RunCycle(context.Background(), "empty")
 	if err != nil {
@@ -380,7 +380,7 @@ func TestCategorySpecificRates(t *testing.T) {
 
 	expected := map[string]float64{
 		"found": math.Pow(0.5, 90.0/365.0),
-		"tact":  math.Pow(0.5, 90.0/90.0),
+		"tact":  math.Pow(0.5, 1.0),
 		"ctx":   math.Pow(0.5, 90.0/180.0),
 	}
 
@@ -399,14 +399,11 @@ func TestCategorySpecificRates(t *testing.T) {
 func TestReaderError(t *testing.T) {
 	w := &mockWriter{}
 	r := mustNewRunner(t, &mockReader{err: errors.New("db connection lost")}, w, DefaultConfig())
-	r.now = func() time.Time { return fixedNow() }
+	r.now = fixedNow
 
 	_, err := r.RunCycle(context.Background(), "lib1")
 	if err == nil {
 		t.Fatal("expected error, got nil")
-	}
-	if !errors.Is(err, errors.Unwrap(err)) {
-		// Just verify it wraps properly
 	}
 }
 

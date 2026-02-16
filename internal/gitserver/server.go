@@ -101,7 +101,7 @@ func (s *Server) Start() error {
 	)
 
 	// Create command to start Soft Serve
-	s.cmd = exec.Command(s.softBinary, "serve")
+	s.cmd = exec.Command(s.softBinary, "serve") //nolint:gosec // controlled input from config
 	s.cmd.Env = env
 	s.cmd.Dir = s.dataDir
 
@@ -132,29 +132,29 @@ func (s *Server) Start() error {
 func (s *Server) waitForReady() error {
 	timeout := 30 * time.Second
 	deadline := time.Now().Add(timeout)
-	
+
 	for time.Now().Before(deadline) {
 		// Try to connect via SSH to test if server is ready
-		testCmd := exec.Command("ssh", 
+		testCmd := exec.Command("ssh", //nolint:gosec // controlled input from config
 			"-p", strconv.Itoa(s.config.Server.Port),
 			"-i", s.adminKeyPath,
 			"-o", "StrictHostKeyChecking=no",
 			"-o", "ConnectTimeout=5",
 			s.config.Server.Host,
 			"repo", "list")
-		
+
 		if err := testCmd.Run(); err == nil {
 			return nil // Server is ready
 		}
-		
+
 		// Check if the process is still running
 		if s.cmd.ProcessState != nil && s.cmd.ProcessState.Exited() {
 			return fmt.Errorf("soft serve process exited unexpectedly")
 		}
-		
+
 		time.Sleep(1 * time.Second)
 	}
-	
+
 	return fmt.Errorf("timeout waiting for server to be ready")
 }
 
@@ -255,13 +255,13 @@ func (s *Server) ListRepos() ([]string, error) {
 	// Parse the output to extract repository names
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	var repos []string
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		
+
 		// The output format may vary, but typically repo names are the first word
 		// We'll split by whitespace and take the first part
 		parts := strings.Fields(line)
@@ -312,10 +312,10 @@ func (s *Server) GetConnectionInfo() ConnectionInfo {
 
 // ConnectionInfo contains information needed to connect to the git server
 type ConnectionInfo struct {
-	SSHHost   string                    `json:"ssh_host"`
-	SSHPort   int                       `json:"ssh_port"`
-	SSHUrl    string                    `json:"ssh_url"`
-	HTTPUrl   string                    `json:"http_url"`
-	CloneSSH  func(string) string       `json:"-"`
-	CloneHTTP func(string) string       `json:"-"`
+	SSHHost   string              `json:"ssh_host"`
+	SSHPort   int                 `json:"ssh_port"`
+	SSHUrl    string              `json:"ssh_url"`
+	HTTPUrl   string              `json:"http_url"`
+	CloneSSH  func(string) string `json:"-"`
+	CloneHTTP func(string) string `json:"-"`
 }

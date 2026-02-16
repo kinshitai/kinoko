@@ -25,11 +25,11 @@ func testStore(t *testing.T) *SQLiteStore {
 
 func testSkill(id, name, lib string) *model.SkillRecord {
 	return &model.SkillRecord{
-		ID:          id,
-		Name:        name,
-		Version:     1,
-		LibraryID:   lib,
-		Category:    model.CategoryTactical,
+		ID:        id,
+		Name:      name,
+		Version:   1,
+		LibraryID: lib,
+		Category:  model.CategoryTactical,
 		Quality: model.QualityScores{
 			ProblemSpecificity:    4,
 			SolutionCompleteness:  4,

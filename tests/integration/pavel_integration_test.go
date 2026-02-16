@@ -15,8 +15,8 @@ import (
 
 	"github.com/kinoko-dev/kinoko/internal/decay"
 	"github.com/kinoko-dev/kinoko/internal/extraction"
-	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/injection"
+	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 	"github.com/kinoko-dev/kinoko/internal/worker"
 )

@@ -9,8 +9,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/kinoko-dev/kinoko/internal/circuitbreaker"
 	"time"
+
+	"github.com/kinoko-dev/kinoko/internal/circuitbreaker"
 )
 
 func testConfig(url string) Config {
@@ -318,7 +319,7 @@ func TestCircuitBreaker_HalfOpenRecovery(t *testing.T) {
 	}
 
 	// Circuit should be closed now — subsequent calls work.
-	emb, err = client.Embed(context.Background(), "test2")
+	_, err = client.Embed(context.Background(), "test2")
 	if err != nil {
 		t.Fatalf("expected success after recovery, got %v", err)
 	}

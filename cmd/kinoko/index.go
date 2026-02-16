@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
 	"github.com/kinoko-dev/kinoko/internal/embedding"
 	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
@@ -103,15 +104,15 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	logger.Warn("defaulting skill category to tactical", "repo", repo, "skill", skillName)
 
 	skill := &model.SkillRecord{
-		ID:              fmt.Sprintf("%s/%s/v%d", libraryID, skillName, parsed.Version),
-		Name:            skillName,
-		Version:         parsed.Version,
-		LibraryID:       libraryID,
-		Category:        category,
-		Patterns:        parsed.Tags,
-		ExtractedBy:     "kinoko-index",
-		FilePath:        skillPath,
-		DecayScore:      1.0,
+		ID:          fmt.Sprintf("%s/%s/v%d", libraryID, skillName, parsed.Version),
+		Name:        skillName,
+		Version:     parsed.Version,
+		LibraryID:   libraryID,
+		Category:    category,
+		Patterns:    parsed.Tags,
+		ExtractedBy: "kinoko-index",
+		FilePath:    skillPath,
+		DecayScore:  1.0,
 	}
 
 	// Compute embedding if API key available.
@@ -178,7 +179,7 @@ func readSkillMDFromBareRepo(repoPath string) (string, []byte, error) {
 	bestPath := skillPaths[0]
 
 	// Read the file content using git show.
-	showCmd := exec.Command("git", "show", "HEAD:"+bestPath)
+	showCmd := exec.Command("git", "show", "HEAD:"+bestPath) //nolint:gosec // controlled input
 	showCmd.Dir = repoPath
 	body, err := showCmd.Output()
 	if err != nil {
@@ -200,7 +201,7 @@ func extractVersion(path string) int {
 		return 0
 	}
 	var v int
-	fmt.Sscanf(m[1], "%d", &v)
+	_, _ = fmt.Sscanf(m[1], "%d", &v)
 	return v
 }
 

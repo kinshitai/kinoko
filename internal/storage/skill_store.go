@@ -180,7 +180,7 @@ func (s *SQLiteStore) Query(ctx context.Context, q SkillQuery) ([]ScoredSkill, e
 		args = append(args, q.MinDecay)
 	}
 
-	query := `SELECT ` + skillColumns + ` FROM skills WHERE ` + strings.Join(where, " AND ")
+	query := `SELECT ` + skillColumns + ` FROM skills WHERE ` + strings.Join(where, " AND ") //nolint:gosec // parameterized query, columns are not user input
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query skills: %w", err)
@@ -363,7 +363,7 @@ func (s *SQLiteStore) loadPatternsMulti(ctx context.Context, skillIDs []string) 
 		args[i] = id
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT skill_id, pattern FROM skill_patterns WHERE skill_id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+		`SELECT skill_id, pattern FROM skill_patterns WHERE skill_id IN (`+strings.Join(placeholders, ",")+`)`, args...) //nolint:gosec // parameterized query, columns are not user input
 	if err != nil {
 		return nil, fmt.Errorf("load patterns multi: %w", err)
 	}
@@ -391,7 +391,7 @@ func (s *SQLiteStore) loadEmbeddingsMulti(ctx context.Context, skillIDs []string
 		args[i] = id
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT skill_id, embedding FROM skill_embeddings WHERE skill_id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+		`SELECT skill_id, embedding FROM skill_embeddings WHERE skill_id IN (`+strings.Join(placeholders, ",")+`)`, args...) //nolint:gosec // parameterized query, columns are not user input
 	if err != nil {
 		return nil, fmt.Errorf("load embeddings multi: %w", err)
 	}

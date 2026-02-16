@@ -9,9 +9,9 @@ import (
 
 	"github.com/kinoko-dev/kinoko/internal/decay"
 	"github.com/kinoko-dev/kinoko/internal/extraction"
-	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/injection"
 	"github.com/kinoko-dev/kinoko/internal/metrics"
+	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
@@ -754,13 +754,14 @@ func insertSession(t *testing.T, db *sql.DB, sess model.SessionRecord, result *m
 	skillID := ""
 
 	if result.Status == model.StatusRejected {
-		if result.Stage1 != nil && !result.Stage1.Passed {
+		switch {
+		case result.Stage1 != nil && !result.Stage1.Passed:
 			rejStage = 1
 			rejReason = result.Stage1.Reason
-		} else if result.Stage2 != nil && !result.Stage2.Passed {
+		case result.Stage2 != nil && !result.Stage2.Passed:
 			rejStage = 2
 			rejReason = result.Stage2.Reason
-		} else if result.Stage3 != nil && !result.Stage3.Passed {
+		case result.Stage3 != nil && !result.Stage3.Passed:
 			rejStage = 3
 			rejReason = result.Stage3.CriticReasoning
 		}
@@ -850,10 +851,10 @@ func TestMultipleSkillsQueryOrdering(t *testing.T) {
 
 	// Create skills with varying quality and success correlation.
 	for i, tc := range []struct {
-		name       string
-		composite  float64
+		name        string
+		composite   float64
 		successCorr float64
-		patterns   []string
+		patterns    []string
 	}{
 		{"low-quality", 2.0, -0.5, []string{"FIX/Backend/DatabaseConnection"}},
 		{"mid-quality", 3.5, 0.3, []string{"FIX/Backend/DatabaseConnection"}},
@@ -1207,7 +1208,7 @@ func TestSchemaConstraints(t *testing.T) {
 			ID: "bad-score", Name: "bad-score", Version: 1, LibraryID: "test-lib",
 			Category: model.CategoryTactical,
 			Quality: model.QualityScores{
-				ProblemSpecificity: 10, // out of range!
+				ProblemSpecificity:   10, // out of range!
 				SolutionCompleteness: 4, ContextPortability: 3,
 				ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 				InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
@@ -1544,11 +1545,11 @@ func TestStatsThroughPipeline(t *testing.T) {
 	indexer := storage.NewSQLiteIndexer(store)
 	committer := &indexingCommitter{indexer: indexer, embedder: embedder}
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1:    s1, Stage2: s2, Stage3: s3,
+		Stage1: s1, Stage2: s2, Stage3: s3,
 		Committer: committer,
-		Sessions: store,
-		Embedder: embedder,
-		Log:      testLogger(),
+		Sessions:  store,
+		Embedder:  embedder,
+		Log:       testLogger(),
 		Extractor: "stats-pipeline-test",
 	})
 	if err != nil {

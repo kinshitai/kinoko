@@ -12,8 +12,8 @@ type ExtractionResult struct {
 	Skill       *SkillRecord     `json:"skill,omitempty"`
 	ProcessedAt time.Time        `json:"processed_at"`
 	DurationMs  int64            `json:"duration_ms"`
-	Error      string           `json:"error,omitempty"`
-	CommitHash string           `json:"commit_hash,omitempty"`
+	Error       string           `json:"error,omitempty"`
+	CommitHash  string           `json:"commit_hash,omitempty"`
 }
 
 // Stage1Result is the output of metadata pre-filtering.
@@ -29,7 +29,7 @@ type Stage1Result struct {
 // Stage2Result is the output of embedding + rubric scoring.
 type Stage2Result struct {
 	Passed             bool          `json:"passed"`
-	EmbeddingDistance   float64       `json:"embedding_distance"`
+	EmbeddingDistance  float64       `json:"embedding_distance"`
 	NoveltyScore       float64       `json:"novelty_score"`
 	RubricScores       QualityScores `json:"rubric_scores"`
 	ClassifiedCategory SkillCategory `json:"classified_category"`

@@ -12,6 +12,7 @@ import (
 	"reflect"
 
 	"github.com/spf13/cobra"
+
 	"github.com/kinoko-dev/kinoko/internal/config"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 	"github.com/kinoko-dev/kinoko/internal/worker"

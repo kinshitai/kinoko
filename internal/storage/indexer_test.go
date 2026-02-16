@@ -20,12 +20,12 @@ func TestSQLiteIndexer_IndexSkill(t *testing.T) {
 	now := time.Now().UTC()
 
 	skill := &model.SkillRecord{
-		ID:              "idx-001",
-		Name:            "test-skill",
-		Version:         1,
-		LibraryID:       "local",
-		Category:        model.CategoryFoundational,
-		Patterns:        []string{"error-handling", "retry"},
+		ID:        "idx-001",
+		Name:      "test-skill",
+		Version:   1,
+		LibraryID: "local",
+		Category:  model.CategoryFoundational,
+		Patterns:  []string{"error-handling", "retry"},
 		Quality: model.QualityScores{
 			ProblemSpecificity:    4,
 			SolutionCompleteness:  4,

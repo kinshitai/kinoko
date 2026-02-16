@@ -15,9 +15,28 @@ linters:
 linters-settings:
   goimports:
     local-prefixes: github.com/kinoko-dev/kinoko
+  errcheck:
+    exclude-functions:
+      - (net/http.ResponseWriter).Write
+      - (*database/sql.Tx).Rollback
+  revive:
+    rules:
+      - name: unused-parameter
+        disabled: true  # too noisy for cobra handlers and test helpers
+      - name: exported
+        disabled: true  # stuttering names (LLMClient etc) are fine for clarity
+  gosec:
+    excludes:
+      - G101  # false positives on test credentials
+      - G306  # 0644 is fine for config files
 
 issues:
   exclude-dirs:
     - site
     - internal-docs
     - memory
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck  # test code doesn't need exhaustive error checking
+        - gosec

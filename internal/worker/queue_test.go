@@ -38,19 +38,19 @@ func setupQueue(t *testing.T) (*SQLiteQueue, string) {
 func makeSession(id string) model.SessionRecord {
 	now := time.Now().UTC()
 	return model.SessionRecord{
-		ID:              id,
-		StartedAt:       now.Add(-10 * time.Minute),
-		EndedAt:         now,
-		DurationMinutes: 10,
-		ToolCallCount:   5,
-		ErrorCount:      0,
-		MessageCount:    20,
-		ErrorRate:       0,
+		ID:                id,
+		StartedAt:         now.Add(-10 * time.Minute),
+		EndedAt:           now,
+		DurationMinutes:   10,
+		ToolCallCount:     5,
+		ErrorCount:        0,
+		MessageCount:      20,
+		ErrorRate:         0,
 		HasSuccessfulExec: true,
-		TokensUsed:      1000,
-		AgentModel:      "test-model",
-		UserID:          "user-1",
-		LibraryID:       "lib-1",
+		TokensUsed:        1000,
+		AgentModel:        "test-model",
+		UserID:            "user-1",
+		LibraryID:         "lib-1",
 	}
 }
 
@@ -230,7 +230,9 @@ func TestDepth(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		if err := q.Enqueue(ctx, makeSession(fmt.Sprintf("sess-%d", i)), []byte("log")); err != nil { t.Fatal(err) }
+		if err := q.Enqueue(ctx, makeSession(fmt.Sprintf("sess-%d", i)), []byte("log")); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	depth, err = q.Depth(ctx)
@@ -315,15 +317,17 @@ func TestFIFOOrdering(t *testing.T) {
 
 	// Enqueue in order with slight delay to ensure different created_at.
 	for i := 0; i < 3; i++ {
-		if err := q.Enqueue(ctx, makeSession(fmt.Sprintf("sess-%d", i)), []byte("log")); err != nil { t.Fatal(err) }
+		if err := q.Enqueue(ctx, makeSession(fmt.Sprintf("sess-%d", i)), []byte("log")); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Claims should come back in FIFO order.
 	for i := 0; i < 3; i++ {
 		entry, err := q.Claim(ctx, "worker-1")
-	if err != nil {
-		t.Fatal(err)
-	}
+		if err != nil {
+			t.Fatal(err)
+		}
 		if entry == nil {
 			t.Fatalf("claim %d: expected entry", i)
 		}
@@ -338,7 +342,9 @@ func TestComplete(t *testing.T) {
 	q, _ := setupQueue(t)
 	ctx := context.Background()
 
-	if err := q.Enqueue(ctx, makeSession("sess-1"), []byte("log")); err != nil { t.Fatal(err) }
+	if err := q.Enqueue(ctx, makeSession("sess-1"), []byte("log")); err != nil {
+		t.Fatal(err)
+	}
 	_, _ = q.Claim(ctx, "worker-1")
 
 	result := &model.ExtractionResult{

@@ -81,7 +81,7 @@ cat файл.txt | grep "世界"
 		// Test parsing very large skills - generate content clearly over 64KB to test bufio.Scanner limits
 		// Each repeat unit is ~75 bytes, so 1000 repeats = ~75KB, well over 64KB limit
 		largeBody := strings.Repeat("This is a very long line of content that simulates a large skill file. ", 1000)
-		
+
 		largeSkill := `---
 name: large-skill-test
 version: 1
@@ -420,7 +420,7 @@ Testing date parsing edge cases.
 Handle dates properly.`
 
 				_, err := skill.Parse(strings.NewReader(skillContent))
-				
+
 				if tt.shouldError && err == nil {
 					t.Errorf("Expected error for %s, got none", tt.name)
 				}
@@ -501,7 +501,7 @@ Special characters: @#$%^&*()
 		if s1.Confidence != s2.Confidence {
 			t.Errorf("Confidence changed: %f → %f", s1.Confidence, s2.Confidence)
 		}
-		
+
 		// Dates should be preserved
 		if !s1.Created.Equal(s2.Created) {
 			t.Errorf("Created date changed: %v → %v", s1.Created, s2.Created)
@@ -572,7 +572,7 @@ Parse skills directly from files.`
 
 	t.Run("parse_nonexistent_file", func(t *testing.T) {
 		nonexistentPath := filepath.Join(tempDir, "does-not-exist.md")
-		
+
 		_, err := skill.ParseFile(nonexistentPath)
 		if err == nil {
 			t.Error("Expected error when parsing non-existent file")

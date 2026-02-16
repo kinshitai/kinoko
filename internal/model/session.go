@@ -4,19 +4,19 @@ import "time"
 
 // SessionRecord captures metadata about an agent session for extraction evaluation.
 type SessionRecord struct {
-	ID                string           `db:"id"`
-	StartedAt         time.Time        `db:"started_at"`
-	EndedAt           time.Time        `db:"ended_at"`
-	DurationMinutes   float64          `db:"duration_minutes"`
-	ToolCallCount     int              `db:"tool_call_count"`
-	ErrorCount        int              `db:"error_count"`
-	MessageCount      int              `db:"message_count"`
-	ErrorRate         float64          `db:"error_rate"`
-	HasSuccessfulExec bool             `db:"has_successful_exec"`
-	TokensUsed        int              `db:"tokens_used"`
-	AgentModel        string           `db:"agent_model"`
-	UserID            string           `db:"user_id"`
-	LibraryID         string           `db:"library_id"`
+	ID                string    `db:"id"`
+	StartedAt         time.Time `db:"started_at"`
+	EndedAt           time.Time `db:"ended_at"`
+	DurationMinutes   float64   `db:"duration_minutes"`
+	ToolCallCount     int       `db:"tool_call_count"`
+	ErrorCount        int       `db:"error_count"`
+	MessageCount      int       `db:"message_count"`
+	ErrorRate         float64   `db:"error_rate"`
+	HasSuccessfulExec bool      `db:"has_successful_exec"`
+	TokensUsed        int       `db:"tokens_used"`
+	AgentModel        string    `db:"agent_model"`
+	UserID            string    `db:"user_id"`
+	LibraryID         string    `db:"library_id"`
 
 	ExtractionStatus ExtractionStatus `db:"extraction_status"`
 	RejectedAtStage  int              `db:"rejected_at_stage"`

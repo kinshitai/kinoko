@@ -89,16 +89,16 @@ func runExtract(cmd *cobra.Command, args []string) error {
 	stage3 := extraction.NewStage3Critic(llmClient, cfg.Extraction, logger)
 
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1:    stage1,
-		Stage2:    stage2,
-		Stage3:    stage3,
-		Writer:    store,
-		Sessions:  store,
-		Embedder:  embedder,
-		Reviewer:  store,
-		Log:       logger,
+		Stage1:     stage1,
+		Stage2:     stage2,
+		Stage3:     stage3,
+		Writer:     store,
+		Sessions:   store,
+		Embedder:   embedder,
+		Reviewer:   store,
+		Log:        logger,
 		SampleRate: 0.01, // 1% sampling per spec
-		Extractor: "cli-extract-v1",
+		Extractor:  "cli-extract-v1",
 	})
 	if err != nil {
 		return fmt.Errorf("create pipeline: %w", err)
@@ -134,4 +134,3 @@ type exitError struct {
 
 func (e *exitError) Error() string { return e.msg }
 func (e *exitError) ExitCode() int { return e.code }
-

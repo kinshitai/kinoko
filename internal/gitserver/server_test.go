@@ -27,7 +27,7 @@ func TestNewServer(t *testing.T) {
 	}
 
 	if server == nil {
-		t.Error("Expected server to be created")
+		t.Fatal("Expected server to be created")
 	}
 
 	if server.config != cfg {
@@ -44,7 +44,7 @@ func TestCheckSoftBinary(t *testing.T) {
 	if err != nil {
 		t.Skip("Soft binary not available, skipping test")
 	}
-	
+
 	if path == "" {
 		t.Error("Expected non-empty path when binary is found")
 	}
@@ -109,7 +109,7 @@ func TestSSHKeyGeneration(t *testing.T) {
 }
 
 func TestRepoNameValidation(t *testing.T) {
-	// Skip if soft binary is not available  
+	// Skip if soft binary is not available
 	if _, err := CheckSoftBinary(); err != nil {
 		t.Skip("Skipping test because soft binary is not available")
 	}
@@ -153,11 +153,11 @@ func TestConnectionInfo(t *testing.T) {
 	}
 
 	info := server.GetConnectionInfo()
-	
+
 	if info.SSHHost != cfg.Server.Host {
 		t.Errorf("Expected host %s, got %s", cfg.Server.Host, info.SSHHost)
 	}
-	
+
 	if info.SSHPort != cfg.Server.Port {
 		t.Errorf("Expected port %d, got %d", cfg.Server.Port, info.SSHPort)
 	}

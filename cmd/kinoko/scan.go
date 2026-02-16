@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kinoko-dev/kinoko/internal/sanitize"
 	"github.com/spf13/cobra"
+
+	"github.com/kinoko-dev/kinoko/internal/sanitize"
 )
 
 // ErrCredentialsFound is returned when the scanner detects credentials.
@@ -46,7 +47,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 	scanner := sanitize.New(sanitize.WithRedactThreshold(0.7))
 	var totalFindings int
 
-	if scanStdin {
+	switch {
+	case scanStdin:
 		// P1-1: Limit stdin to 10 MB to prevent memory exhaustion.
 		data, err := io.ReadAll(io.LimitReader(os.Stdin, 10<<20))
 		if err != nil {
@@ -54,9 +56,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 		findings := scanner.Scan(string(data))
 		totalFindings = printFindings("<stdin>", findings)
-	} else if scanDir != "" {
+	case scanDir != "":
 		totalFindings = scanDirectory(scanner, scanDir)
-	} else if len(args) > 0 {
+	case len(args) > 0:
 		for _, f := range args {
 			data, err := os.ReadFile(f)
 			if err != nil {
@@ -65,7 +67,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 			}
 			totalFindings += printFindings(f, scanner.Scan(string(data)))
 		}
-	} else {
+	default:
 		return fmt.Errorf("specify a file, --dir, or --stdin")
 	}
 
@@ -83,7 +85,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 func scanDirectory(scanner *sanitize.Scanner, dir string) int {
 	total := 0
-	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}

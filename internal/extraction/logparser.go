@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
 

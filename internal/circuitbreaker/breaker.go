@@ -25,7 +25,7 @@ func (realClock) Now() time.Time { return time.Now() }
 type state int
 
 const (
-	stateClosed   state = iota
+	stateClosed state = iota
 	stateOpen
 	stateHalfOpen
 )

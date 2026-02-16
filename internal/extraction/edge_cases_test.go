@@ -17,11 +17,11 @@ func TestCryptoRandIntn_InRange(t *testing.T) {
 
 func TestTruncateContent_UTF8Boundaries(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    []byte
-		max      int
-		wantLen  int
-		wantStr  string
+		name    string
+		input   []byte
+		max     int
+		wantLen int
+		wantStr string
 	}{
 		{"no truncation", []byte("hello"), 10, 5, "hello"},
 		{"exact fit", []byte("hello"), 5, 5, "hello"},
@@ -50,11 +50,11 @@ func TestTruncateContent_UTF8Boundaries(t *testing.T) {
 
 func TestSanitizeDelimiters(t *testing.T) {
 	tests := []struct {
-		name   string
-		input  string
-		begin  string
-		end    string
-		want   string
+		name  string
+		input string
+		begin string
+		end   string
+		want  string
 	}{
 		{"no match", "hello world", "---BEGIN---", "---END---", "hello world"},
 		{"begin match", "---BEGIN---content", "---BEGIN---", "---END---", "[SANITIZED_DELIMITER]content"},

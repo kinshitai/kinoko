@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/kinoko-dev/kinoko/internal/extraction"
@@ -87,7 +88,7 @@ tool_call: exec go build ./...
 
 func TestNoopDecayWriter(t *testing.T) {
 	w := &noopDecayWriter{}
-	if err := w.UpdateDecay(nil, "test", 0.5); err != nil {
+	if err := w.UpdateDecay(context.TODO(), "test", 0.5); err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 }

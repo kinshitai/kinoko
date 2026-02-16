@@ -210,9 +210,9 @@ func (r rubricScoresJSON) toQualityScores() model.QualityScores {
 
 // rubricResponse is the expected JSON structure from the LLM.
 type rubricResponse struct {
-	Scores   rubricScoresJSON `json:"scores"`
-	Category model.SkillCategory    `json:"category"`
-	Patterns []string         `json:"patterns"`
+	Scores   rubricScoresJSON    `json:"scores"`
+	Category model.SkillCategory `json:"category"`
+	Patterns []string            `json:"patterns"`
 }
 
 // Weighted composite score per spec §1.1 model.QualityScores.

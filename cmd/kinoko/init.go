@@ -9,8 +9,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/kinoko-dev/kinoko/internal/client"
 	"github.com/spf13/cobra"
+
+	"github.com/kinoko-dev/kinoko/internal/client"
 )
 
 var (
@@ -192,7 +193,7 @@ func initClientMode(_ *cobra.Command, serverURL string) error {
 	}
 	fmt.Printf("✓ Config written to %s\n", configPath)
 
-	os.MkdirAll(cacheDir, 0755)
+	_ = os.MkdirAll(cacheDir, 0755)
 
 	fmt.Println()
 	fmt.Println("Next steps:")

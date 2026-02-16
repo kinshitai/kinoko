@@ -20,17 +20,17 @@ var _ model.SkillCommitter = (*GitCommitter)(nil)
 // GitCommitter pushes skills to Soft Serve repos. Indexing is handled by
 // the post-receive hook, not by the committer.
 type GitCommitter struct {
-	server *Server
+	server  *Server
 	dataDir string
-	logger *slog.Logger
-	locks  sync.Map // keyed by "{libraryID}/{skillName}" → *sync.Mutex
+	logger  *slog.Logger
+	locks   sync.Map // keyed by "{libraryID}/{skillName}" → *sync.Mutex
 }
 
 // GitCommitterConfig holds constructor parameters.
 type GitCommitterConfig struct {
-	Server *Server
+	Server  *Server
 	DataDir string
-	Logger *slog.Logger
+	Logger  *slog.Logger
 }
 
 // NewGitCommitter creates a GitCommitter.

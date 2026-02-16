@@ -1,11 +1,12 @@
 package extraction
 
 import (
-	"github.com/kinoko-dev/kinoko/internal/model"
 	"context"
 	"fmt"
 	"sync"
 	"testing"
+
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 // TestBug_PipelineSamplingRace proves the P0 race condition in Pipeline.maybeSample.

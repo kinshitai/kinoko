@@ -185,7 +185,7 @@ func expandPath(path string) string {
 	if !strings.HasPrefix(path, "~") {
 		return path
 	}
-	
+
 	// Handle just "~" alone
 	if path == "~" {
 		if homeDir, err := os.UserHomeDir(); err == nil {
@@ -193,7 +193,7 @@ func expandPath(path string) string {
 		}
 		return path
 	}
-	
+
 	// Find where the user part ends (at first slash or end of string)
 	var userPart, remainingPath string
 	if slashIndex := strings.Index(path, "/"); slashIndex != -1 {
@@ -203,9 +203,9 @@ func expandPath(path string) string {
 		userPart = path[1:] // Skip the ~, no remaining path
 		remainingPath = ""
 	}
-	
+
 	var homeDir string
-	
+
 	if userPart == "" {
 		// ~/path - expand to current user's home
 		if dir, err := os.UserHomeDir(); err == nil {
@@ -228,7 +228,7 @@ func expandPath(path string) string {
 			return path
 		}
 	}
-	
+
 	return homeDir + remainingPath
 }
 
@@ -236,12 +236,12 @@ func expandPath(path string) string {
 func (c *Config) expandPaths() {
 	// Expand server data directory
 	c.Server.DataDir = expandPath(c.Server.DataDir)
-	
+
 	// Expand storage DSN if it looks like a file path
 	if !strings.Contains(c.Storage.DSN, "://") {
 		c.Storage.DSN = expandPath(c.Storage.DSN)
 	}
-	
+
 	// Expand library paths
 	for i := range c.Libraries {
 		if c.Libraries[i].Path != "" {

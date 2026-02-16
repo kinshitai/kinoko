@@ -1,7 +1,6 @@
 package extraction
 
 import (
-	"github.com/kinoko-dev/kinoko/internal/model"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 // --- Mocks ---
@@ -130,12 +131,12 @@ func fixedRand(val int) RandIntn {
 
 func TestPipelineExtract(t *testing.T) {
 	tests := []struct {
-		name           string
-		s1             *model.Stage1Result
-		s2             *model.Stage2Result
-		s2Err          error
-		s3             *model.Stage3Result
-		s3Err          error
+		name       string
+		s1         *model.Stage1Result
+		s2         *model.Stage2Result
+		s2Err      error
+		s3         *model.Stage3Result
+		s3Err      error
 		wantStatus model.ExtractionStatus
 		wantError  bool
 		wantSkill  bool
@@ -244,11 +245,11 @@ func TestPipelineSampling(t *testing.T) {
 		randVal    int
 		wantSample bool
 	}{
-		{"sampled at 1%", 0.01, 50, true},       // 50 < 100 (0.01*10000)
-		{"not sampled at 1%", 0.01, 500, false},  // 500 >= 100
-		{"always sampled", 1.0, 9999, true},      // 9999 < 10000
-		{"never sampled", 0.0, 0, false},         // rate=0
-		{"boundary sampled", 0.01, 99, true},     // 99 < 100
+		{"sampled at 1%", 0.01, 50, true},          // 50 < 100 (0.01*10000)
+		{"not sampled at 1%", 0.01, 500, false},    // 500 >= 100
+		{"always sampled", 1.0, 9999, true},        // 9999 < 10000
+		{"never sampled", 0.0, 0, false},           // rate=0
+		{"boundary sampled", 0.01, 99, true},       // 99 < 100
 		{"boundary not sampled", 0.01, 100, false}, // 100 >= 100
 	}
 
@@ -556,7 +557,7 @@ func TestNewPipelineNilDeps(t *testing.T) {
 		Stage1: &mockStage1{result: passStage1()},
 		Stage2: &mockStage2{result: passStage2()},
 		// Stage3 missing
-		Log:    testLog(),
+		Log: testLog(),
 	})
 	if err == nil {
 		t.Error("expected error for nil Stage3")

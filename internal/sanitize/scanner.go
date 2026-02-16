@@ -20,7 +20,7 @@ type Finding struct {
 
 // Pattern defines a credential detection rule.
 type Pattern struct {
-	Name       string  // identifier
+	Name       string // identifier
 	Regex      *regexp.Regexp
 	Confidence float64
 	// ContextRequired: if non-empty, the match is only valid when one of these
@@ -241,7 +241,8 @@ func (s *Scanner) Redact(text string) string {
 				continue
 			}
 
-			if len(pat.ContextRequired) > 0 {
+			switch {
+			case len(pat.ContextRequired) > 0:
 				// P1-2: For context-required patterns, only replace matches
 				// that pass context check individually, not all regex matches.
 				replaced := pat.Regex.ReplaceAllStringFunc(line, func(m string) string {
@@ -257,7 +258,7 @@ func (s *Scanner) Redact(text string) string {
 					return m
 				})
 				lines[i] = replaced
-			} else if pat.Regex.NumSubexp() > 0 {
+			case pat.Regex.NumSubexp() > 0:
 				// P2-1: If pattern has a capture group (e.g., generic_password),
 				// only redact the captured value to preserve keyword context.
 				lines[i] = pat.Regex.ReplaceAllStringFunc(line, func(m string) string {
@@ -267,7 +268,7 @@ func (s *Scanner) Redact(text string) string {
 					}
 					return fmt.Sprintf("[REDACTED:%s]", pat.Name)
 				})
-			} else {
+			default:
 				replacement := fmt.Sprintf("[REDACTED:%s]", pat.Name)
 				lines[i] = pat.Regex.ReplaceAllString(line, replacement)
 			}

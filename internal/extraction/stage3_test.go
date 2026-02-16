@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/kinoko-dev/kinoko/internal/circuitbreaker"
-	"github.com/kinoko-dev/kinoko/internal/llm"
 	"github.com/kinoko-dev/kinoko/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/llm"
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
@@ -81,7 +81,7 @@ func s3testSession() model.SessionRecord {
 func passingStage2() *model.Stage2Result {
 	return &model.Stage2Result{
 		Passed:            true,
-		EmbeddingDistance:  0.55,
+		EmbeddingDistance: 0.55,
 		NoveltyScore:      0.85,
 		RubricScores: model.QualityScores{
 			ProblemSpecificity:    4,
@@ -881,7 +881,7 @@ func TestTruncateContent(t *testing.T) {
 
 	// Mid-rune safety
 	// 3-byte UTF-8 char: ä = 0xC3 0xA4 (2 bytes actually), let's use € = 0xE2 0x82 0xAC
-	content := []byte("aaa€") // 3 + 3 = 6 bytes
+	content := []byte("aaa€")            // 3 + 3 = 6 bytes
 	trunc := truncateContent(content, 5) // cuts into €
 	if !bytes.Equal(trunc, []byte("aaa")) {
 		t.Errorf("expected 'aaa', got %q", string(trunc))
@@ -1013,11 +1013,7 @@ func TestStage3Critic_DelimiterInjection(t *testing.T) {
 	}
 
 	// The old-style static delimiters in content should pass through harmlessly
-	// since they don't match the nonce-based delimiters.
-	if strings.Contains(capturedPrompt, "---BEGIN SESSION---") {
-		// Old delimiters are present but don't break anything because they're
-		// different from the nonce-based delimiters. This is acceptable.
-	}
+	// since they don't match the nonce-based delimiters. This is acceptable.
 }
 
 // --- P2: Half-open failure re-opens with doubled duration ---

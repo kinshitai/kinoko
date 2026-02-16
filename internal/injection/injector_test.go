@@ -61,7 +61,7 @@ func (m *mockStore) Query(_ context.Context, q storage.SkillQuery) ([]storage.Sc
 	m.lastQ = q
 	return m.results, m.err
 }
-func (m *mockStore) UpdateUsage(_ context.Context, _ string, _ string) error { return nil }
+func (m *mockStore) UpdateUsage(_ context.Context, _ string, _ string) error  { return nil }
 func (m *mockStore) UpdateDecay(_ context.Context, _ string, _ float64) error { return nil }
 func (m *mockStore) ListByDecay(_ context.Context, _ string, _ int) ([]model.SkillRecord, error) {
 	return nil, nil

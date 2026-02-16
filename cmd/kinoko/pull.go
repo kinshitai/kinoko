@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
 	"github.com/kinoko-dev/kinoko/internal/client"
 )
 

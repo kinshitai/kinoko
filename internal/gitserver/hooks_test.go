@@ -68,9 +68,9 @@ func TestInstallHooks_Idempotent(t *testing.T) {
 
 func TestInstallHooks_RejectsShellInjection(t *testing.T) {
 	tests := []struct {
-		name     string
-		dataDir  string
-		binary   string
+		name    string
+		dataDir string
+		binary  string
 	}{
 		{"dollar in dataDir", "/tmp/foo$bar", "/bin/kinoko"},
 		{"backtick in binary", "/tmp/ok", "/bin/`whoami`"},

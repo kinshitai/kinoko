@@ -371,9 +371,9 @@ Test`,
 func TestCaseInsensitiveSections(t *testing.T) {
 	// Test that section names are case-insensitive
 	tests := []struct {
-		name        string
-		content     string
-		shouldPass  bool
+		name       string
+		content    string
+		shouldPass bool
 	}{
 		{
 			name: "standard case",
@@ -590,10 +590,10 @@ func TestRenderValidation(t *testing.T) {
 func TestLargeSkillParsing(t *testing.T) {
 	// Create a skill with a large body (> 64KB) to test buffer limits
 	// This tests that the buffer size fix works correctly
-	
+
 	// Create a large content block (approximately 100KB)
 	largeContentBlock := strings.Repeat("This is a very long line of example code or documentation that repeats many times to create a large skill body that exceeds the default 64KB buffer limit of bufio.Scanner. ", 500)
-	
+
 	largeSkill := `---
 name: large-skill
 version: 1
@@ -652,12 +652,12 @@ This skill contains a very large amount of content to ensure the parser can hand
 	if !strings.Contains(skill.Body, "Large Skill for Buffer Testing") {
 		t.Error("Body should contain title content")
 	}
-	
+
 	// Verify that all the large content blocks are present (not truncated)
 	occurrences := strings.Count(skill.Body, "This is a very long line of example code")
 	expectedOccurrences := 4 * 500 // 4 blocks × 500 repetitions each
 	if occurrences != expectedOccurrences {
-		t.Errorf("Expected %d occurrences of repeated content, got %d (content may be truncated)", 
+		t.Errorf("Expected %d occurrences of repeated content, got %d (content may be truncated)",
 			expectedOccurrences, occurrences)
 	}
 
@@ -693,23 +693,23 @@ func TestDateParsingEdgeCases(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:        "century non-leap year (divisible by 100 but not 400)", 
+			name:        "century non-leap year (divisible by 100 but not 400)",
 			createdDate: "1900-02-29",
 			expectError: true,
 			errorMsg:    "invalid created date format",
 		},
-		
+
 		// Boundary date tests
 		{
 			name:        "invalid month - too high",
-			createdDate: "2024-13-01", 
+			createdDate: "2024-13-01",
 			expectError: true,
 			errorMsg:    "invalid created date format",
 		},
 		{
 			name:        "invalid day for month",
 			createdDate: "2024-02-30",
-			expectError: true, 
+			expectError: true,
 			errorMsg:    "invalid created date format",
 		},
 		{
@@ -734,12 +734,12 @@ func TestDateParsingEdgeCases(t *testing.T) {
 			createdDate: "2024-01-01",
 			expectError: false,
 		},
-		
+
 		// Updated date validation
 		{
 			name:        "updated before created",
 			createdDate: "2024-02-15",
-			updatedDate: "2024-02-14", 
+			updatedDate: "2024-02-14",
 			expectError: true,
 			errorMsg:    "updated date cannot be before created date",
 		},
@@ -749,7 +749,7 @@ func TestDateParsingEdgeCases(t *testing.T) {
 			updatedDate: "2024-02-15",
 			expectError: false,
 		},
-		
+
 		// Format validation
 		{
 			name:        "wrong date format - with time",
@@ -798,7 +798,7 @@ Test various date formats and boundary conditions.
 `
 
 			_, err := Parse(strings.NewReader(skillContent))
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error for %s, got none", tt.name)
@@ -807,10 +807,8 @@ Test various date formats and boundary conditions.
 				if tt.errorMsg != "" && !strings.Contains(err.Error(), tt.errorMsg) {
 					t.Errorf("Expected error containing '%s', got '%s'", tt.errorMsg, err.Error())
 				}
-			} else {
-				if err != nil {
-					t.Errorf("Expected no error for %s, got: %v", tt.name, err)
-				}
+			} else if err != nil {
+				t.Errorf("Expected no error for %s, got: %v", tt.name, err)
 			}
 		})
 	}

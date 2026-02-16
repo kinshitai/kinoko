@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
 	"github.com/kinoko-dev/kinoko/internal/config"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 )

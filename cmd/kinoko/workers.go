@@ -11,7 +11,6 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/embedding"
 	"github.com/kinoko-dev/kinoko/internal/extraction"
 	"github.com/kinoko-dev/kinoko/internal/gitserver"
-	"github.com/kinoko-dev/kinoko/internal/injection"
 	"github.com/kinoko-dev/kinoko/internal/llm"
 	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
@@ -127,82 +126,15 @@ func startWorkerSystem(
 	decayCfg := decayConfigFromYAML(cfg.Decay)
 	decayRunner, err := decay.NewRunner(store, store, decayCfg, logger)
 	if err != nil {
-		pool.Stop(context.Background())
+		_ = pool.Stop(context.Background())
 		return nil, nil, nil, fmt.Errorf("create decay runner: %w", err)
 	}
 
 	sched = worker.NewScheduler(queue, pool, decayRunner, libraryIDs(cfg), schedCfg, logger)
 	if err := sched.Start(ctx); err != nil {
-		pool.Stop(context.Background())
+		_ = pool.Stop(context.Background())
 		return nil, nil, nil, fmt.Errorf("start scheduler: %w", err)
 	}
 
 	return queue, pool, sched, nil
-}
-
-// SessionHooks holds callbacks for session lifecycle events.
-type SessionHooks struct {
-	OnSessionStart func(ctx context.Context, req model.InjectionRequest) (*model.InjectionResponse, error)
-	OnSessionEnd   func(ctx context.Context, session model.SessionRecord, logContent []byte) (*model.ExtractionResult, error)
-}
-
-// buildSessionHooks wires the injection pipeline into session lifecycle hooks.
-// This is a run-side concern — serve should not call this.
-func buildSessionHooks(cfg *config.Config, store *storage.SQLiteStore, logger *slog.Logger) (*SessionHooks, error) {
-	hooks := &SessionHooks{}
-
-	embCfg := embedding.DefaultConfig()
-	embCfg.APIKey = os.Getenv("KINOKO_EMBEDDING_API_KEY")
-	if embCfg.APIKey == "" {
-		embCfg.APIKey = os.Getenv("OPENAI_API_KEY")
-	}
-
-	llmAPIKey := os.Getenv("KINOKO_LLM_API_KEY")
-	if llmAPIKey == "" {
-		llmAPIKey = os.Getenv("OPENAI_API_KEY")
-	}
-
-	if embCfg.APIKey != "" {
-		embedder := embedding.New(embCfg, logger)
-		var llmClient llm.LLMClient
-		if llmAPIKey != "" {
-			llmClient = llm.NewOpenAIClient(llmAPIKey, "gpt-4o-mini")
-		}
-
-		abCfg := injection.ABConfig{
-			Enabled:       cfg.Extraction.ABTest.Enabled,
-			ControlRatio:  cfg.Extraction.ABTest.ControlRatio,
-			MinSampleSize: cfg.Extraction.ABTest.MinSampleSize,
-		}
-		var inj injection.Injector
-		if abCfg.Enabled {
-			baseInj := injection.New(embedder, store, llmClient, nil, logger)
-			inj = injection.NewABInjector(baseInj, store, abCfg, logger)
-		} else {
-			inj = injection.New(embedder, store, llmClient, store, logger)
-		}
-
-		hooks.OnSessionStart = func(ctx context.Context, req model.InjectionRequest) (*model.InjectionResponse, error) {
-			resp, err := inj.Inject(ctx, req)
-			if err != nil {
-				logger.Error("injection failed", "error", err)
-				return nil, err
-			}
-			logger.Info("injection complete", "skills_injected", len(resp.Skills))
-			return resp, nil
-		}
-		logger.Info("injection hook registered")
-	} else {
-		hooks.OnSessionStart = func(_ context.Context, _ model.InjectionRequest) (*model.InjectionResponse, error) {
-			return &model.InjectionResponse{}, nil
-		}
-		logger.Warn("injection hook disabled: no embedding API key")
-	}
-
-	// Extraction hook is a no-op here — extraction happens via worker pool.
-	hooks.OnSessionEnd = func(_ context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
-		return &model.ExtractionResult{Status: model.StatusRejected}, nil
-	}
-
-	return hooks, nil
 }

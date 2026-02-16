@@ -9,8 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kinoko-dev/kinoko/internal/config"
 	"gopkg.in/yaml.v3"
+
+	"github.com/kinoko-dev/kinoko/internal/config"
 )
 
 func TestKinokoInit(t *testing.T) {
@@ -263,7 +264,7 @@ func TestKinokoInitPermissionError(t *testing.T) {
 
 	binaryPath := buildKinokoBinary(t, tempDir)
 	homeDir := filepath.Join(tempDir, "readonly-home")
-	
+
 	// Create readonly home directory
 	if err := os.MkdirAll(homeDir, 0555); err != nil {
 		t.Fatalf("Failed to create readonly home dir: %v", err)
@@ -280,9 +281,9 @@ func TestKinokoInitPermissionError(t *testing.T) {
 	}
 
 	// Error message should be helpful
-	if !strings.Contains(string(output), "permission") && 
-	   !strings.Contains(string(output), "denied") &&
-	   !strings.Contains(string(output), "failed") {
+	if !strings.Contains(string(output), "permission") &&
+		!strings.Contains(string(output), "denied") &&
+		!strings.Contains(string(output), "failed") {
 		t.Errorf("Error message should mention permission issue: %s", output)
 	}
 }
