@@ -140,108 +140,140 @@ func (p *Pipeline) SetCommitter(c model.SkillCommitter) {
 	p.committer = c
 }
 
+// extractionRun holds mutable state for a single Extract() invocation.
+type extractionRun struct {
+	ctx     context.Context
+	session model.SessionRecord
+	content []byte
+	start   time.Time
+	result  *model.ExtractionResult
+	trace   *debug.RunTrace
+	s1Ms    int64
+	s2Ms    int64
+	s3Ms    int64
+}
+
 // Extract runs the full extraction pipeline on a session.
 func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, content []byte) (*model.ExtractionResult, error) {
-	start := time.Now()
-	result := &model.ExtractionResult{
-		SessionID:   session.ID,
-		ProcessedAt: start,
+	run := &extractionRun{
+		ctx:     ctx,
+		session: session,
+		content: content,
+		start:   time.Now(),
+		result: &model.ExtractionResult{
+			SessionID:   session.ID,
+			ProcessedAt: time.Now(),
+		},
+		trace: p.tracer.StartRun(),
 	}
-
-	// Debug tracing — all writes are best-effort, nil-safe.
-	trace := p.tracer.StartRun()
-	trace.WriteSession(content)
+	run.trace.WriteSession(content)
 
 	p.log.Info("pipeline start", "session_id", session.ID)
+	p.prepare(run)
 
-	// Persist session before extraction begins.
+	if done := p.filter(run); done {
+		return run.result, nil
+	}
+	if done := p.score(run); done {
+		return run.result, nil
+	}
+	if done := p.critique(run); done {
+		return run.result, nil
+	}
+	return p.publish(run)
+}
+
+// prepare persists the session before extraction begins.
+func (p *Pipeline) prepare(run *extractionRun) {
 	if p.sessions != nil {
-		session.ExtractionStatus = model.StatusPending
-		if err := p.sessions.InsertSession(ctx, &session); err != nil {
-			p.log.Error("failed to insert session", "session_id", session.ID, "error", err)
-			// Non-fatal: continue extraction even if session persistence fails.
+		run.session.ExtractionStatus = model.StatusPending
+		if err := p.sessions.InsertSession(run.ctx, &run.session); err != nil {
+			p.log.Error("failed to insert session", "session_id", run.session.ID, "error", err)
 		}
 	}
+}
 
-	// Stage 1
-	p.log.Info("stage1 entry", "session_id", session.ID)
+// filter runs Stage 1 filtering. Returns true if the pipeline should stop.
+func (p *Pipeline) filter(run *extractionRun) bool {
+	p.log.Info("stage1 entry", "session_id", run.session.ID)
 	s1Start := time.Now()
-	s1 := p.stage1.Filter(session)
-	s1Ms := time.Since(s1Start).Milliseconds()
-	result.Stage1 = s1
+	s1 := p.stage1.Filter(run.session)
+	run.s1Ms = time.Since(s1Start).Milliseconds()
+	run.result.Stage1 = s1
 
-	// Debug: stage 1 trace with real filter names and config thresholds.
-	trace.WriteStage("stage1-filter", debug.Stage1Trace{
+	run.trace.WriteStage("stage1-filter", debug.Stage1Trace{
 		Passed: s1.Passed,
 		Filters: map[string]debug.FilterTrace{
 			"duration_minutes": {
-				Value:     session.DurationMinutes,
+				Value:     run.session.DurationMinutes,
 				Threshold: []float64{p.extCfg.MinDurationMinutes, p.extCfg.MaxDurationMinutes},
 				Passed:    s1.DurationOK,
 			},
 			"tool_call_count": {
-				Value:     session.ToolCallCount,
+				Value:     run.session.ToolCallCount,
 				Threshold: p.extCfg.MinToolCalls,
 				Passed:    s1.ToolCallCountOK,
 			},
 			"error_rate": {
-				Value:     session.ErrorRate,
+				Value:     run.session.ErrorRate,
 				Threshold: p.extCfg.MaxErrorRate,
 				Passed:    s1.ErrorRateOK,
 			},
 			"has_successful_exec": {
-				Value:     session.HasSuccessfulExec,
+				Value:     run.session.HasSuccessfulExec,
 				Threshold: true,
 				Passed:    s1.HasSuccessExec,
 			},
 		},
-		DurationMs: s1Ms,
+		DurationMs: run.s1Ms,
 	})
 
 	if !s1.Passed {
-		result.Status = model.StatusRejected
-		result.DurationMs = time.Since(start).Milliseconds()
+		run.result.Status = model.StatusRejected
+		run.result.DurationMs = time.Since(run.start).Milliseconds()
 		p.log.Info("pipeline reject",
-			"session_id", session.ID,
+			"session_id", run.session.ID,
 			"stage", 1,
 			"reason", s1.Reason,
-			"stage1_ms", s1Ms,
-			"total_ms", result.DurationMs,
+			"stage1_ms", run.s1Ms,
+			"total_ms", run.result.DurationMs,
 		)
-		p.updateSessionStatus(ctx, &session, result)
-		p.maybeSample(ctx, session.ID, result)
+		p.updateSessionStatus(run.ctx, &run.session, run.result)
+		p.maybeSample(run.ctx, run.session.ID, run.result)
 		rejAt := "stage1"
-		p.writeTraceSummary(trace, result, &rejAt, 0, s1Ms, 0, 0)
-		return result, nil
+		p.writeTraceSummary(run.trace, run.result, &rejAt, 0, run.s1Ms, 0, 0)
+		return true
 	}
-	p.log.Info("stage1 pass", "session_id", session.ID, "stage1_ms", s1Ms)
+	p.log.Info("stage1 pass", "session_id", run.session.ID, "stage1_ms", run.s1Ms)
+	return false
+}
 
-	// Stage 2
-	p.log.Info("stage2 entry", "session_id", session.ID)
+// score runs Stage 2 scoring. Returns true if the pipeline should stop.
+func (p *Pipeline) score(run *extractionRun) bool {
+	p.log.Info("stage2 entry", "session_id", run.session.ID)
 	s2Start := time.Now()
-	s2, err := p.stage2.Score(ctx, session, content)
-	s2Ms := time.Since(s2Start).Milliseconds()
+	s2, err := p.stage2.Score(run.ctx, run.session, run.content)
+	run.s2Ms = time.Since(s2Start).Milliseconds()
 	if err != nil {
-		result.Status = model.StatusError
-		result.Error = fmt.Sprintf("stage2 [session=%s]: %v", session.ID, err)
-		result.DurationMs = time.Since(start).Milliseconds()
+		run.result.Status = model.StatusError
+		run.result.Error = fmt.Sprintf("stage2 [session=%s]: %v", run.session.ID, err)
+		run.result.DurationMs = time.Since(run.start).Milliseconds()
 		p.log.Error("pipeline error",
-			"session_id", session.ID,
+			"session_id", run.session.ID,
 			"stage", 2,
 			"error", err,
-			"stage2_ms", s2Ms,
-			"total_ms", result.DurationMs,
+			"stage2_ms", run.s2Ms,
+			"total_ms", run.result.DurationMs,
 		)
-		p.updateSessionStatus(ctx, &session, result)
-		p.maybeSample(ctx, session.ID, result)
+		p.updateSessionStatus(run.ctx, &run.session, run.result)
+		p.maybeSample(run.ctx, run.session.ID, run.result)
 		rejAt := "stage2-error"
-		p.writeTraceSummary(trace, result, &rejAt, 0, s1Ms, s2Ms, 0)
-		return result, nil
+		p.writeTraceSummary(run.trace, run.result, &rejAt, 0, run.s1Ms, run.s2Ms, 0)
+		return true
 	}
-	result.Stage2 = s2
+	run.result.Stage2 = s2
 
-	// Debug: stage 2 trace with individual rubric scores and embedding details.
-	trace.WriteStage("stage2-scoring", debug.Stage2Trace{
+	run.trace.WriteStage("stage2-scoring", debug.Stage2Trace{
 		Passed: s2.Passed,
 		EmbeddingNovelty: &debug.EmbeddingTrace{
 			Distance:     s2.EmbeddingDistance,
@@ -258,54 +290,57 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 			"innovation_level":       float64(s2.RubricScores.InnovationLevel),
 		},
 		RubricAggregate: s2.RubricScores.CompositeScore,
-		RubricThreshold: 3.0, // MinimumViable requires each of problem_specificity, solution_completeness, technical_accuracy >= 3
-		DurationMs:      s2Ms,
+		RubricThreshold: 3.0,
+		DurationMs:      run.s2Ms,
 	})
 
 	if !s2.Passed {
-		result.Status = model.StatusRejected
-		result.DurationMs = time.Since(start).Milliseconds()
+		run.result.Status = model.StatusRejected
+		run.result.DurationMs = time.Since(run.start).Milliseconds()
 		p.log.Info("pipeline reject",
-			"session_id", session.ID,
+			"session_id", run.session.ID,
 			"stage", 2,
 			"reason", s2.Reason,
-			"stage2_ms", s2Ms,
-			"total_ms", result.DurationMs,
+			"stage2_ms", run.s2Ms,
+			"total_ms", run.result.DurationMs,
 		)
-		p.updateSessionStatus(ctx, &session, result)
-		p.maybeSample(ctx, session.ID, result)
+		p.updateSessionStatus(run.ctx, &run.session, run.result)
+		p.maybeSample(run.ctx, run.session.ID, run.result)
 		rejAt := "stage2"
-		p.writeTraceSummary(trace, result, &rejAt, 0, s1Ms, s2Ms, 0)
-		return result, nil
+		p.writeTraceSummary(run.trace, run.result, &rejAt, 0, run.s1Ms, run.s2Ms, 0)
+		return true
 	}
-	p.log.Info("stage2 pass", "session_id", session.ID, "stage2_ms", s2Ms)
+	p.log.Info("stage2 pass", "session_id", run.session.ID, "stage2_ms", run.s2Ms)
+	return false
+}
 
-	// Stage 3
-	p.log.Info("stage3 entry", "session_id", session.ID)
+// critique runs Stage 3 evaluation. Returns true if the pipeline should stop.
+func (p *Pipeline) critique(run *extractionRun) bool {
+	s2 := run.result.Stage2
+	p.log.Info("stage3 entry", "session_id", run.session.ID)
 	s3Start := time.Now()
-	s3, err := p.stage3.Evaluate(ctx, session, content, s2)
-	s3Ms := time.Since(s3Start).Milliseconds()
+	s3, err := p.stage3.Evaluate(run.ctx, run.session, run.content, s2)
+	run.s3Ms = time.Since(s3Start).Milliseconds()
 	if err != nil {
-		result.Status = model.StatusError
-		result.Error = fmt.Sprintf("stage3 [session=%s]: %v", session.ID, err)
-		result.DurationMs = time.Since(start).Milliseconds()
+		run.result.Status = model.StatusError
+		run.result.Error = fmt.Sprintf("stage3 [session=%s]: %v", run.session.ID, err)
+		run.result.DurationMs = time.Since(run.start).Milliseconds()
 		p.log.Error("pipeline error",
-			"session_id", session.ID,
+			"session_id", run.session.ID,
 			"stage", 3,
 			"error", err,
-			"stage3_ms", s3Ms,
-			"total_ms", result.DurationMs,
+			"stage3_ms", run.s3Ms,
+			"total_ms", run.result.DurationMs,
 		)
-		p.updateSessionStatus(ctx, &session, result)
-		p.maybeSample(ctx, session.ID, result)
+		p.updateSessionStatus(run.ctx, &run.session, run.result)
+		p.maybeSample(run.ctx, run.session.ID, run.result)
 		rejAt := "stage3-error"
-		p.writeTraceSummary(trace, result, &rejAt, 0, s1Ms, s2Ms, s3Ms)
-		return result, nil
+		p.writeTraceSummary(run.trace, run.result, &rejAt, 0, run.s1Ms, run.s2Ms, run.s3Ms)
+		return true
 	}
-	result.Stage3 = s3
+	run.result.Stage3 = s3
 
-	// Debug: stage 3 trace with real values from Stage3Result.
-	trace.WriteStage("stage3-critic", debug.Stage3Trace{
+	run.trace.WriteStage("stage3-critic", debug.Stage3Trace{
 		Passed:                 s3.Passed,
 		Verdict:                s3.CriticVerdict,
 		Confidence:             s3.RefinedScores.CriticConfidence,
@@ -318,28 +353,34 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 			TokensOut: s3.TokensUsed,
 			LatencyMs: s3.LatencyMs,
 		},
-		DurationMs: s3Ms,
+		DurationMs: run.s3Ms,
 	})
 
 	if !s3.Passed {
-		result.Status = model.StatusRejected
-		result.DurationMs = time.Since(start).Milliseconds()
+		run.result.Status = model.StatusRejected
+		run.result.DurationMs = time.Since(run.start).Milliseconds()
 		p.log.Info("pipeline reject",
-			"session_id", session.ID,
+			"session_id", run.session.ID,
 			"stage", 3,
 			"reason", s3.CriticReasoning,
-			"stage3_ms", s3Ms,
-			"total_ms", result.DurationMs,
+			"stage3_ms", run.s3Ms,
+			"total_ms", run.result.DurationMs,
 		)
-		p.updateSessionStatus(ctx, &session, result)
-		p.maybeSample(ctx, session.ID, result)
+		p.updateSessionStatus(run.ctx, &run.session, run.result)
+		p.maybeSample(run.ctx, run.session.ID, run.result)
 		rejAt := "stage3"
-		p.writeTraceSummary(trace, result, &rejAt, 0, s1Ms, s2Ms, s3Ms)
-		return result, nil
+		p.writeTraceSummary(run.trace, run.result, &rejAt, 0, run.s1Ms, run.s2Ms, run.s3Ms)
+		return true
 	}
-	p.log.Info("stage3 pass", "session_id", session.ID, "stage3_ms", s3Ms)
+	p.log.Info("stage3 pass", "session_id", run.session.ID, "stage3_ms", run.s3Ms)
+	return false
+}
 
-	// Build skill and persist.
+// publish builds the skill record, checks novelty, and commits to git.
+func (p *Pipeline) publish(run *extractionRun) (*model.ExtractionResult, error) {
+	s2 := run.result.Stage2
+	s3 := run.result.Stage3
+
 	// Use LLM-generated SKILL.md if available; fall back to template.
 	skillName := skillNameFromClassification(s2.ClassifiedPatterns, s2.ClassifiedCategory)
 	skillCategory := s2.ClassifiedCategory
@@ -351,7 +392,7 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 		parsedName, parsedVersion, parsedCategory, parsedTags, parseErr := ParseGeneratedSkillMD(s3.SkillMD)
 		if parseErr != nil {
 			p.log.Warn("failed to parse LLM-generated SKILL.md, falling back to template",
-				"session_id", session.ID, "error", parseErr)
+				"session_id", run.session.ID, "error", parseErr)
 		} else {
 			skillName = parsedName
 			skillVersion = parsedVersion
@@ -372,23 +413,22 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 		ID:              skillID,
 		Name:            skillName,
 		Version:         skillVersion,
-		LibraryID:       session.LibraryID,
+		LibraryID:       run.session.LibraryID,
 		Category:        skillCategory,
 		Patterns:        skillPatterns,
 		Quality:         s3.RefinedScores,
-		SourceSessionID: session.ID,
+		SourceSessionID: run.session.ID,
 		ExtractedBy:     p.extractor,
 		FilePath:        fmt.Sprintf("skills/%s/v%d/SKILL.md", skillName, skillVersion),
-		DecayScore:      1.0, // New skills start fully active; 0.0 would hide them from injection queries.
+		DecayScore:      1.0,
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
 
-	// Compute embedding for the skill content so injection can use cosine similarity.
 	if p.embedder != nil {
-		emb, embErr := p.embedder.Embed(ctx, string(content))
+		emb, embErr := p.embedder.Embed(run.ctx, string(run.content))
 		if embErr != nil {
-			p.log.Warn("failed to compute skill embedding, storing without", "session_id", session.ID, "error", embErr)
+			p.log.Warn("failed to compute skill embedding, storing without", "session_id", run.session.ID, "error", embErr)
 		} else {
 			skill.Embedding = emb
 		}
@@ -398,27 +438,24 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 	if generatedBody != nil {
 		body = generatedBody
 	} else {
-		body = buildSkillMD(skill, s3, content)
+		body = buildSkillMD(skill, s3, run.content)
 	}
 
-	// Debug: write extracted skill
-	trace.WriteSkill(skillName, body)
+	run.trace.WriteSkill(skillName, body)
 
-	// Credential scanning: redact secrets before git push.
 	if p.scanner != nil && p.scanner.HasSecrets(string(body)) {
 		p.log.Warn("credentials detected in generated skill, redacting",
-			"session_id", session.ID,
+			"session_id", run.session.ID,
 			"skill_name", skillName,
 		)
 		body = []byte(p.scanner.Redact(string(body)))
 	}
 
-	// Novelty check: if configured, skip non-novel skills.
 	novel := true
 	if p.novelty != nil {
-		noveltyResult, noveltyErr := p.novelty.Check(ctx, string(body))
+		noveltyResult, noveltyErr := p.novelty.Check(run.ctx, string(body))
 		if noveltyErr != nil {
-			p.log.Warn("novelty check failed, treating as novel", "session_id", session.ID, "error", noveltyErr)
+			p.log.Warn("novelty check failed, treating as novel", "session_id", run.session.ID, "error", noveltyErr)
 		} else if !noveltyResult.Novel {
 			novel = false
 			similarName := ""
@@ -426,7 +463,7 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 				similarName = noveltyResult.Similar[0].Name
 			}
 			p.log.Info("skill not novel, skipping push",
-				"session_id", session.ID,
+				"session_id", run.session.ID,
 				"skill_name", skillName,
 				"score", noveltyResult.Score,
 				"similar_to", similarName,
@@ -434,62 +471,58 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 		}
 	}
 
-	// Phase C pusher: push to git if novel.
 	if p.pusher != nil && novel {
-		if pushErr := p.pusher.Push(ctx, skillName, session.LibraryID, body); pushErr != nil {
-			p.log.Error("skill push failed", "session_id", session.ID, "skill_name", skillName, "error", pushErr)
-			// Non-fatal: continue to local persistence.
+		if pushErr := p.pusher.Push(run.ctx, skillName, run.session.LibraryID, body); pushErr != nil {
+			p.log.Error("skill push failed", "session_id", run.session.ID, "skill_name", skillName, "error", pushErr)
 		}
 	}
 
-	// Git push is the only write path. The post-receive hook populates SQLite.
 	if p.committer != nil && novel {
 		commitStart := time.Now()
-		commitHash, commitErr := p.committer.CommitSkill(ctx, session.LibraryID, skill, body)
+		commitHash, commitErr := p.committer.CommitSkill(run.ctx, run.session.LibraryID, skill, body)
 		commitMs := time.Since(commitStart).Milliseconds()
 		if commitErr != nil {
-			result.Status = model.StatusError
-			result.Error = fmt.Sprintf("git commit [session=%s]: %v", session.ID, commitErr)
-			result.DurationMs = time.Since(start).Milliseconds()
+			run.result.Status = model.StatusError
+			run.result.Error = fmt.Sprintf("git commit [session=%s]: %v", run.session.ID, commitErr)
+			run.result.DurationMs = time.Since(run.start).Milliseconds()
 			p.log.Error("git commit failed",
-				"session_id", session.ID,
+				"session_id", run.session.ID,
 				"skill_id", skillID,
 				"error", commitErr,
 				"commit_ms", commitMs,
-				"total_ms", result.DurationMs,
+				"total_ms", run.result.DurationMs,
 			)
-			p.updateSessionStatus(ctx, &session, result)
-			p.maybeSample(ctx, session.ID, result)
-			p.writeTraceSummary(trace, result, nil, 0, s1Ms, s2Ms, s3Ms)
-			return result, nil
+			p.updateSessionStatus(run.ctx, &run.session, run.result)
+			p.maybeSample(run.ctx, run.session.ID, run.result)
+			p.writeTraceSummary(run.trace, run.result, nil, 0, run.s1Ms, run.s2Ms, run.s3Ms)
+			return run.result, nil
 		}
-		result.CommitHash = commitHash
-		p.log.Info("skill committed to git", "session_id", session.ID, "skill_id", skillID, "hash", commitHash, "commit_ms", commitMs)
+		run.result.CommitHash = commitHash
+		p.log.Info("skill committed to git", "session_id", run.session.ID, "skill_id", skillID, "hash", commitHash, "commit_ms", commitMs)
 	}
 
-	result.Status = model.StatusExtracted
-	result.Skill = skill
-	result.DurationMs = time.Since(start).Milliseconds()
+	run.result.Status = model.StatusExtracted
+	run.result.Skill = skill
+	run.result.DurationMs = time.Since(run.start).Milliseconds()
 
 	p.log.Info("pipeline extracted",
-		"session_id", session.ID,
+		"session_id", run.session.ID,
 		"skill_id", skillID,
 		"skill_name", skillName,
-		"total_ms", result.DurationMs,
+		"total_ms", run.result.DurationMs,
 	)
 
-	// Update session with extraction result.
 	if p.sessions != nil {
-		session.ExtractionStatus = model.StatusExtracted
-		session.ExtractedSkillID = skillID
-		if err := p.sessions.UpdateSessionResult(ctx, &session); err != nil {
-			p.log.Error("failed to update session result", "session_id", session.ID, "error", err)
+		run.session.ExtractionStatus = model.StatusExtracted
+		run.session.ExtractedSkillID = skillID
+		if err := p.sessions.UpdateSessionResult(run.ctx, &run.session); err != nil {
+			p.log.Error("failed to update session result", "session_id", run.session.ID, "error", err)
 		}
 	}
 
-	p.writeTraceSummary(trace, result, nil, 1, s1Ms, s2Ms, s3Ms)
-	p.maybeSample(ctx, session.ID, result)
-	return result, nil
+	p.writeTraceSummary(run.trace, run.result, nil, 1, run.s1Ms, run.s2Ms, run.s3Ms)
+	p.maybeSample(run.ctx, run.session.ID, run.result)
+	return run.result, nil
 }
 
 // updateSessionStatus updates the session record with rejection/error info if sessions are being tracked.
