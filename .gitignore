@@ -34,3 +34,4 @@ docs/
 *.test
 coverage.out
 combined.cov
+REVIEW*.md

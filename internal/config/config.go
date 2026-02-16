@@ -34,10 +34,19 @@ type DebugConfig struct {
 
 // EmbeddingConfig configures the embedding provider.
 type EmbeddingConfig struct {
-	Provider string `yaml:"provider"` // e.g. "openai"
-	Model    string `yaml:"model"`    // e.g. "text-embedding-3-small"
-	BaseURL  string `yaml:"base_url"` // e.g. "https://api.openai.com"
-	APIKey   string `yaml:"api_key"`  // provider API key
+	Provider         string  `yaml:"provider"`          // e.g. "openai"
+	Model            string  `yaml:"model"`             // e.g. "text-embedding-3-small"
+	BaseURL          string  `yaml:"base_url"`          // e.g. "https://api.openai.com"
+	APIKey           string  `yaml:"api_key"`           // provider API key
+	NoveltyThreshold float64 `yaml:"novelty_threshold"` // cosine similarity above which content is "too similar" (default 0.85)
+}
+
+// GetNoveltyThreshold returns the configured novelty threshold, defaulting to 0.85.
+func (e EmbeddingConfig) GetNoveltyThreshold() float64 {
+	if e.NoveltyThreshold <= 0 || e.NoveltyThreshold > 1 {
+		return 0.85
+	}
+	return e.NoveltyThreshold
 }
 
 // LLMConfig configures the LLM used for extraction and injection.

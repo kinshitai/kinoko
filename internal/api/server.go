@@ -25,6 +25,7 @@ type Server struct {
 	logger      *slog.Logger
 	enqueue     func(ctx context.Context, session model.SessionRecord, log []byte) error
 	discoverSem chan struct{} // P1-7: semaphore to limit concurrent discover requests
+	noveltyMux  *http.ServeMux
 }
 
 // Config configures the API server.
@@ -93,6 +94,9 @@ func New(cfg Config) *Server {
 	mux.HandleFunc("GET /api/v1/discover", s.handleDiscoverGET)
 	mux.HandleFunc("POST /api/v1/ingest", s.handleIngest)
 
+	// Novelty endpoint (registered via SetNoveltyChecker after construction)
+	s.noveltyMux = mux
+
 	s.httpServer = &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
 		Handler:      mux,
@@ -100,6 +104,14 @@ func New(cfg Config) *Server {
 		WriteTimeout: 10 * time.Second,
 	}
 	return s
+}
+
+// SetNoveltyChecker registers the novelty endpoint.
+func (s *Server) SetNoveltyChecker(nc *NoveltyChecker) {
+	if s.noveltyMux != nil && nc != nil {
+		s.noveltyMux.HandleFunc("POST /api/v1/novelty", nc.HandleNovelty)
+		s.logger.Info("novelty endpoint registered")
+	}
 }
 
 // Start starts the HTTP server in a goroutine.
