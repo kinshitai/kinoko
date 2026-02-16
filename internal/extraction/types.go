@@ -21,9 +21,3 @@ type Stage1Filter interface {
 type NoveltyChecker interface {
 	Check(ctx context.Context, content string) (*NoveltyResult, error)
 }
-
-// SkillPusher pushes an extracted skill to a remote git repository.
-// Optional in PipelineConfig — pipeline works without it.
-type SkillPusher interface {
-	Push(ctx context.Context, skillName string, libraryID string, body []byte) error
-}

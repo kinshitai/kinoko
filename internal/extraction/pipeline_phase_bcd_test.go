@@ -24,22 +24,6 @@ func (m *mockNoveltyChecker) Check(_ context.Context, content string) (*NoveltyR
 	return m.result, m.err
 }
 
-type mockSkillPusher struct {
-	err       error
-	called    int32
-	skillName string
-	libraryID string
-	body      []byte
-}
-
-func (m *mockSkillPusher) Push(_ context.Context, skillName, libraryID string, body []byte) error {
-	atomic.AddInt32(&m.called, 1)
-	m.skillName = skillName
-	m.libraryID = libraryID
-	m.body = body
-	return m.err
-}
-
 // passStage3WithSkillMD returns a Stage3Result with a valid SkillMD.
 func passStage3WithSkillMD() *model.Stage3Result {
 	r := passStage3()
@@ -65,19 +49,20 @@ Use pprof with low sampling rate.
 
 // --- P1: Pipeline novelty check integration ---
 
-func TestPipelineNoveltyCheck_SkipsPushWhenNotNovel(t *testing.T) {
+func TestPipelineNoveltyCheck_SkipsCommitWhenNotNovel(t *testing.T) {
 	novelty := &mockNoveltyChecker{
 		result: &NoveltyResult{Novel: false, Score: 0.3, Similar: []SimilarSkill{{Name: "existing", Score: 0.92}}},
 	}
-	pusher := &mockSkillPusher{}
+	var committerCalled int32
+	committer := &mockCommitterCounter{called: &committerCalled}
 
 	p, err := NewPipeline(PipelineConfig{
-		Stage1:  &mockStage1{result: passStage1()},
-		Stage2:  &mockStage2{result: passStage2()},
-		Stage3:  &mockStage3{result: passStage3()},
-		Novelty: novelty,
-		Pusher:  pusher,
-		Log:     testLog(),
+		Stage1:    &mockStage1{result: passStage1()},
+		Stage2:    &mockStage2{result: passStage2()},
+		Stage3:    &mockStage3{result: passStage3()},
+		Novelty:   novelty,
+		Committer: committer,
+		Log:       testLog(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -94,24 +79,25 @@ func TestPipelineNoveltyCheck_SkipsPushWhenNotNovel(t *testing.T) {
 	if atomic.LoadInt32(&novelty.called) != 1 {
 		t.Errorf("novelty.Check called %d times, want 1", novelty.called)
 	}
-	if atomic.LoadInt32(&pusher.called) != 0 {
-		t.Error("pusher.Push should NOT be called when not novel")
+	if atomic.LoadInt32(&committerCalled) != 0 {
+		t.Error("committer should NOT be called when not novel")
 	}
 }
 
-func TestPipelineNoveltyCheck_PushesWhenNovel(t *testing.T) {
+func TestPipelineNoveltyCheck_CommitsWhenNovel(t *testing.T) {
 	novelty := &mockNoveltyChecker{
 		result: &NoveltyResult{Novel: true, Score: 0.95},
 	}
-	pusher := &mockSkillPusher{}
+	var committerCalled int32
+	committer := &mockCommitterCounter{called: &committerCalled}
 
 	p, err := NewPipeline(PipelineConfig{
-		Stage1:  &mockStage1{result: passStage1()},
-		Stage2:  &mockStage2{result: passStage2()},
-		Stage3:  &mockStage3{result: passStage3()},
-		Novelty: novelty,
-		Pusher:  pusher,
-		Log:     testLog(),
+		Stage1:    &mockStage1{result: passStage1()},
+		Stage2:    &mockStage2{result: passStage2()},
+		Stage3:    &mockStage3{result: passStage3()},
+		Novelty:   novelty,
+		Committer: committer,
+		Log:       testLog(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -125,24 +111,22 @@ func TestPipelineNoveltyCheck_PushesWhenNovel(t *testing.T) {
 	if result.Status != model.StatusExtracted {
 		t.Errorf("status = %q, want extracted", result.Status)
 	}
-	if atomic.LoadInt32(&pusher.called) != 1 {
-		t.Errorf("pusher.Push called %d times, want 1", pusher.called)
-	}
-	if pusher.libraryID != "lib-1" {
-		t.Errorf("libraryID = %q, want lib-1", pusher.libraryID)
+	if atomic.LoadInt32(&committerCalled) != 1 {
+		t.Errorf("committer called %d times, want 1", committerCalled)
 	}
 }
 
-func TestPipelineNoveltyCheck_NilNoveltySkipsPusherToo(t *testing.T) {
-	// When no novelty checker configured, pusher should still be called.
-	pusher := &mockSkillPusher{}
+func TestPipelineNoveltyCheck_NilNoveltyStillCommits(t *testing.T) {
+	// When no novelty checker configured, committer should still be called.
+	var committerCalled int32
+	committer := &mockCommitterCounter{called: &committerCalled}
 
 	p, err := NewPipeline(PipelineConfig{
-		Stage1: &mockStage1{result: passStage1()},
-		Stage2: &mockStage2{result: passStage2()},
-		Stage3: &mockStage3{result: passStage3()},
-		Pusher: pusher,
-		Log:    testLog(),
+		Stage1:    &mockStage1{result: passStage1()},
+		Stage2:    &mockStage2{result: passStage2()},
+		Stage3:    &mockStage3{result: passStage3()},
+		Committer: committer,
+		Log:       testLog(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -153,8 +137,8 @@ func TestPipelineNoveltyCheck_NilNoveltySkipsPusherToo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if atomic.LoadInt32(&pusher.called) != 1 {
-		t.Errorf("pusher.Push called %d times, want 1 (no novelty = treat as novel)", pusher.called)
+	if atomic.LoadInt32(&committerCalled) != 1 {
+		t.Errorf("committer called %d times, want 1 (no novelty = treat as novel)", committerCalled)
 	}
 }
 
@@ -164,15 +148,16 @@ func TestPipelineNoveltyCheck_ErrorTreatedAsNovel(t *testing.T) {
 	novelty := &mockNoveltyChecker{
 		err: errors.New("novelty server down"),
 	}
-	pusher := &mockSkillPusher{}
+	var committerCalled int32
+	committer := &mockCommitterCounter{called: &committerCalled}
 
 	p, err := NewPipeline(PipelineConfig{
-		Stage1:  &mockStage1{result: passStage1()},
-		Stage2:  &mockStage2{result: passStage2()},
-		Stage3:  &mockStage3{result: passStage3()},
-		Novelty: novelty,
-		Pusher:  pusher,
-		Log:     testLog(),
+		Stage1:    &mockStage1{result: passStage1()},
+		Stage2:    &mockStage2{result: passStage2()},
+		Stage3:    &mockStage3{result: passStage3()},
+		Novelty:   novelty,
+		Committer: committer,
+		Log:       testLog(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -183,29 +168,29 @@ func TestPipelineNoveltyCheck_ErrorTreatedAsNovel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Fail-open: novelty error → treat as novel → push
-	if atomic.LoadInt32(&pusher.called) != 1 {
-		t.Errorf("pusher should be called on novelty error (fail-open), called %d times", pusher.called)
+	// Fail-open: novelty error → treat as novel → commit
+	if atomic.LoadInt32(&committerCalled) != 1 {
+		t.Errorf("committer should be called on novelty error (fail-open), called %d times", committerCalled)
 	}
 }
 
-// --- P1: Pipeline pusher failure is non-fatal ---
+// --- P1: Pipeline committer failure returns error status ---
 
-func TestPipelinePusher_FailureIsNonFatal(t *testing.T) {
+func TestPipelineCommitter_FailureReturnsError(t *testing.T) {
 	novelty := &mockNoveltyChecker{
 		result: &NoveltyResult{Novel: true, Score: 0.9},
 	}
-	pusher := &mockSkillPusher{
-		err: errors.New("git push failed: connection refused"),
+	committer := &mockCommitterWithError{
+		err: errors.New("git commit failed: connection refused"),
 	}
 
 	p, err := NewPipeline(PipelineConfig{
-		Stage1:  &mockStage1{result: passStage1()},
-		Stage2:  &mockStage2{result: passStage2()},
-		Stage3:  &mockStage3{result: passStage3()},
-		Novelty: novelty,
-		Pusher:  pusher,
-		Log:     testLog(),
+		Stage1:    &mockStage1{result: passStage1()},
+		Stage2:    &mockStage2{result: passStage2()},
+		Stage3:    &mockStage3{result: passStage3()},
+		Novelty:   novelty,
+		Committer: committer,
+		Log:       testLog(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -216,26 +201,24 @@ func TestPipelinePusher_FailureIsNonFatal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Push failure should not prevent extraction result.
-	if result.Status != model.StatusExtracted {
-		t.Errorf("status = %q, want extracted (push failure is non-fatal)", result.Status)
-	}
-	if result.Skill == nil {
-		t.Error("skill should still be present despite push failure")
+	// Committer failure → error status (git is the only write path now).
+	if result.Status != model.StatusError {
+		t.Errorf("status = %q, want error (commit failure)", result.Status)
 	}
 }
 
 // --- P1: Pipeline SkillMD override path ---
 
 func TestPipelineSkillMD_OverridesNameVersionCategory(t *testing.T) {
-	pusher := &mockSkillPusher{}
+	var committerCalled int32
+	committer := &mockCommitterCounter{called: &committerCalled}
 
 	p, err := NewPipeline(PipelineConfig{
-		Stage1: &mockStage1{result: passStage1()},
-		Stage2: &mockStage2{result: passStage2()},
-		Stage3: &mockStage3{result: passStage3WithSkillMD()},
-		Pusher: pusher,
-		Log:    testLog(),
+		Stage1:    &mockStage1{result: passStage1()},
+		Stage2:    &mockStage2{result: passStage2()},
+		Stage3:    &mockStage3{result: passStage3WithSkillMD()},
+		Committer: committer,
+		Log:       testLog(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -261,21 +244,20 @@ func TestPipelineSkillMD_OverridesNameVersionCategory(t *testing.T) {
 	if len(result.Skill.Patterns) != 2 || result.Skill.Patterns[0] != "debugging/profiling" {
 		t.Errorf("skill patterns = %v, want [debugging/profiling go/pprof]", result.Skill.Patterns)
 	}
-	// FilePath should use the LLM-generated version
 	if result.Skill.FilePath != "skills/llm-generated-skill/v3/SKILL.md" {
 		t.Errorf("skill filepath = %q, want skills/llm-generated-skill/v3/SKILL.md", result.Skill.FilePath)
 	}
 }
 
-func TestPipelineSkillMD_PusherReceivesGeneratedBody(t *testing.T) {
-	pusher := &mockSkillPusher{}
+func TestPipelineSkillMD_CommitterReceivesGeneratedBody(t *testing.T) {
+	committer := &mockCommitterWithBody{}
 
 	p, err := NewPipeline(PipelineConfig{
-		Stage1: &mockStage1{result: passStage1()},
-		Stage2: &mockStage2{result: passStage2()},
-		Stage3: &mockStage3{result: passStage3WithSkillMD()},
-		Pusher: pusher,
-		Log:    testLog(),
+		Stage1:    &mockStage1{result: passStage1()},
+		Stage2:    &mockStage2{result: passStage2()},
+		Stage3:    &mockStage3{result: passStage3WithSkillMD()},
+		Committer: committer,
+		Log:       testLog(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -286,35 +268,34 @@ func TestPipelineSkillMD_PusherReceivesGeneratedBody(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if atomic.LoadInt32(&pusher.called) != 1 {
-		t.Fatal("pusher not called")
+	if !committer.wasCalled {
+		t.Fatal("committer not called")
 	}
-	// Pusher should receive the LLM-generated SkillMD body, not the template.
-	if pusher.skillName != "llm-generated-skill" {
-		t.Errorf("pusher.skillName = %q, want llm-generated-skill", pusher.skillName)
+	// Committer should receive the LLM-generated SkillMD body, not the template.
+	if committer.skill.Name != "llm-generated-skill" {
+		t.Errorf("committer skill name = %q, want llm-generated-skill", committer.skill.Name)
 	}
-	body := string(pusher.body)
+	body := string(committer.body)
 	if body == "" {
-		t.Fatal("pusher.body is empty")
+		t.Fatal("committer body is empty")
 	}
-	// Should contain the LLM-generated content, not template.
 	if !contains(body, "CPU profiling in production") {
-		t.Error("pusher.body should contain LLM-generated content")
+		t.Error("committer body should contain LLM-generated content")
 	}
 }
 
 // --- P1: Pipeline SkillMD fallback ---
 
 func TestPipelineSkillMD_FallsBackToTemplate(t *testing.T) {
-	pusher := &mockSkillPusher{}
+	committer := &mockCommitterWithBody{}
 
 	// passStage3() has empty SkillMD → should fall back to buildSkillMD template.
 	p, err := NewPipeline(PipelineConfig{
-		Stage1: &mockStage1{result: passStage1()},
-		Stage2: &mockStage2{result: passStage2()},
-		Stage3: &mockStage3{result: passStage3()},
-		Pusher: pusher,
-		Log:    testLog(),
+		Stage1:    &mockStage1{result: passStage1()},
+		Stage2:    &mockStage2{result: passStage2()},
+		Stage3:    &mockStage3{result: passStage3()},
+		Committer: committer,
+		Log:       testLog(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -328,7 +309,6 @@ func TestPipelineSkillMD_FallsBackToTemplate(t *testing.T) {
 	if result.Skill == nil {
 		t.Fatal("expected skill")
 	}
-	// Without SkillMD, name comes from skillNameFromClassification.
 	if result.Skill.Name != "fix-backend-database-connection" {
 		t.Errorf("skill name = %q, want fix-backend-database-connection (from classification)", result.Skill.Name)
 	}
@@ -336,11 +316,10 @@ func TestPipelineSkillMD_FallsBackToTemplate(t *testing.T) {
 		t.Errorf("skill version = %d, want 1 (default)", result.Skill.Version)
 	}
 
-	// Pusher body should be from template (contains "## When to Use").
-	if atomic.LoadInt32(&pusher.called) != 1 {
-		t.Fatal("pusher not called")
+	if !committer.wasCalled {
+		t.Fatal("committer not called")
 	}
-	body := string(pusher.body)
+	body := string(committer.body)
 	if !contains(body, "## When to Use") {
 		t.Error("fallback body should contain template sections")
 	}
@@ -377,6 +356,20 @@ func TestPipelineNoveltyCheck_SkipsCommitterWhenNotNovel(t *testing.T) {
 	}
 }
 
+// --- P1: Pipeline requires committer ---
+
+func TestPipelineRequiresCommitter(t *testing.T) {
+	_, err := NewPipeline(PipelineConfig{
+		Stage1: &mockStage1{result: passStage1()},
+		Stage2: &mockStage2{result: passStage2()},
+		Stage3: &mockStage3{result: passStage3()},
+		Log:    testLog(),
+	})
+	if err == nil {
+		t.Fatal("expected error when Committer is nil")
+	}
+}
+
 // --- helpers ---
 
 func contains(s, substr string) bool {
@@ -400,5 +393,28 @@ type mockCommitterCounter struct {
 
 func (m *mockCommitterCounter) CommitSkill(_ context.Context, _ string, _ *model.SkillRecord, _ []byte) (string, error) {
 	atomic.AddInt32(m.called, 1)
+	return "abc123", nil
+}
+
+// mockCommitterWithError always returns an error.
+type mockCommitterWithError struct {
+	err error
+}
+
+func (m *mockCommitterWithError) CommitSkill(_ context.Context, _ string, _ *model.SkillRecord, _ []byte) (string, error) {
+	return "", m.err
+}
+
+// mockCommitterWithBody captures the committed skill and body.
+type mockCommitterWithBody struct {
+	wasCalled bool
+	skill     *model.SkillRecord
+	body      []byte
+}
+
+func (m *mockCommitterWithBody) CommitSkill(_ context.Context, _ string, skill *model.SkillRecord, body []byte) (string, error) {
+	m.wasCalled = true
+	m.skill = skill
+	m.body = body
 	return "abc123", nil
 }

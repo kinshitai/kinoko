@@ -89,7 +89,7 @@ func TestStatsThroughPipeline(t *testing.T) {
 	committer := &indexingCommitter{indexer: indexer, embedder: embedder}
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
 		Stage1: s1, Stage2: s2, Stage3: s3, Committer: committer,
-		Sessions: store, Embedder: embedder, Log: testLogger(), Extractor: "stats-pipeline-test",
+		Sessions: store, Log: testLogger(), Extractor: "stats-pipeline-test",
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -47,14 +47,14 @@ func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, gitSrv *gitse
 	stage2 := extraction.NewStage2Scorer(embedder, storage.NewSkillQuerier(store), llmClient, cfg.Extraction, logger)
 	stage3 := extraction.NewStage3Critic(llmClient, cfg.Extraction, logger)
 
-	var committer model.SkillCommitter
-	if gitSrv != nil {
-		committer = gitserver.NewGitCommitter(gitserver.GitCommitterConfig{
-			Server:  gitSrv,
-			DataDir: cfg.Server.DataDir,
-			Logger:  logger,
-		})
+	if gitSrv == nil {
+		return nil, fmt.Errorf("git server is required for extraction pipeline")
 	}
+	committer := gitserver.NewGitCommitter(gitserver.GitCommitterConfig{
+		Server:  gitSrv,
+		DataDir: cfg.Server.DataDir,
+		Logger:  logger,
+	})
 
 	// Create debug tracer from config (nil if debug is disabled).
 	var tracer *debug.Tracer
@@ -68,7 +68,6 @@ func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, gitSrv *gitse
 		Stage3:    stage3,
 		Writer:    store,
 		Sessions:  store,
-		Embedder:  embedder,
 		Reviewer:  store,
 		Committer: committer,
 		Tracer:    tracer,

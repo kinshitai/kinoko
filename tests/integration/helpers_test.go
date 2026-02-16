@@ -277,7 +277,12 @@ func assertApprox(t *testing.T, got, want, eps float64, msg string) {
 // the skill into SQLite, mimicking what the real hook pipeline does.
 type indexingCommitter struct {
 	indexer  model.SkillIndexer
-	embedder extraction.SkillEmbedder
+	embedder embeddingEmbedder
+}
+
+// embeddingEmbedder is a local interface for embedding in tests.
+type embeddingEmbedder interface {
+	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
 func (c *indexingCommitter) CommitSkill(ctx context.Context, _ string, skill *model.SkillRecord, body []byte) (string, error) {
@@ -293,6 +298,13 @@ func (c *indexingCommitter) CommitSkill(ctx context.Context, _ string, skill *mo
 		return "", err
 	}
 	return "deadbeef", nil
+}
+
+// noopCommitter is a no-op SkillCommitter for tests that don't need git persistence.
+type noopCommitter struct{}
+
+func (noopCommitter) CommitSkill(_ context.Context, _ string, _ *model.SkillRecord, _ []byte) (string, error) {
+	return "noop000", nil
 }
 
 // insertSession inserts a session record into the sessions table for metrics.

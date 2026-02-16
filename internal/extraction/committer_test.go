@@ -82,22 +82,14 @@ func TestPipeline_CommitterErrorIsFatal(t *testing.T) {
 	}
 }
 
-func TestPipeline_NilCommitterExtractsWithoutGit(t *testing.T) {
-	p, err := NewPipeline(PipelineConfig{
+func TestPipeline_NilCommitterReturnsError(t *testing.T) {
+	_, err := NewPipeline(PipelineConfig{
 		Stage1: &mockStage1{result: passStage1()},
 		Stage2: &mockStage2{result: passStage2()},
 		Stage3: &mockStage3{result: passStage3()},
 		Log:    slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	result, err := p.Extract(context.Background(), pipelineTestSession(), []byte("test content"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Status != model.StatusExtracted {
-		t.Fatalf("status = %s, want extracted", result.Status)
+	if err == nil {
+		t.Fatal("expected error when Committer is nil")
 	}
 }

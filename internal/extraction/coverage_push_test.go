@@ -7,14 +7,6 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
-func TestSetCommitter(t *testing.T) {
-	p := &Pipeline{}
-	p.SetCommitter(nil)
-	if p.committer != nil {
-		t.Fatal("expected nil committer")
-	}
-}
-
 func TestWriteTraceSummary_NilTrace(t *testing.T) {
 	p := &Pipeline{}
 	// Should not panic with nil trace
