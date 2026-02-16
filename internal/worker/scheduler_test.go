@@ -184,23 +184,17 @@ func TestDecayRunsOnSchedule(t *testing.T) {
 	s, _, _ := newTestScheduler(t, cfg)
 
 	// Override timing to fire immediately.
-	var decayRan atomic.Int32
-	origDecay := s.decay
-	_ = origDecay
-
 	s.nextDailyFunc = func(now time.Time, hour, minute int) time.Duration {
 		return 5 * time.Millisecond
 	}
 
-	// Track decay calls via a wrapper. We'll just verify the goroutine fires
-	// by checking it doesn't block start/stop.
+	// Verify the goroutine fires by checking it doesn't block start/stop.
 	ctx := context.Background()
 	if err := s.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
 
 	time.Sleep(50 * time.Millisecond)
-	_ = decayRan
 
 	stopCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()

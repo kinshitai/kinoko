@@ -1,0 +1,7 @@
+# Markdownlint configuration
+MD013: false  # Line length — prose doesn't need 80-char limits
+MD032: false  # Blanks around lists — too strict for our style
+MD033: false  # Inline HTML — needed for MDX/Astro
+MD034: false  # Bare URLs — fine in RFCs and docs
+MD040: false  # Fenced code language — not always needed
+MD041: false  # First line heading — not always applicable

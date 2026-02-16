@@ -113,6 +113,7 @@ The team knows Go. The ecosystem (Soft Serve, Charm libraries) is Go. Single bin
 **What it proves:** Agents can extract skills from real sessions and store them in a self-hosted git server with quality gates.
 
 **Self-hosting experience:**
+
 ```bash
 kinoko serve                  # starts everything
 kinoko init                   # on each client machine
