@@ -36,6 +36,12 @@ func (t *Tracer) StartRun() *RunTrace {
 		return nil
 	}
 
+	// Ensure the base directory exists before creating trace subdirectories.
+	if err := os.MkdirAll(t.baseDir, 0755); err != nil {
+		slog.Error("debug: failed to create base dir", "dir", t.baseDir, "error", err)
+		return nil
+	}
+
 	now := time.Now().UTC()
 	ts := now.Format("20060102T150405Z")
 
@@ -48,7 +54,8 @@ func (t *Tracer) StartRun() *RunTrace {
 		id := fmt.Sprintf("%s-%s", ts, suffix)
 		dir := filepath.Join(t.baseDir, id)
 
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		// Use os.Mkdir (not MkdirAll) so it returns an error on collision.
+		if err := os.Mkdir(dir, 0755); err != nil {
 			if os.IsExist(err) && attempt == 0 {
 				continue // retry with new suffix
 			}
@@ -68,73 +75,73 @@ type RunTrace struct {
 }
 
 // WriteSession writes the raw session content to session.log.
-func (r *RunTrace) WriteSession(data []byte) error {
+func (r *RunTrace) WriteSession(data []byte) {
 	if r == nil {
-		return nil
+		return
 	}
-	return bestEffortWrite(filepath.Join(r.Dir, "session.log"), data)
+	bestEffortWrite(filepath.Join(r.Dir, "session.log"), data)
 }
 
 // WriteStage writes a stage trace as indented JSON to <name>.json.
-func (r *RunTrace) WriteStage(name string, data any) error {
+func (r *RunTrace) WriteStage(name string, data any) {
 	if r == nil {
-		return nil
+		return
 	}
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		slog.Error("debug: marshal stage", "name", name, "error", err)
-		return nil
+		return
 	}
-	return bestEffortWrite(filepath.Join(r.Dir, name+".json"), b)
+	bestEffortWrite(filepath.Join(r.Dir, name+".json"), b)
 }
 
 // WriteRaw writes gzip-compressed data to <name>.<suffix>.json.gz.
-func (r *RunTrace) WriteRaw(name string, suffix string, data []byte) error {
+func (r *RunTrace) WriteRaw(name string, suffix string, data []byte) {
 	if r == nil {
-		return nil
+		return
 	}
 	path := filepath.Join(r.Dir, fmt.Sprintf("%s.%s.json.gz", name, suffix))
 	f, err := os.Create(path)
 	if err != nil {
 		slog.Error("debug: create raw file", "path", path, "error", err)
-		return nil
+		return
 	}
 	defer f.Close()
 	gz := gzip.NewWriter(f)
 	if _, err := gz.Write(data); err != nil {
 		slog.Error("debug: gzip write", "path", path, "error", err)
-		return nil
+		return
 	}
 	if err := gz.Close(); err != nil {
 		slog.Error("debug: gzip close", "path", path, "error", err)
 	}
-	return nil
+	return
 }
 
 // WriteSkill writes a skill body to skills/<skillName>.md.
-func (r *RunTrace) WriteSkill(skillName string, content []byte) error {
+func (r *RunTrace) WriteSkill(skillName string, content []byte) {
 	if r == nil {
-		return nil
+		return
 	}
 	dir := filepath.Join(r.Dir, "skills")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		slog.Error("debug: create skills dir", "error", err)
-		return nil
+		return
 	}
-	return bestEffortWrite(filepath.Join(dir, skillName+".md"), content)
+	bestEffortWrite(filepath.Join(dir, skillName+".md"), content)
 }
 
 // WriteSummary writes the run summary as indented JSON to summary.json.
-func (r *RunTrace) WriteSummary(summary any) error {
+func (r *RunTrace) WriteSummary(summary any) {
 	if r == nil {
-		return nil
+		return
 	}
 	b, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {
 		slog.Error("debug: marshal summary", "error", err)
-		return nil
+		return
 	}
-	return bestEffortWrite(filepath.Join(r.Dir, "summary.json"), b)
+	bestEffortWrite(filepath.Join(r.Dir, "summary.json"), b)
 }
 
 // Started returns the time the trace was started.
@@ -145,11 +152,12 @@ func (r *RunTrace) Started() time.Time {
 	return r.started
 }
 
-func bestEffortWrite(path string, data []byte) error {
-	if err := os.WriteFile(path, data, 0644); err != nil {
+// bestEffortWrite writes data to path. Uses 0600 permissions since trace files
+// may contain sensitive session data (credentials, tokens, PII).
+func bestEffortWrite(path string, data []byte) {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		slog.Error("debug: write file", "path", path, "error", err)
 	}
-	return nil
 }
 
 func randomHex(n int) (string, error) {
@@ -184,6 +192,8 @@ type Stage2Trace struct {
 	RubricAggregate  float64            `json:"rubric_aggregate"`
 	RubricThreshold  float64            `json:"rubric_threshold"`
 	Meta             *LLMMeta           `json:"meta,omitempty"`
+	RawRequestFile   string             `json:"raw_request_file,omitempty"`
+	RawResponseFile  string             `json:"raw_response_file,omitempty"`
 	DurationMs       int64              `json:"duration_ms"`
 }
 
@@ -212,6 +222,8 @@ type Stage3Trace struct {
 	Retries                int      `json:"retries"`
 	CircuitBreakerState    string   `json:"circuit_breaker_state"`
 	Meta                   *LLMMeta `json:"meta,omitempty"`
+	RawRequestFile         string   `json:"raw_request_file,omitempty"`
+	RawResponseFile        string   `json:"raw_response_file,omitempty"`
 	DurationMs             int64    `json:"duration_ms"`
 }
 

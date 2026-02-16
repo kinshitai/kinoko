@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/kinoko-dev/kinoko/internal/config"
 	"github.com/kinoko-dev/kinoko/internal/debug"
 	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/sanitize"
@@ -54,6 +55,7 @@ type Pipeline struct {
 	scanner    *sanitize.Scanner    // optional: credential scanner
 	tracer     *debug.Tracer         // optional: pipeline debug tracing
 	extractor  string               // pipeline version identifier
+	extCfg     config.ExtractionConfig // extraction config for trace thresholds
 
 	// Stratified sampling counters: maintain ~50/50 extracted vs rejected.
 	// Accessed atomically for concurrency safety.
@@ -77,6 +79,7 @@ type PipelineConfig struct {
 	Scanner    *sanitize.Scanner
 	Extractor  string
 	Tracer     *debug.Tracer
+	ExtCfg     config.ExtractionConfig
 }
 
 // NewPipeline creates a Pipeline. If RandIntn is nil, crypto/rand is used.
@@ -122,6 +125,7 @@ func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 		sampleRate: cfg.SampleRate,
 		randIntn:   r,
 		extractor:  ext,
+		extCfg:     cfg.ExtCfg,
 	}, nil
 }
 
@@ -160,14 +164,30 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 	s1Ms := time.Since(s1Start).Milliseconds()
 	result.Stage1 = s1
 
-	// Debug: stage 1 trace
+	// Debug: stage 1 trace with real filter names and config thresholds.
 	trace.WriteStage("stage1-filter", debug.Stage1Trace{
 		Passed: s1.Passed,
 		Filters: map[string]debug.FilterTrace{
-			"duration":         {Value: session.DurationMinutes, Threshold: "config", Passed: s1.DurationOK},
-			"tool_call_count":  {Value: session.ToolCallCount, Threshold: "config", Passed: s1.ToolCallCountOK},
-			"error_rate":       {Value: session.ErrorRate, Threshold: "config", Passed: s1.ErrorRateOK},
-			"has_success_exec": {Value: session.HasSuccessfulExec, Threshold: true, Passed: s1.HasSuccessExec},
+			"duration_minutes": {
+				Value:     session.DurationMinutes,
+				Threshold: []float64{p.extCfg.MinDurationMinutes, p.extCfg.MaxDurationMinutes},
+				Passed:    s1.DurationOK,
+			},
+			"tool_call_count": {
+				Value:     session.ToolCallCount,
+				Threshold: p.extCfg.MinToolCalls,
+				Passed:    s1.ToolCallCountOK,
+			},
+			"error_rate": {
+				Value:     session.ErrorRate,
+				Threshold: p.extCfg.MaxErrorRate,
+				Passed:    s1.ErrorRateOK,
+			},
+			"has_successful_exec": {
+				Value:     session.HasSuccessfulExec,
+				Threshold: true,
+				Passed:    s1.HasSuccessExec,
+			},
 		},
 		DurationMs: s1Ms,
 	})
@@ -214,18 +234,25 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 	}
 	result.Stage2 = s2
 
-	// Debug: stage 2 trace
-	// TODO: Add raw LLM request/response capture (.req.json.gz, .resp.json.gz)
-	// when we thread raw LLM capture through the stage interfaces.
+	// Debug: stage 2 trace with individual rubric scores and embedding details.
 	trace.WriteStage("stage2-scoring", debug.Stage2Trace{
 		Passed: s2.Passed,
 		EmbeddingNovelty: &debug.EmbeddingTrace{
-			Distance: s2.EmbeddingDistance,
+			Distance:     s2.EmbeddingDistance,
+			NearestSkill: s2.NearestSkillName,
+			Threshold:    p.extCfg.NoveltyMinDistance,
 		},
 		RubricScores: map[string]float64{
-			"composite": s2.RubricScores.CompositeScore,
+			"problem_specificity":    float64(s2.RubricScores.ProblemSpecificity),
+			"solution_completeness":  float64(s2.RubricScores.SolutionCompleteness),
+			"context_portability":    float64(s2.RubricScores.ContextPortability),
+			"reasoning_transparency": float64(s2.RubricScores.ReasoningTransparency),
+			"technical_accuracy":     float64(s2.RubricScores.TechnicalAccuracy),
+			"verification_evidence":  float64(s2.RubricScores.VerificationEvidence),
+			"innovation_level":       float64(s2.RubricScores.InnovationLevel),
 		},
 		RubricAggregate: s2.RubricScores.CompositeScore,
+		RubricThreshold: 3.0, // MinimumViable requires each of problem_specificity, solution_completeness, technical_accuracy >= 3
 		DurationMs:      s2Ms,
 	})
 
@@ -271,16 +298,17 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 	}
 	result.Stage3 = s3
 
-	// Debug: stage 3 trace
-	// TODO: Add raw LLM request/response capture (.req.json.gz, .resp.json.gz)
-	// when we thread raw LLM capture through the stage interfaces.
+	// Debug: stage 3 trace with real values from Stage3Result.
 	trace.WriteStage("stage3-critic", debug.Stage3Trace{
 		Passed:                 s3.Passed,
 		Verdict:                s3.CriticVerdict,
-		Confidence:             0, // not yet exposed in Stage3Result
+		Confidence:             s3.RefinedScores.CriticConfidence,
 		Reasoning:              s3.CriticReasoning,
 		ContradictionsDetected: s3.ContradictsBestPractices,
+		Retries:                s3.Retries,
+		CircuitBreakerState:    s3.CircuitBreakerState,
 		Meta: &debug.LLMMeta{
+			Model:     s3.ModelName,
 			TokensOut: s3.TokensUsed,
 			LatencyMs: s3.LatencyMs,
 		},

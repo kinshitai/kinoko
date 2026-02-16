@@ -135,7 +135,9 @@ func (c *stage3Critic) Evaluate(ctx context.Context, session model.SessionRecord
 	}
 
 	result.TokensUsed = retryResult.tokensUsed
+	result.Retries = retryResult.retries
 	result.LatencyMs = c.clock().Sub(start).Milliseconds()
+	result.CircuitBreakerState = c.cb.State()
 
 	c.log.Info("stage3 verdict", "session_id", session.ID,
 		"verdict", result.CriticVerdict,
@@ -235,6 +237,7 @@ func allScoresAbove(q model.QualityScores, threshold int) bool {
 type retryCallResult struct {
 	content    string
 	tokensUsed int
+	retries    int
 }
 
 func (c *stage3Critic) callWithRetry(ctx context.Context, prompt string, sessionID string) (*retryCallResult, error) {
@@ -264,7 +267,7 @@ func (c *stage3Critic) callWithRetry(ctx context.Context, prompt string, session
 		resp, tokens, err := c.callLLM(ctx, prompt, timeout)
 		totalTokens += tokens
 		if err == nil {
-			return &retryCallResult{content: resp, tokensUsed: totalTokens}, nil
+			return &retryCallResult{content: resp, tokensUsed: totalTokens, retries: attempt}, nil
 		}
 
 		lastErr = err

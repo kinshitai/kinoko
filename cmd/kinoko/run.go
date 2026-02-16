@@ -70,8 +70,13 @@ func runRun(cmd *cobra.Command, args []string) error {
 		cfg.Debug.Enabled = true
 	}
 	if cfg.Debug.Enabled && cfg.Debug.Dir == "" {
-		home, _ := os.UserHomeDir()
-		cfg.Debug.Dir = filepath.Join(home, ".kinoko", "debug")
+		home, err := os.UserHomeDir()
+		if err != nil {
+			slog.Warn("debug tracing: failed to determine home directory, debug tracing disabled", "error", err)
+			cfg.Debug.Enabled = false
+		} else {
+			cfg.Debug.Dir = filepath.Join(home, ".kinoko", "debug")
+		}
 	}
 	if cfg.Debug.Enabled {
 		slog.Info("debug tracing enabled", "dir", cfg.Debug.Dir)

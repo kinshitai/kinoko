@@ -67,6 +67,7 @@ func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, gitSrv *gitse
 		Tracer:    tracer,
 		Log:       logger,
 		Extractor: "worker-v1",
+		ExtCfg:    cfg.Extraction,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build extraction pipeline: %w", err)

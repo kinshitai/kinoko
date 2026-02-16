@@ -28,21 +28,12 @@ func TestNilTracer_StartRun(t *testing.T) {
 
 func TestNilRunTrace_Methods(t *testing.T) {
 	var rt *RunTrace
-	if err := rt.WriteSession([]byte("data")); err != nil {
-		t.Fatal(err)
-	}
-	if err := rt.WriteStage("s1", map[string]string{"a": "b"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := rt.WriteRaw("s2", "req", []byte("{}")); err != nil {
-		t.Fatal(err)
-	}
-	if err := rt.WriteSkill("skill1", []byte("# Skill")); err != nil {
-		t.Fatal(err)
-	}
-	if err := rt.WriteSummary(map[string]string{"ok": "true"}); err != nil {
-		t.Fatal(err)
-	}
+	// All methods are nil-safe and return nothing.
+	rt.WriteSession([]byte("data"))
+	rt.WriteStage("s1", map[string]string{"a": "b"})
+	rt.WriteRaw("s2", "req", []byte("{}"))
+	rt.WriteSkill("skill1", []byte("# Skill"))
+	rt.WriteSummary(map[string]string{"ok": "true"})
 }
 
 func TestStartRun_CreatesDir(t *testing.T) {

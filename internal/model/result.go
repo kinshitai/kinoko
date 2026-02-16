@@ -30,6 +30,7 @@ type Stage1Result struct {
 type Stage2Result struct {
 	Passed             bool          `json:"passed"`
 	EmbeddingDistance  float64       `json:"embedding_distance"`
+	NearestSkillName   string        `json:"nearest_skill_name,omitempty"`
 	NoveltyScore       float64       `json:"novelty_score"`
 	RubricScores       QualityScores `json:"rubric_scores"`
 	ClassifiedCategory SkillCategory `json:"classified_category"`
@@ -48,4 +49,7 @@ type Stage3Result struct {
 	ContradictsBestPractices bool          `json:"contradicts_best_practices"`
 	TokensUsed               int           `json:"tokens_used"`
 	LatencyMs                int64         `json:"latency_ms"`
+	Retries                  int           `json:"retries"`
+	ModelName                string        `json:"model_name,omitempty"`
+	CircuitBreakerState      string        `json:"circuit_breaker_state,omitempty"`
 }

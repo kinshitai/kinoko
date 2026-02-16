@@ -51,6 +51,7 @@ func init() {
 // SkillQueryResult holds the nearest-neighbor result from a skill store query.
 type SkillQueryResult struct {
 	CosineSim float64
+	SkillName string
 }
 
 // SkillQuerier finds nearest-neighbor skills by embedding.
@@ -114,6 +115,9 @@ func (s *stage2Scorer) Score(ctx context.Context, session model.SessionRecord, c
 	}
 
 	result.EmbeddingDistance = distance
+	if nearest != nil {
+		result.NearestSkillName = nearest.SkillName
+	}
 	// Novelty score: 0 at boundaries, 1 at midpoint of valid range.
 	if distance < s.minDist {
 		result.NoveltyScore = 0
