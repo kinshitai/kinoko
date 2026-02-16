@@ -121,7 +121,7 @@ jobs:
 
       - name: Embedding tests
         run: |
-          go test -tags embedding -coverpkg=./internal/...,./cmd/...,./pkg/... \
+          go test -v -x -tags embedding -coverpkg=./internal/...,./cmd/...,./pkg/... \
             -coverprofile=embedding.cov ./internal/embedding/... -timeout 120s
 
       - name: Embedding coverage
