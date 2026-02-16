@@ -25,3 +25,6 @@ site/.astro/
 docs/reference/soft-serve-reference.md
 /kinoko
 coverage.out
+
+# Internal docs (reviews, audits, reports)
+internal-docs/
