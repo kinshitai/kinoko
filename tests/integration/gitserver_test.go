@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -103,6 +104,7 @@ func StartGitTestServer(t *testing.T) *GitTestServer {
 
 	cmd := exec.Command(softBin, "serve")
 	cmd.Dir = dataDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("SOFT_SERVE_DATA_PATH=%s", dataDir),
 		fmt.Sprintf("SOFT_SERVE_INITIAL_ADMIN_KEYS=%s", strings.TrimSpace(string(pubBytes))),
@@ -128,7 +130,7 @@ func StartGitTestServer(t *testing.T) *GitTestServer {
 
 	t.Cleanup(func() {
 		if gs.cmd.Process != nil {
-			gs.cmd.Process.Kill()
+			_ = syscall.Kill(-gs.cmd.Process.Pid, syscall.SIGKILL)
 			gs.cmd.Wait()
 		}
 	})

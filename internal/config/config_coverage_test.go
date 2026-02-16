@@ -8,7 +8,7 @@ import (
 
 func TestGetAPIPort_Default(t *testing.T) {
 	cfg := DefaultConfig()
-	want := cfg.Server.Port + 1
+	want := cfg.Server.Port + 2
 	if got := cfg.Server.GetAPIPort(); got != want {
 		t.Fatalf("GetAPIPort() = %d, want %d", got, want)
 	}
