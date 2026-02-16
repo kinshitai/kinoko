@@ -8,7 +8,7 @@ import (
 )
 
 func TestNewOpenAIClient(t *testing.T) {
-	c := NewOpenAIClient("sk-test", "gpt-4o-mini")
+	c := NewOpenAIClient("sk-test", "gpt-4o-mini", "")
 	if c.apiKey != "sk-test" {
 		t.Fatalf("apiKey = %q, want %q", c.apiKey, "sk-test")
 	}
@@ -23,7 +23,7 @@ func TestNewOpenAIClient(t *testing.T) {
 func TestNewOpenAIClient_EmptyAPIKey(t *testing.T) {
 	// Constructor doesn't validate — caller's responsibility.
 	// Just verify it doesn't panic.
-	c := NewOpenAIClient("", "gpt-4o-mini")
+	c := NewOpenAIClient("", "gpt-4o-mini", "")
 	if c.apiKey != "" {
 		t.Fatalf("apiKey = %q, want empty", c.apiKey)
 	}

@@ -34,14 +34,18 @@ type DebugConfig struct {
 
 // EmbeddingConfig configures the embedding provider.
 type EmbeddingConfig struct {
-	Provider string `yaml:"provider"` // e.g. "openai"
-	Model    string `yaml:"model"`    // e.g. "text-embedding-3-small"
-	BaseURL  string `yaml:"base_url"` // e.g. "https://api.openai.com"
+	Provider string `yaml:"provider"`  // e.g. "openai"
+	Model    string `yaml:"model"`     // e.g. "text-embedding-3-small"
+	BaseURL  string `yaml:"base_url"`  // e.g. "https://api.openai.com"
+	APIKey   string `yaml:"api_key"`   // provider API key
 }
 
 // LLMConfig configures the LLM used for extraction and injection.
 type LLMConfig struct {
-	Model string `yaml:"model"` // e.g. "gpt-4o-mini"
+	Provider string `yaml:"provider"` // "openai" | "anthropic"
+	Model    string `yaml:"model"`    // e.g. "gpt-4o-mini", "claude-sonnet-4-20250514"
+	APIKey   string `yaml:"api_key"`  // provider API key
+	BaseURL  string `yaml:"base_url"` // optional, for proxies/custom endpoints
 }
 
 // DecayConfig mirrors decay.Config for YAML config loading.
