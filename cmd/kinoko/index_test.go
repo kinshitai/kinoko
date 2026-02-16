@@ -241,6 +241,65 @@ func TestIndexMissingRepo(t *testing.T) {
 	}
 }
 
+func TestIndexPathTraversalRejected(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "kinoko.db")
+
+	cmd := makeCmd("--repo", "../../etc/passwd", "--dsn", dbPath, "--data-dir", tmpDir, "--api-url", "http://127.0.0.1:1")
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for path traversal repo name")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("..")) {
+		t.Errorf("expected error mentioning '..', got: %v", err)
+	}
+}
+
+func TestIndexInvalidCategory(t *testing.T) {
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, "data")
+	dbPath := filepath.Join(tmpDir, "kinoko.db")
+
+	setupBareRepo(t, dataDir, "local/bad-cat", skillMD("bad-cat", "bogus", false))
+
+	cmd := makeCmd("--repo", "local/bad-cat", "--dsn", dbPath, "--data-dir", dataDir, "--api-url", "http://127.0.0.1:1")
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("runIndex failed: %v", err)
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	var category string
+	db.QueryRowContext(context.Background(), `SELECT category FROM skills WHERE name = ? AND library_id = ?`,
+		"bad-cat", "local").Scan(&category)
+	if category != "tactical" {
+		t.Errorf("expected default category tactical for invalid input, got %s", category)
+	}
+}
+
+func TestIndexQualityScoreOutOfBounds(t *testing.T) {
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, "data")
+	dbPath := filepath.Join(tmpDir, "kinoko.db")
+
+	// Create a SKILL.md with an out-of-bounds quality score
+	badQuality := "---\nname: bad-quality\nversion: 1\nauthor: test\nconfidence: 0.9\ncreated: 2025-01-01\ntags:\n  - testing\nquality:\n  problem_specificity: 99\n  solution_completeness: 3\n  context_portability: 3\n  reasoning_transparency: 3\n  technical_accuracy: 3\n  verification_evidence: 3\n  innovation_level: 3\n  composite_score: 3.0\n  critic_confidence: 0.8\n---\n\n# bad-quality\n\n## When to Use\n\nAlways.\n\n## Solution\n\nDo the thing.\n"
+	setupBareRepo(t, dataDir, "local/bad-quality", badQuality)
+
+	cmd := makeCmd("--repo", "local/bad-quality", "--dsn", dbPath, "--data-dir", dataDir, "--api-url", "http://127.0.0.1:1")
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for out-of-bounds quality score")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("must be 0-5")) {
+		t.Errorf("expected '0-5' bounds error, got: %v", err)
+	}
+}
+
 func TestIndexDefaultCategory(t *testing.T) {
 	tmpDir := t.TempDir()
 	dataDir := filepath.Join(tmpDir, "data")

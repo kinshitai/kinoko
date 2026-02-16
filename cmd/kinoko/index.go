@@ -95,11 +95,22 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		home, _ := os.UserHomeDir()
 		dataDir = filepath.Join(home, ".kinoko", "data")
 	}
+	// P0-1: Reject path traversal in repo name.
+	if strings.Contains(repo, "..") {
+		return fmt.Errorf("invalid repo name (contains '..'): %s", repo)
+	}
 	repoPath := filepath.Join(dataDir, "repos", repo+".git")
 
-	// Handle missing repo gracefully.
-	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-		return fmt.Errorf("repo not found: %s (looked in %s)", repo, repoPath)
+	// Validate that the resolved path stays within the repos directory.
+	cleanRepo := filepath.Clean(repoPath)
+	reposRoot := filepath.Clean(filepath.Join(dataDir, "repos"))
+	if !strings.HasPrefix(cleanRepo, reposRoot+string(filepath.Separator)) && cleanRepo != reposRoot {
+		return fmt.Errorf("invalid repo path (escapes repos directory): %s", repo)
+	}
+
+	// Handle missing or inaccessible repo (P0-2: any stat error, not just IsNotExist).
+	if _, err := os.Stat(repoPath); err != nil {
+		return fmt.Errorf("repo not found: %s (%w)", repo, err)
 	}
 
 	// Read SKILL.md from bare repo using git commands.
@@ -161,8 +172,21 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	}
 	// else: Quality stays zero-valued (all 0s)
 
+	// P1-4: Validate quality scores are in bounds (0-5) before hitting DB.
+	if parsed.Quality != nil {
+		if err := validateQualityScores(parsed.Quality); err != nil {
+			return fmt.Errorf("invalid quality scores: %w", err)
+		}
+	}
+
 	// Check if skill already exists (for action reporting).
-	existing, _ := store.GetLatestByName(cmd.Context(), skillName, libraryID)
+	// NOTE: P1-2 known limitation — race condition between this check and the
+	// upsert below. Concurrent post-receive hooks may cause action to report
+	// "created" when it was actually "updated". Acceptable for logging purposes.
+	existing, err := store.GetLatestByName(cmd.Context(), skillName, libraryID)
+	if err != nil {
+		logger.Warn("failed to check existing skill", "error", err, "skill", skillName, "library", libraryID)
+	}
 	action := "created"
 	if existing != nil {
 		action = "updated"
@@ -191,7 +215,10 @@ func runIndex(cmd *cobra.Command, args []string) error {
 			Embedded: len(emb) > 0,
 		}
 		enc := json.NewEncoder(os.Stdout)
-		return enc.Encode(result)
+		if err := enc.Encode(result); err != nil {
+			return fmt.Errorf("encode JSON result: %w", err)
+		}
+		return nil
 	}
 
 	logger.Info("skill indexed", "repo", repo, "rev", rev, "skill", skillName, "version", parsed.Version)
@@ -290,6 +317,30 @@ func fetchEmbedding(client *http.Client, apiURL, text string) ([]float32, error)
 		return nil, fmt.Errorf("decode embed response: %w", err)
 	}
 	return result.Vector, nil
+}
+
+// validateQualityScores checks that all integer quality scores are in the range 0-5.
+func validateQualityScores(q *skillpkg.QualityFrontmatter) error {
+	check := func(name string, val int) error {
+		if val < 0 || val > 5 {
+			return fmt.Errorf("%s must be 0-5, got %d", name, val)
+		}
+		return nil
+	}
+	for name, val := range map[string]int{
+		"problem_specificity":    q.ProblemSpecificity,
+		"solution_completeness":  q.SolutionCompleteness,
+		"context_portability":    q.ContextPortability,
+		"reasoning_transparency": q.ReasoningTransparency,
+		"technical_accuracy":     q.TechnicalAccuracy,
+		"verification_evidence":  q.VerificationEvidence,
+		"innovation_level":       q.InnovationLevel,
+	} {
+		if err := check(name, val); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func firstNonEmpty(vals ...string) string {
