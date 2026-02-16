@@ -228,7 +228,7 @@ func TestKinokoServePortConflicts(t *testing.T) {
 			// Force kill the process group, then cancel context
 			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 			cancel()
-			_ = cmd.Wait()
+			<-done // wait for goroutine's cmd.Wait() to return after kill
 			t.Log("Second server timed out, killed via process group")
 		}
 	})
