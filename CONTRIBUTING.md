@@ -1,66 +1,73 @@
 # Contributing to Kinoko
 
-Kinoko is early-stage and built in the open. Contributions welcome.
+## Git Flow
 
-## Getting Started
+**Never push directly to `main`.** All changes go through pull requests.
 
-```bash
-git clone https://github.com/kinoko-dev/kinoko.git
-cd kinoko
-go build ./cmd/kinoko
-go test ./...
-```
-
-**Requirements:** Go 1.24+, Git
-
-## Project Structure
+### Workflow
 
 ```
-cmd/kinoko/       CLI entry point (cobra commands)
-internal/config/    Configuration loading and validation
-internal/gitserver/ Soft Serve git server wrapper
-pkg/skill/          SKILL.md parsing and validation
-docs/               Documentation
-rfcs/               Architecture decisions
+1. Create a branch    →  git checkout -b <type>/<short-name>
+2. Do the work        →  commits on branch
+3. Push & open PR     →  git push -u origin <branch>
+4. CI must pass       →  Lint + Test + Build (all three green)
+5. Jazz reviews code  →  must approve before merge
+6. Squash merge       →  into main, delete branch
 ```
 
-## Development Workflow
+### Branch Naming
 
-1. Fork and clone the repo
-2. Create a branch: `git checkout -b my-change`
-3. Make your changes
-4. Run tests: `go test ./...`
-5. Commit with a clear message
-6. Open a pull request
+```
+feat/<name>       — new feature or capability
+fix/<name>        — bug fix
+docs/<name>       — documentation only
+refactor/<name>   — code restructuring, no behavior change
+test/<name>       — test additions or fixes
+chore/<name>      — CI, tooling, cleanup
+```
 
-## Code Style
+### PR Requirements
 
-- Standard Go formatting (`gofmt`)
-- Structured logging via `log/slog`
-- Error wrapping with `fmt.Errorf("context: %w", err)`
-- Tests live next to the code they test (`_test.go`)
+Before merging, every PR must have:
 
-## Documentation
+- [ ] **CI green** — Lint, Test, Build all pass
+- [ ] **Jazz review** — code review approved (grade B+ or higher)
+- [ ] **No architectural drift** — changes align with MANIFESTO.md and RFCs
+- [ ] **Docs updated** — if behavior changed, docs reflect it (Charis owns this)
 
-Docs live in `docs/` as plain Markdown. If you change CLI behavior, config options, or the skill format, update the corresponding doc.
+### Commit Messages
 
-Key docs:
-- `docs/reference/cli-reference.md` — CLI commands
-- `docs/reference/config-reference.md` — Configuration
-- `docs/reference/skill-format.md` — SKILL.md spec
+```
+<type>: <short description>
 
-## Architecture Decisions
+<optional body — what and why, not how>
+```
 
-Major design decisions are documented as RFCs in `rfcs/`. If you're proposing a significant change, write an RFC first.
+Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
 
-## Reporting Issues
+Keep it English only. No emoji in commit messages.
 
-Include:
-- What you did
-- What you expected
-- What happened
-- Output of `kinoko --version`, `go version`, and `uname -a`
+### Who Does What
 
-## Questions?
+| Role | Person | Responsibility |
+|---|---|---|
+| Architecture & specs | Hal 🔧 | Write specs, delegate, guard architecture |
+| Implementation | Otso 🇫🇮 | Build from specs, branch + PR |
+| Code review | Jazz 👴 | Review every PR, grade B+ minimum to merge |
+| QA | Pavel 🇷🇺 | Test coverage, integration tests, verify on branch |
+| Docs | Charis 🇨🇧 | Update docs when behavior changes, audit regularly |
+| R&D | Luka 🇩🇰 | Research briefs, specs for new features |
 
-Open an issue. We're a small team and happy to help.
+### Review Process
+
+1. Otso (or whoever implements) opens PR with description of what changed and why
+2. Pavel runs tests on the branch, reports coverage delta
+3. Jazz reviews code — checks correctness, security, alignment with spec
+4. Jazz approves or requests changes with specific feedback
+5. Once approved + CI green → squash merge to main
+
+### What Hal Does NOT Do
+
+- Write code directly (delegate to Otso)
+- Push to main (nobody does)
+- Skip review (even "obvious" fixes go through Jazz)
