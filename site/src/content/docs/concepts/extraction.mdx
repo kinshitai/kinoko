@@ -12,22 +12,34 @@ A gold miner doesn't analyze every grain of sand with a microscope. They start w
 
 Most agent sessions don't produce reusable knowledge. Running an expensive LLM critic on every session would be wasteful. Instead, Kinoko filters in three stages, rejecting early and cheap:
 
-```mermaid
-flowchart LR
-    S[Session] --> S1[Stage 1\nMetadata]
-    S1 -->|~70% rejected| S2[Stage 2\nNovelty + Rubric]
-    S2 -->|~50% rejected| S3[Stage 3\nLLM Critic]
-    S3 -->|~60% rejected| N[Novelty Check]
-    N -->|novel| G[git push]
-    N -->|duplicate| X4[discard]
-    S1 -->|reject| X1[ ]
-    S2 -->|reject| X2[ ]
-    S3 -->|reject| X3[ ]
-
-    style X1 fill:none,stroke:none
-    style X2 fill:none,stroke:none
-    style X3 fill:none,stroke:none
-    style X4 fill:none,stroke:none
+```
+  Session
+    │
+    ▼
+  ┌────────────┐  ~70%
+  │  Stage 1   │──rejected──▶ ✗
+  │  Metadata  │
+  └─────┬──────┘
+        │ ~30% pass
+        ▼
+  ┌────────────────┐  ~50%
+  │    Stage 2     │──rejected──▶ ✗
+  │ Novelty+Rubric │
+  └─────┬──────────┘
+        │ ~15% pass
+        ▼
+  ┌────────────┐  ~60%
+  │  Stage 3   │──rejected──▶ ✗
+  │ LLM Critic │
+  └─────┬──────┘
+        │ ~6% pass
+        ▼
+  ┌───────────────┐  duplicate
+  │ Novelty Check │──────────▶ ✗
+  └─────┬─────────┘
+        │ novel
+        ▼
+    git push
 ```
 
 ## Stage 1 — Metadata Pre-filter
