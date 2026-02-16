@@ -16,7 +16,6 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
-
 // --- Core Verdict Tests ---
 
 func TestStage3Critic(t *testing.T) {
