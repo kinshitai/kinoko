@@ -121,7 +121,7 @@ func TestRejectionFlows(t *testing.T) {
 		s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 		pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-			Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Committer: noopCommitter{}, Log: testLogger(),
+			Stage1: s1, Stage2: s2, Stage3: s3, Committer: noopCommitter{}, Log: testLogger(),
 		})
 
 		session := shortSession("sess-rej1", "test-lib")
@@ -164,7 +164,7 @@ func TestRejectionFlows(t *testing.T) {
 		s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 		pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-			Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Committer: noopCommitter{}, Log: testLogger(),
+			Stage1: s1, Stage2: s2, Stage3: s3, Committer: noopCommitter{}, Log: testLogger(),
 		})
 
 		session := goodSession("sess-rej3", "test-lib")
@@ -207,7 +207,7 @@ func TestEmbeddingFailureDegradation(t *testing.T) {
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Committer: noopCommitter{}, Log: testLogger(),
+		Stage1: s1, Stage2: s2, Stage3: s3, Committer: noopCommitter{}, Log: testLogger(),
 	})
 
 	session := goodSession("sess-err-1", "test-lib")
@@ -353,7 +353,7 @@ func TestHumanReviewSampling(t *testing.T) {
 
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
 		Stage1: s1, Stage2: s2, Stage3: s3,
-		Writer: store, Sessions: store, Reviewer: store, Committer: noopCommitter{},
+		Sessions: store, Reviewer: store, Committer: noopCommitter{},
 		Log: testLogger(), SampleRate: 1.0, Extractor: "sampling-test",
 	})
 	if err != nil {

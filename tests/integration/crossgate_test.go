@@ -316,7 +316,7 @@ Tests passed. Solution verified.`
 // =============================================================================
 
 func TestEdge_EmptySessionLog(t *testing.T) {
-	store := newTestStore(t)
+	_ = newTestStore(t)
 	ctx := context.Background()
 	embedder := newPredictableEmbedder(3)
 
@@ -330,7 +330,7 @@ func TestEdge_EmptySessionLog(t *testing.T) {
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Committer: noopCommitter{}, Log: testLogger(),
+		Stage1: s1, Stage2: s2, Stage3: s3, Committer: noopCommitter{}, Log: testLogger(),
 	})
 
 	// Empty log should be rejected at stage1.
@@ -367,7 +367,7 @@ postgres://root:pass@db:5432/prod`
 	}
 
 	// Feed redacted content through extraction — should reject.
-	store := newTestStore(t)
+	_ = newTestStore(t)
 	ctx := context.Background()
 	embedder := newPredictableEmbedder(3)
 
@@ -381,7 +381,7 @@ postgres://root:pass@db:5432/prod`
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Committer: noopCommitter{}, Log: testLogger(),
+		Stage1: s1, Stage2: s2, Stage3: s3, Committer: noopCommitter{}, Log: testLogger(),
 	})
 
 	sess := shortSession("sess-onlycreds", "test-lib")
@@ -475,7 +475,7 @@ func TestEdge_LargeSessionLog(t *testing.T) {
 		buf.WriteString(line)
 	}
 
-	store := newTestStore(t)
+	_ = newTestStore(t)
 	ctx := context.Background()
 	embedder := newPredictableEmbedder(3)
 
@@ -489,7 +489,7 @@ func TestEdge_LargeSessionLog(t *testing.T) {
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Committer: noopCommitter{}, Log: testLogger(),
+		Stage1: s1, Stage2: s2, Stage3: s3, Committer: noopCommitter{}, Log: testLogger(),
 	})
 
 	sess := goodSession("sess-large", "test-lib")
@@ -533,7 +533,7 @@ func TestEdge_LargeSessionLog(t *testing.T) {
 func TestEdge_DiscoverNoMatches(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
-	embedder := newPredictableEmbedder(3)
+	_ = newPredictableEmbedder(3)
 
 	port := freePort(t)
 	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Store: store})
@@ -706,7 +706,7 @@ func TestEdge_HookInstallUnsafePath(t *testing.T) {
 func TestEdge_APIDiscoverRateLimit(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
-	embedder := &slowEmbedder{delay: 100 * time.Millisecond, dims: 3}
+	_ = &slowEmbedder{delay: 100 * time.Millisecond, dims: 3}
 
 	port := freePort(t)
 	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Store: store})

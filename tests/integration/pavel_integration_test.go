@@ -63,7 +63,7 @@ func TestPipelineWorkerConcurrentResults(t *testing.T) {
 			s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 			pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-				Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Committer: noopCommitter{}, Log: testLogger(),
+				Stage1: s1, Stage2: s2, Stage3: s3, Committer: noopCommitter{}, Log: testLogger(),
 			})
 
 			sess := goodSession(fmt.Sprintf("sess-p1-%d", idx), "test-lib")
@@ -267,7 +267,7 @@ func TestImportDuplicateSession(t *testing.T) {
 // =============================================================================
 
 func TestImportInvalidSessionLog(t *testing.T) {
-	store := newTestStore(t)
+	_ = newTestStore(t)
 	ctx := context.Background()
 	embedder := newPredictableEmbedder(3)
 
@@ -281,7 +281,7 @@ func TestImportInvalidSessionLog(t *testing.T) {
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Committer: noopCommitter{}, Log: testLogger(),
+		Stage1: s1, Stage2: s2, Stage3: s3, Committer: noopCommitter{}, Log: testLogger(),
 	})
 
 	// Session with characteristics that should fail stage1 (too short).
@@ -991,7 +991,7 @@ func TestBug_SamplingCounterRace(t *testing.T) {
 			s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
 			s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 			pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-				Stage1: s1, Stage2: s2, Stage3: s3, Writer: store,
+				Stage1: s1, Stage2: s2, Stage3: s3, Sessions: store,
 				Committer: noopCommitter{}, Reviewer: store, Log: testLogger(),
 				SampleRate: 1.0,
 			})
@@ -1023,7 +1023,7 @@ func TestBug_SessionInsertFailureSwallowed(t *testing.T) {
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3, Writer: store,
+		Stage1: s1, Stage2: s2, Stage3: s3,
 		Committer: noopCommitter{}, Sessions: store, Log: testLogger(),
 		Extractor: "session-test",
 	})
@@ -1076,7 +1076,7 @@ func TestWorkerPoolWithRealPipeline(t *testing.T) {
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Committer: noopCommitter{}, Log: testLogger(),
+		Stage1: s1, Stage2: s2, Stage3: s3, Committer: noopCommitter{}, Log: testLogger(),
 	})
 
 	// Enqueue a good session.

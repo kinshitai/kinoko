@@ -66,6 +66,8 @@ func TestMultipleSkillsQueryOrdering(t *testing.T) {
 }
 
 func TestVersionChainIntegrity(t *testing.T) {
+	// With git-first upsert, Put with same name+library replaces the row.
+	// Version chain is maintained via the upsert: v2 overwrites v1.
 	store := newTestStore(t)
 	ctx := context.Background()
 
@@ -83,8 +85,9 @@ func TestVersionChainIntegrity(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Upsert v2 — same name+library, replaces v1 row in-place.
 	v2 := &model.SkillRecord{
-		ID: "v2-id", Name: "fix-db", Version: 2, ParentID: "v1-id", LibraryID: "test-lib",
+		ID: "v2-id", Name: "fix-db", Version: 2, LibraryID: "test-lib",
 		Category: model.CategoryTactical,
 		Quality: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
@@ -94,7 +97,7 @@ func TestVersionChainIntegrity(t *testing.T) {
 		DecayScore: 1.0, ExtractedBy: "test", FilePath: "skills/fix-db/v2/SKILL.md",
 	}
 	if err := store.Put(ctx, v2, nil); err != nil {
-		t.Fatal(err)
+		t.Fatal("upsert skill:", err)
 	}
 
 	latest, err := store.GetLatestByName(ctx, "fix-db", "test-lib")
@@ -104,20 +107,19 @@ func TestVersionChainIntegrity(t *testing.T) {
 	if latest.Version != 2 {
 		t.Errorf("latest version = %d, want 2", latest.Version)
 	}
-	if latest.ParentID != "v1-id" {
-		t.Errorf("parent = %q, want v1-id", latest.ParentID)
+	if latest.ID != "v2-id" {
+		t.Errorf("latest ID = %q, want v2-id", latest.ID)
 	}
 
-	old, err := store.Get(ctx, "v1-id")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if old.Version != 1 {
-		t.Errorf("v1 version = %d", old.Version)
+	// v1-id should no longer exist (replaced by upsert).
+	_, err = store.Get(ctx, "v1-id")
+	if err == nil {
+		t.Error("expected v1-id to be gone after upsert, but it still exists")
 	}
 }
 
-func TestSkillPutAtomicity(t *testing.T) {
+func TestSkillPutUpsert(t *testing.T) {
+	// With git-first, Put upserts by name+library. Second Put replaces first.
 	store := newTestStore(t)
 	ctx := context.Background()
 
@@ -135,8 +137,9 @@ func TestSkillPutAtomicity(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Upsert: same name+library, different ID and patterns.
 	sk2 := &model.SkillRecord{
-		ID: "atom-2", Name: "atomic-skill", Version: 1, LibraryID: "test-lib",
+		ID: "atom-2", Name: "atomic-skill", Version: 2, LibraryID: "test-lib",
 		Category: model.CategoryTactical, Patterns: []string{"BUILD/Backend/APIDesign"},
 		Quality: model.QualityScores{
 			ProblemSpecificity: 3, SolutionCompleteness: 3, ContextPortability: 3,
@@ -145,23 +148,25 @@ func TestSkillPutAtomicity(t *testing.T) {
 		},
 		DecayScore: 1.0, ExtractedBy: "test", FilePath: "skills/atomic/SKILL.md",
 	}
-	err := store.Put(ctx, sk2, nil)
-	if err == nil {
-		t.Fatal("expected duplicate error")
+	if err := store.Put(ctx, sk2, nil); err != nil {
+		t.Fatal("upsert should succeed:", err)
 	}
 
-	var patternCount int
-	store.DB().QueryRow("SELECT COUNT(*) FROM skill_patterns WHERE skill_id = ?", "atom-2").Scan(&patternCount)
-	if patternCount != 0 {
-		t.Errorf("atom-2 patterns = %d, want 0 (should have rolled back)", patternCount)
+	// Only one row should exist for this name+library.
+	var count int
+	store.DB().QueryRow("SELECT COUNT(*) FROM skills WHERE name = ? AND library_id = ?",
+		"atomic-skill", "test-lib").Scan(&count)
+	if count != 1 {
+		t.Errorf("expected 1 skill row after upsert, got %d", count)
 	}
 
-	got, err := store.Get(ctx, "atom-1")
+	// The latest values should be from sk2.
+	got, err := store.Get(ctx, "atom-2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Name != "atomic-skill" {
-		t.Errorf("original skill corrupted: name = %q", got.Name)
+	if got.Version != 2 {
+		t.Errorf("version = %d, want 2", got.Version)
 	}
 }
 
