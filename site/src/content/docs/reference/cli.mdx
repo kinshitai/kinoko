@@ -17,6 +17,8 @@ AVAILABLE COMMANDS:
   serve     Start the Kinoko infrastructure server
   run       Start the local agent daemon
   extract   Run extraction pipeline on a session log file
+  ingest    Import a markdown file as a skill through the quality critic
+  match     Find skills matching a query
   decay     Run one decay cycle
   scan      Scan files for credentials and secrets
   index     Index a skill repo into SQLite
@@ -144,7 +146,7 @@ kinoko run --server my-server:23231
 
 ## `kinoko extract`
 
-Run the 3-stage extraction pipeline on a session log file.
+Run the 3-stage extraction pipeline on a session log file. Parses the session, runs Stage 1 (filter) → Stage 2 (scorer) → Stage 3 (critic), performs a novelty check against existing skills, and pushes the result to the skill library via git.
 
 ```bash
 kinoko extract <session-log> [flags]
@@ -162,23 +164,171 @@ kinoko extract <session-log> [flags]
 |------|------|---------|-------------|
 | `--config` | string | `""` | Config file path |
 | `--library` | string | first configured | Library ID to use |
+| `--api-url` | string | `$KINOKO_API_URL` or `http://127.0.0.1:23233` | Kinoko API URL for embedding and novelty checks |
+| `--dry-run` | bool | `false` | Run the full pipeline but skip git push |
+| `--timeout` | duration | `5m` | Command timeout |
+
+**Pipeline flow:**
+
+1. **Parse** — reads the session log and extracts metadata
+2. **Stage 1 (Filter)** — fast heuristic check, rejects trivial sessions
+3. **Stage 2 (Scorer)** — embedding similarity + LLM scoring for novelty and quality
+4. **Stage 3 (Critic)** — LLM evaluates the candidate skill (substitution test, hard reject triggers, SKILL.md generation)
+5. **Novelty check** — queries the server to ensure the skill isn't a duplicate
+6. **Git push** — commits the skill to the library (skipped with `--dry-run`)
 
 **Environment variables:**
 
 | Variable | Purpose |
 |---|---|
 | `OPENAI_API_KEY` | Fallback API key for embeddings and LLM |
-| `KINOKO_EMBEDDING_API_KEY` | API key for embeddings |
-| `KINOKO_LLM_API_KEY` | API key for LLM calls (required) |
+| `KINOKO_EMBEDDING_API_KEY` | API key for embeddings (overrides `OPENAI_API_KEY`) |
+| `KINOKO_LLM_API_KEY` | API key for LLM calls (required; overrides `OPENAI_API_KEY`) |
 
-**Example:**
+**Examples:**
 ```bash
 export OPENAI_API_KEY=sk-...
 kinoko extract ./session.log
 kinoko extract ./session.log --library my-team --config ./config.yaml
+kinoko extract ./session.log --dry-run          # evaluate without pushing
+kinoko extract ./session.log --timeout 10m      # longer timeout for large sessions
+kinoko extract ./session.log --api-url http://kinoko.internal:23233
 ```
 
-**Output:** JSON `ExtractionResult` including stage results, skill record (if extracted), timing, and status.
+**Output:** Prints a human-readable summary followed by JSON `ExtractionResult` including stage results, skill record (if extracted), commit hash, timing, and status.
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | Skill extracted successfully |
+| 2 | Extraction rejected (session didn't pass quality gates) |
+| 3 | Extraction error |
+
+---
+
+## `kinoko ingest`
+
+Import a markdown file as a skill through the Stage 3 LLM critic. The critic applies the same quality gate as extraction: substitution test, hard reject triggers, and SKILL.md generation. Raw input is transformed into a well-structured skill.
+
+```bash
+kinoko ingest <file.md> [flags]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|---|---|
+| `<file.md>` | Path to the markdown file to ingest |
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--name` | string | derived from filename | Skill name (kebab-case) |
+| `--category` | string | from LLM or `tactical` | Skill category (overrides LLM/front matter) |
+| `--tags` | string | `""` | Comma-separated tags (overrides LLM/front matter) |
+| `--library` | string | `local` | Library ID |
+| `--force` | bool | `false` | Skip critic — validate structure and push as-is (requires valid YAML front matter with `name` field) |
+| `--api-url` | string | `$KINOKO_API_URL` or `http://127.0.0.1:23233` | Kinoko API URL |
+| `--dry-run` | bool | `false` | Evaluate only, don't push to git |
+| `--timeout` | duration | `5m` | Command timeout |
+| `--config` | string | `""` | Config file path |
+
+**Flow (normal mode):**
+
+1. **Read** — loads the markdown file
+2. **Stage 3 Critic** — LLM evaluates quality, generates structured SKILL.md
+3. **Metadata extraction** — parses name, category, tags from generated front matter (CLI flags override)
+4. **Embedding** — computes vector via server API
+5. **Novelty check** — rejects duplicates
+6. **Index** — stores in local SQLite
+7. **Git push** — commits to library (skipped with `--dry-run` or if duplicate)
+
+**Flow (`--force` mode):**
+
+1. **Read** — loads the markdown file
+2. **Validate** — checks UTF-8, size (≤1 MB), and valid YAML front matter with `name` field
+3. **Index + Push** — skips critic, indexes and pushes directly
+
+**Environment variables:**
+
+| Variable | Purpose |
+|---|---|
+| `OPENAI_API_KEY` | Fallback API key for LLM |
+| `KINOKO_LLM_API_KEY` | API key for LLM calls (overrides `OPENAI_API_KEY`) |
+| `ANTHROPIC_API_KEY` | API key for Anthropic models (overrides `OPENAI_API_KEY`) |
+
+**Examples:**
+```bash
+kinoko ingest CLAUDE.md
+kinoko ingest my-notes.md --category LEARN --tags go,testing
+kinoko ingest SKILL.md --force              # skip critic, validate and push as-is
+kinoko ingest draft.md --dry-run            # evaluate without pushing
+kinoko ingest doc.md --name my-skill --library team-alpha
+```
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | Skill ingested successfully |
+| 2 | Rejected by critic |
+
+---
+
+## `kinoko match`
+
+Query the Kinoko server for skills matching a text query. Useful for testing injection relevance or exploring the skill library.
+
+```bash
+kinoko match <query-text> [flags]
+kinoko match --file <context.txt> [flags]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|---|---|
+| `<query-text>` | Free-text query describing what you need (optional if `--file` is used) |
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--file` | string | `""` | Read query text from a file instead of the argument |
+| `--limit` | int | `5` | Maximum number of results to return |
+| `--min-score` | float | `0.5` | Minimum match score threshold (0.0–1.0) |
+| `--api-url` | string | `$KINOKO_API_URL` or `http://127.0.0.1:23233` | Kinoko API URL |
+| `--timeout` | duration | `30s` | Command timeout |
+
+**How it works:**
+
+1. Takes the query text (from argument or `--file`)
+2. Sends it to the server's match endpoint
+3. Server computes embeddings and finds nearest skills
+4. Results are filtered by `--min-score` and limited by `--limit`
+5. Prints ranked results with names, scores, and content previews
+
+**Examples:**
+```bash
+kinoko match "I need to fix a database timeout in Go"
+kinoko match --file context.txt --limit 10
+kinoko match "memory leak" --min-score 0.7
+kinoko match "deployment strategies" --api-url http://kinoko.internal:23233
+```
+
+**Output:**
+```
+─── Match Results (3) ───
+  1. fix-db-connection-pool (score: 0.847)
+     Configure connection pool timeouts and max idle connections...
+  2. go-context-cancellation (score: 0.723)
+     Use context.WithTimeout to propagate deadline...
+  3. retry-with-backoff (score: 0.651)
+     Implement exponential backoff for transient failures...
+─────────────────────────
+```
 
 ---
 
@@ -351,6 +501,6 @@ kinoko --version
 |------|---------|
 | 0 | Success |
 | 1 | Error (config issues, startup failures, runtime errors, credential scan findings) |
-| 2 | Extraction rejected (`kinoko extract` only) |
-| 3 | Extraction error (`kinoko extract` only) |
+| 2 | Rejected — extraction rejected or ingest rejected by critic (`extract`, `ingest`) |
+| 3 | Extraction error (`extract` only) |
 | 130 | Interrupted (Ctrl+C) |
