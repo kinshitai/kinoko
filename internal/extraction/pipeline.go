@@ -18,11 +18,6 @@ import (
 // Compile-time interface check.
 var _ model.Extractor = (*Pipeline)(nil)
 
-// SkillWriter persists a skill record and its SKILL.md body.
-type SkillWriter interface {
-	Put(ctx context.Context, skill *model.SkillRecord, body []byte) error
-}
-
 // SessionWriter persists and updates session records.
 type SessionWriter interface {
 	InsertSession(ctx context.Context, session *model.SessionRecord) error
@@ -34,26 +29,18 @@ type HumanReviewWriter interface {
 	InsertReviewSample(ctx context.Context, sessionID string, resultJSON []byte) error
 }
 
-// SkillEmbedder computes an embedding for skill content.
-type SkillEmbedder interface {
-	Embed(ctx context.Context, text string) ([]float32, error)
-}
-
-// Pipeline implements model.Extractor by wiring Stage1 → Stage2 → Stage3 → SkillWriter.
+// Pipeline implements model.Extractor by wiring Stage1 → Stage2 → Stage3 → git commit.
 type Pipeline struct {
 	stage1     Stage1Filter
 	stage2     Stage2Scorer
 	stage3     Stage3Critic
-	writer     SkillWriter
 	sessions   SessionWriter
-	embedder   SkillEmbedder
 	reviewer   HumanReviewWriter
 	log        *slog.Logger
 	sampleRate float64 // 0.0–1.0, e.g. 0.01 for 1%
 	randIntn   RandIntn
-	novelty    NoveltyChecker          // optional: checks skill novelty before push
-	pusher     SkillPusher             // optional: pushes skills to git (Phase C)
-	committer  model.SkillCommitter    // optional: pushes skills to git
+	novelty    NoveltyChecker          // optional: checks skill novelty before commit
+	committer  model.SkillCommitter    // required: commits skills to git
 	scanner    *sanitize.Scanner       // optional: credential scanner
 	tracer     *debug.Tracer           // optional: pipeline debug tracing
 	extractor  string                  // pipeline version identifier
@@ -70,15 +57,12 @@ type PipelineConfig struct {
 	Stage1     Stage1Filter
 	Stage2     Stage2Scorer
 	Stage3     Stage3Critic
-	Writer     SkillWriter
 	Sessions   SessionWriter
-	Embedder   SkillEmbedder
 	Reviewer   HumanReviewWriter
 	Log        *slog.Logger
 	SampleRate float64
 	RandIntn   RandIntn
 	Novelty    NoveltyChecker
-	Pusher     SkillPusher
 	Committer  model.SkillCommitter
 	Scanner    *sanitize.Scanner
 	Extractor  string
@@ -87,7 +71,7 @@ type PipelineConfig struct {
 }
 
 // NewPipeline creates a Pipeline. If RandIntn is nil, crypto/rand is used.
-// Returns an error if required dependencies (Stage1, Stage2, Stage3, Writer, Log) are nil.
+// Returns an error if required dependencies (Stage1, Stage2, Stage3, Committer, Log) are nil.
 func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 	if cfg.Stage1 == nil {
 		return nil, fmt.Errorf("pipeline: Stage1 is required")
@@ -101,6 +85,9 @@ func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 	if cfg.Log == nil {
 		return nil, fmt.Errorf("pipeline: Log is required")
 	}
+	if cfg.Committer == nil {
+		return nil, fmt.Errorf("pipeline: Committer is required")
+	}
 	r := cfg.RandIntn
 	if r == nil {
 		r = cryptoRandIntn
@@ -109,21 +96,13 @@ func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 	if ext == "" {
 		ext = "pipeline-v1"
 	}
-	// P1-1: Warn if committer is nil — skills will be marked extracted without git persistence.
-	if cfg.Committer == nil {
-		cfg.Log.Warn("pipeline created without committer: extracted skills will not be persisted to git")
-	}
-
 	return &Pipeline{
 		stage1:     cfg.Stage1,
 		stage2:     cfg.Stage2,
 		stage3:     cfg.Stage3,
-		writer:     cfg.Writer,
 		sessions:   cfg.Sessions,
-		embedder:   cfg.Embedder,
 		reviewer:   cfg.Reviewer,
 		novelty:    cfg.Novelty,
-		pusher:     cfg.Pusher,
 		committer:  cfg.Committer,
 		scanner:    cfg.Scanner,
 		tracer:     cfg.Tracer,
@@ -133,11 +112,6 @@ func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 		extractor:  ext,
 		extCfg:     cfg.ExtCfg,
 	}, nil
-}
-
-// SetCommitter sets the git committer. Safe to call before Extract is used.
-func (p *Pipeline) SetCommitter(c model.SkillCommitter) {
-	p.committer = c
 }
 
 // extractionRun holds mutable state for a single Extract() invocation.
@@ -425,15 +399,6 @@ func (p *Pipeline) publish(run *extractionRun) (*model.ExtractionResult, error) 
 		UpdatedAt:       now,
 	}
 
-	if p.embedder != nil {
-		emb, embErr := p.embedder.Embed(run.ctx, string(run.content))
-		if embErr != nil {
-			p.log.Warn("failed to compute skill embedding, storing without", "session_id", run.session.ID, "error", embErr)
-		} else {
-			skill.Embedding = emb
-		}
-	}
-
 	var body []byte
 	if generatedBody != nil {
 		body = generatedBody
@@ -462,7 +427,7 @@ func (p *Pipeline) publish(run *extractionRun) (*model.ExtractionResult, error) 
 			if len(noveltyResult.Similar) > 0 {
 				similarName = noveltyResult.Similar[0].Name
 			}
-			p.log.Info("skill not novel, skipping push",
+			p.log.Info("skill not novel, skipping commit",
 				"session_id", run.session.ID,
 				"skill_name", skillName,
 				"score", noveltyResult.Score,
@@ -471,13 +436,7 @@ func (p *Pipeline) publish(run *extractionRun) (*model.ExtractionResult, error) 
 		}
 	}
 
-	if p.pusher != nil && novel {
-		if pushErr := p.pusher.Push(run.ctx, skillName, run.session.LibraryID, body); pushErr != nil {
-			p.log.Error("skill push failed", "session_id", run.session.ID, "skill_name", skillName, "error", pushErr)
-		}
-	}
-
-	if p.committer != nil && novel {
+	if novel {
 		commitStart := time.Now()
 		commitHash, commitErr := p.committer.CommitSkill(run.ctx, run.session.LibraryID, skill, body)
 		commitMs := time.Since(commitStart).Milliseconds()

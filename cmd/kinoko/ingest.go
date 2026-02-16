@@ -16,9 +16,9 @@ import (
 
 	"github.com/kinoko-dev/kinoko/internal/config"
 	"github.com/kinoko-dev/kinoko/internal/extraction"
+	"github.com/kinoko-dev/kinoko/internal/gitserver"
 	"github.com/kinoko-dev/kinoko/internal/llm"
 	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
 var ingestCmd = &cobra.Command{
@@ -237,20 +237,6 @@ func runIngest(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Open store.
-	store, err := storage.NewSQLiteStore(cfg.Storage.DSN, "")
-	if err != nil {
-		return fmt.Errorf("open store: %w", err)
-	}
-	defer store.Close()
-
-	// Compute embedding via server API.
-	emb, embErr := fetchEmbedding(sharedHTTPClient, apiURL, string(skillBody))
-	if embErr != nil {
-		logger.Warn("embedding failed, indexing without vector", "error", embErr)
-		emb = nil
-	}
-
 	now := time.Now()
 	skill := &model.SkillRecord{
 		ID:              uuid.Must(uuid.NewV7()).String(),
@@ -279,7 +265,7 @@ func runIngest(cmd *cobra.Command, args []string) error {
 		UpdatedAt:  now,
 	}
 
-	// Novelty check BEFORE push — gate duplicates.
+	// Novelty check BEFORE commit — gate duplicates.
 	threshold := cfg.Embedding.GetNoveltyThreshold()
 	noveltyClient := extraction.NewNoveltyClient(apiURL, threshold, logger)
 	noveltyResult, noveltyErr := noveltyClient.Check(ctx, string(skillBody))
@@ -289,32 +275,30 @@ func runIngest(cmd *cobra.Command, args []string) error {
 		logger.Warn("novelty check failed, treating as novel", "error", noveltyErr)
 	} else if noveltyResult != nil && !noveltyResult.Novel {
 		isNovel = false
-		logger.Warn("skill is not novel, skipping push",
+		logger.Warn("skill is not novel, skipping commit",
 			"score", noveltyResult.Score,
 			"similar", len(noveltyResult.Similar))
 	}
 
-	// Index locally (always — even duplicates are useful in local store).
-	indexer := storage.NewSQLiteIndexer(store)
-	if err := indexer.IndexSkill(ctx, skill, emb); err != nil {
-		return fmt.Errorf("index skill: %w", err)
-	}
-
-	// Push to git if novel and not dry-run.
-	pushed := false
+	// Commit to git if novel and not dry-run. The post-receive hook handles SQLite indexing.
+	committed := false
+	var commitHash string
 	if !ingestDryRun && isNovel {
-		serverAddr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
-		home, _ := os.UserHomeDir()
-		keyPath := filepath.Join(home, ".kinoko", "id_ed25519")
-		pusher, pushErr := extraction.NewGitPusher(serverAddr, keyPath, logger)
-		if pushErr != nil {
-			logger.Warn("git pusher unavailable, skill not pushed", "error", pushErr)
+		server, srvErr := gitserver.NewServer(cfg)
+		if srvErr != nil {
+			return fmt.Errorf("create git server: %w", srvErr)
+		}
+		committer := gitserver.NewGitCommitter(gitserver.GitCommitterConfig{
+			Server:  server,
+			DataDir: cfg.Server.DataDir,
+			Logger:  logger,
+		})
+		hash, commitErr := committer.CommitSkill(ctx, ingestLibrary, skill, skillBody)
+		if commitErr != nil {
+			logger.Error("git commit failed", "error", commitErr)
 		} else {
-			if err := pusher.Push(ctx, skillName, ingestLibrary, skillBody); err != nil {
-				logger.Error("push failed", "error", err)
-			} else {
-				pushed = true
-			}
+			committed = true
+			commitHash = hash
 		}
 	}
 
@@ -329,24 +313,18 @@ func runIngest(cmd *cobra.Command, args []string) error {
 	if len(skillTags) > 0 {
 		fmt.Printf("  Tags:     %s\n", strings.Join(skillTags, ", "))
 	}
-	fmt.Printf("  Indexed:  yes\n")
-	if emb != nil {
-		fmt.Printf("  Embedded: yes (%d dims)\n", len(emb))
-	} else {
-		fmt.Printf("  Embedded: no\n")
-	}
 	if noveltyResult != nil {
 		fmt.Printf("  Novel:    %v (score: %.3f)\n", noveltyResult.Novel, noveltyResult.Score)
 	}
 	switch {
 	case ingestDryRun:
-		fmt.Println("  Pushed:   no (dry-run)")
+		fmt.Println("  Committed: no (dry-run)")
 	case !isNovel:
-		fmt.Println("  Pushed:   no (duplicate)")
-	case pushed:
-		fmt.Println("  Pushed:   yes")
+		fmt.Println("  Committed: no (duplicate)")
+	case committed:
+		fmt.Printf("  Committed: yes (%s)\n", commitHash)
 	default:
-		fmt.Println("  Pushed:   no")
+		fmt.Println("  Committed: no")
 	}
 	fmt.Println("──────────────────────")
 

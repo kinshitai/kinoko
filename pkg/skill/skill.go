@@ -28,21 +28,40 @@ type Skill struct {
 	Created      time.Time `yaml:"-"` // Custom parsing for date-only format
 	Updated      time.Time `yaml:"-"` // Custom parsing for date-only format
 	Dependencies []string  `yaml:"dependencies,omitempty"`
+	Category     string    `yaml:"category,omitempty"`
+
+	// Quality scores (optional in frontmatter)
+	Quality *QualityFrontmatter `yaml:"-"`
 
 	// Body content
 	Body string `yaml:"-"`
 }
 
+// QualityFrontmatter holds optional quality scores from SKILL.md frontmatter.
+type QualityFrontmatter struct {
+	ProblemSpecificity    int     `yaml:"problem_specificity"`
+	SolutionCompleteness  int     `yaml:"solution_completeness"`
+	ContextPortability    int     `yaml:"context_portability"`
+	ReasoningTransparency int     `yaml:"reasoning_transparency"`
+	TechnicalAccuracy     int     `yaml:"technical_accuracy"`
+	VerificationEvidence  int     `yaml:"verification_evidence"`
+	InnovationLevel       int     `yaml:"innovation_level"`
+	CompositeScore        float64 `yaml:"composite_score"`
+	CriticConfidence      float64 `yaml:"critic_confidence"`
+}
+
 // skillYAML is used for YAML marshaling/unmarshaling with string dates
 type skillYAML struct {
-	Name         string   `yaml:"name"`
-	Version      int      `yaml:"version"`
-	Tags         []string `yaml:"tags,omitempty"`
-	Author       string   `yaml:"author"`
-	Confidence   float64  `yaml:"confidence"`
-	Created      string   `yaml:"created"`
-	Updated      string   `yaml:"updated,omitempty"`
-	Dependencies []string `yaml:"dependencies,omitempty"`
+	Name         string              `yaml:"name"`
+	Version      int                 `yaml:"version"`
+	Tags         []string            `yaml:"tags,omitempty"`
+	Author       string              `yaml:"author"`
+	Confidence   float64             `yaml:"confidence"`
+	Created      string              `yaml:"created"`
+	Updated      string              `yaml:"updated,omitempty"`
+	Dependencies []string            `yaml:"dependencies,omitempty"`
+	Category     string              `yaml:"category,omitempty"`
+	Quality      *QualityFrontmatter `yaml:"quality,omitempty"`
 }
 
 var (
@@ -117,6 +136,8 @@ func parseContent(content []byte) (*Skill, error) {
 		Author:       skillYAMLData.Author,
 		Confidence:   skillYAMLData.Confidence,
 		Dependencies: skillYAMLData.Dependencies,
+		Category:     skillYAMLData.Category,
+		Quality:      skillYAMLData.Quality,
 	}
 
 	// Parse created date

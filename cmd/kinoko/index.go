@@ -36,10 +36,12 @@ Environment variables:
 }
 
 var (
-	indexRepo   string
-	indexRev    string
-	indexDSN    string
-	indexAPIURL string
+	indexRepo    string
+	indexRev     string
+	indexDSN     string
+	indexAPIURL  string
+	indexDataDir string
+	indexJSON    bool
 )
 
 func init() {
@@ -47,6 +49,17 @@ func init() {
 	indexCmd.Flags().StringVar(&indexRev, "rev", "", "Git revision (default: $KINOKO_REV)")
 	indexCmd.Flags().StringVar(&indexDSN, "dsn", "", "SQLite DSN (default: $KINOKO_STORAGE_DSN)")
 	indexCmd.Flags().StringVar(&indexAPIURL, "api-url", "", "Kinoko API URL (default: $KINOKO_API_URL or http://127.0.0.1:23233)")
+	indexCmd.Flags().StringVar(&indexDataDir, "data-dir", "", "Soft Serve data directory (default: $SOFT_SERVE_DATA_PATH or ~/.kinoko/data)")
+	indexCmd.Flags().BoolVar(&indexJSON, "json", false, "Output result as JSON")
+}
+
+// indexResult holds the JSON output structure.
+type indexResult struct {
+	Repo     string `json:"repo"`
+	Skill    string `json:"skill"`
+	Version  int    `json:"version"`
+	Action   string `json:"action"`
+	Embedded bool   `json:"embedded"`
 }
 
 func runIndex(cmd *cobra.Command, args []string) error {
@@ -77,13 +90,30 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	defer store.Close()
 
 	// Find repo on disk. Soft Serve stores repos in {dataDir}/repos/{name}.git.
-	dataDir := os.Getenv("SOFT_SERVE_DATA_PATH")
+	dataDir := firstNonEmpty(indexDataDir, os.Getenv("SOFT_SERVE_DATA_PATH"))
 	if dataDir == "" {
-		dataDir = "data" // Soft Serve default
+		home, _ := os.UserHomeDir()
+		dataDir = filepath.Join(home, ".kinoko", "data")
+	}
+	// P0-1: Reject path traversal in repo name.
+	if strings.Contains(repo, "..") {
+		return fmt.Errorf("invalid repo name (contains '..'): %s", repo)
 	}
 	repoPath := filepath.Join(dataDir, "repos", repo+".git")
 
-	// P0-3: Read SKILL.md from bare repo using git commands.
+	// Validate that the resolved path stays within the repos directory.
+	cleanRepo := filepath.Clean(repoPath)
+	reposRoot := filepath.Clean(filepath.Join(dataDir, "repos"))
+	if !strings.HasPrefix(cleanRepo, reposRoot+string(filepath.Separator)) && cleanRepo != reposRoot {
+		return fmt.Errorf("invalid repo path (escapes repos directory): %s", repo)
+	}
+
+	// Handle missing or inaccessible repo (P0-2: any stat error, not just IsNotExist).
+	if _, err := os.Stat(repoPath); err != nil {
+		return fmt.Errorf("repo not found: %s (%w)", repo, err)
+	}
+
+	// Read SKILL.md from bare repo using git commands.
 	skillPath, body, err := readSkillMDFromBareRepo(repoPath)
 	if err != nil {
 		return fmt.Errorf("find SKILL.md in %s: %w", repo, err)
@@ -103,9 +133,16 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		skillName = parts[1]
 	}
 
+	// Parse category from frontmatter, default to tactical.
 	category := model.CategoryTactical
-	// P2-4: Log a warning when defaulting to CategoryTactical.
-	logger.Warn("defaulting skill category to tactical", "repo", repo, "skill", skillName)
+	if parsed.Category != "" {
+		switch model.SkillCategory(parsed.Category) {
+		case model.CategoryFoundational, model.CategoryTactical, model.CategoryContextual:
+			category = model.SkillCategory(parsed.Category)
+		default:
+			logger.Warn("unknown category in frontmatter, defaulting to tactical", "category", parsed.Category)
+		}
+	}
 
 	skill := &model.SkillRecord{
 		ID:          fmt.Sprintf("%s/%s/v%d", libraryID, skillName, parsed.Version),
@@ -117,6 +154,42 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		ExtractedBy: "kinoko-index",
 		FilePath:    skillPath,
 		DecayScore:  1.0,
+	}
+
+	// Parse quality scores from frontmatter if present.
+	if parsed.Quality != nil {
+		skill.Quality = model.QualityScores{
+			ProblemSpecificity:    parsed.Quality.ProblemSpecificity,
+			SolutionCompleteness:  parsed.Quality.SolutionCompleteness,
+			ContextPortability:    parsed.Quality.ContextPortability,
+			ReasoningTransparency: parsed.Quality.ReasoningTransparency,
+			TechnicalAccuracy:     parsed.Quality.TechnicalAccuracy,
+			VerificationEvidence:  parsed.Quality.VerificationEvidence,
+			InnovationLevel:       parsed.Quality.InnovationLevel,
+			CompositeScore:        parsed.Quality.CompositeScore,
+			CriticConfidence:      parsed.Quality.CriticConfidence,
+		}
+	}
+	// else: Quality stays zero-valued (all 0s)
+
+	// P1-4: Validate quality scores are in bounds (0-5) before hitting DB.
+	if parsed.Quality != nil {
+		if err := validateQualityScores(parsed.Quality); err != nil {
+			return fmt.Errorf("invalid quality scores: %w", err)
+		}
+	}
+
+	// Check if skill already exists (for action reporting).
+	// NOTE: P1-2 known limitation — race condition between this check and the
+	// upsert below. Concurrent post-receive hooks may cause action to report
+	// "created" when it was actually "updated". Acceptable for logging purposes.
+	existing, err := store.GetLatestByName(cmd.Context(), skillName, libraryID)
+	if err != nil {
+		logger.Warn("failed to check existing skill", "error", err, "skill", skillName, "library", libraryID)
+	}
+	action := "created"
+	if existing != nil {
+		action = "updated"
 	}
 
 	// Compute embedding via server API endpoint.
@@ -131,6 +204,21 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	indexer := storage.NewSQLiteIndexer(store)
 	if err := indexer.IndexSkill(cmd.Context(), skill, emb); err != nil {
 		return fmt.Errorf("index skill: %w", err)
+	}
+
+	if indexJSON {
+		result := indexResult{
+			Repo:     repo,
+			Skill:    skillName,
+			Version:  parsed.Version,
+			Action:   action,
+			Embedded: len(emb) > 0,
+		}
+		enc := json.NewEncoder(os.Stdout)
+		if err := enc.Encode(result); err != nil {
+			return fmt.Errorf("encode JSON result: %w", err)
+		}
+		return nil
 	}
 
 	logger.Info("skill indexed", "repo", repo, "rev", rev, "skill", skillName, "version", parsed.Version)
@@ -229,6 +317,30 @@ func fetchEmbedding(client *http.Client, apiURL, text string) ([]float32, error)
 		return nil, fmt.Errorf("decode embed response: %w", err)
 	}
 	return result.Vector, nil
+}
+
+// validateQualityScores checks that all integer quality scores are in the range 0-5.
+func validateQualityScores(q *skillpkg.QualityFrontmatter) error {
+	check := func(name string, val int) error {
+		if val < 0 || val > 5 {
+			return fmt.Errorf("%s must be 0-5, got %d", name, val)
+		}
+		return nil
+	}
+	for name, val := range map[string]int{
+		"problem_specificity":    q.ProblemSpecificity,
+		"solution_completeness":  q.SolutionCompleteness,
+		"context_portability":    q.ContextPortability,
+		"reasoning_transparency": q.ReasoningTransparency,
+		"technical_accuracy":     q.TechnicalAccuracy,
+		"verification_evidence":  q.VerificationEvidence,
+		"innovation_level":       q.InnovationLevel,
+	} {
+		if err := check(name, val); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func firstNonEmpty(vals ...string) string {

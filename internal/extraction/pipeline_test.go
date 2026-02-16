@@ -16,6 +16,13 @@ import (
 
 // --- Mocks ---
 
+// stubCommitter is a no-op SkillCommitter for tests.
+type stubCommitter struct{}
+
+func (stubCommitter) CommitSkill(_ context.Context, _ string, _ *model.SkillRecord, _ []byte) (string, error) {
+	return "stub000", nil
+}
+
 type mockStage1 struct {
 	result *model.Stage1Result
 }
@@ -188,10 +195,10 @@ func TestPipelineExtract(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p, _ := NewPipeline(PipelineConfig{
-				Stage1: &mockStage1{result: tt.s1},
-				Stage2: &mockStage2{result: tt.s2, err: tt.s2Err},
-				Stage3: &mockStage3{result: tt.s3, err: tt.s3Err},
-				Log:    testLog(),
+				Stage1:    &mockStage1{result: tt.s1},
+				Stage2:    &mockStage2{result: tt.s2, err: tt.s2Err},
+				Stage3:    &mockStage3{result: tt.s3, err: tt.s3Err},
+				Committer: &stubCommitter{}, Log: testLog(),
 			})
 
 			result, err := p.Extract(context.Background(), pipelineTestSession(), []byte("fix database connection pooling issue"))
@@ -220,10 +227,10 @@ func TestPipelineExtract(t *testing.T) {
 
 func TestPipelineTiming(t *testing.T) {
 	p, _ := NewPipeline(PipelineConfig{
-		Stage1: &mockStage1{result: passStage1()},
-		Stage2: &mockStage2{result: passStage2()},
-		Stage3: &mockStage3{result: passStage3()},
-		Log:    testLog(),
+		Stage1:    &mockStage1{result: passStage1()},
+		Stage2:    &mockStage2{result: passStage2()},
+		Stage3:    &mockStage3{result: passStage3()},
+		Committer: &stubCommitter{}, Log: testLog(),
 	})
 
 	result, err := p.Extract(context.Background(), pipelineTestSession(), []byte("fix something"))
@@ -257,11 +264,11 @@ func TestPipelineSampling(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			rev := &mockReviewer{}
 			p, _ := NewPipeline(PipelineConfig{
-				Stage1:     &mockStage1{result: failStage1("test")},
-				Stage2:     &mockStage2{},
-				Stage3:     &mockStage3{},
-				Reviewer:   rev,
-				Log:        testLog(),
+				Stage1:    &mockStage1{result: failStage1("test")},
+				Stage2:    &mockStage2{},
+				Stage3:    &mockStage3{},
+				Reviewer:  rev,
+				Committer: &stubCommitter{}, Log: testLog(),
 				SampleRate: tt.sampleRate,
 				RandIntn:   fixedRand(tt.randVal),
 			})
@@ -277,10 +284,10 @@ func TestPipelineSampling(t *testing.T) {
 
 func TestPipelineSkillNameFromClassification(t *testing.T) {
 	p, _ := NewPipeline(PipelineConfig{
-		Stage1: &mockStage1{result: passStage1()},
-		Stage2: &mockStage2{result: passStage2()},
-		Stage3: &mockStage3{result: passStage3()},
-		Log:    testLog(),
+		Stage1:    &mockStage1{result: passStage1()},
+		Stage2:    &mockStage2{result: passStage2()},
+		Stage3:    &mockStage3{result: passStage3()},
+		Committer: &stubCommitter{}, Log: testLog(),
 	})
 
 	result, _ := p.Extract(context.Background(), pipelineTestSession(), []byte("anything"))
@@ -323,7 +330,7 @@ func TestPipelineSkillFields(t *testing.T) {
 		Stage1:    &mockStage1{result: passStage1()},
 		Stage2:    &mockStage2{result: passStage2()},
 		Stage3:    &mockStage3{result: passStage3()},
-		Log:       testLog(),
+		Committer: &stubCommitter{}, Log: testLog(),
 		Extractor: "test-v1",
 	})
 
@@ -364,10 +371,10 @@ func TestPipelineSkillFields(t *testing.T) {
 
 func TestPipelineNewSkillDecayScore(t *testing.T) {
 	p, _ := NewPipeline(PipelineConfig{
-		Stage1: &mockStage1{result: passStage1()},
-		Stage2: &mockStage2{result: passStage2()},
-		Stage3: &mockStage3{result: passStage3()},
-		Log:    testLog(),
+		Stage1:    &mockStage1{result: passStage1()},
+		Stage2:    &mockStage2{result: passStage2()},
+		Stage3:    &mockStage3{result: passStage3()},
+		Committer: &stubCommitter{}, Log: testLog(),
 	})
 
 	result, err := p.Extract(context.Background(), pipelineTestSession(), []byte("content"))
@@ -384,10 +391,10 @@ func TestPipelineNewSkillDecayScore(t *testing.T) {
 
 func TestPipelineSessionID(t *testing.T) {
 	p, _ := NewPipeline(PipelineConfig{
-		Stage1: &mockStage1{result: failStage1("nope")},
-		Stage2: &mockStage2{},
-		Stage3: &mockStage3{},
-		Log:    testLog(),
+		Stage1:    &mockStage1{result: failStage1("nope")},
+		Stage2:    &mockStage2{},
+		Stage3:    &mockStage3{},
+		Committer: &stubCommitter{}, Log: testLog(),
 	})
 
 	sess := pipelineTestSession()
@@ -401,10 +408,10 @@ func TestPipelineSessionID(t *testing.T) {
 func TestPipelineStageResults(t *testing.T) {
 	// Rejected at stage2 should have stage1 and stage2 results but no stage3.
 	p, _ := NewPipeline(PipelineConfig{
-		Stage1: &mockStage1{result: passStage1()},
-		Stage2: &mockStage2{result: failStage2("too similar")},
-		Stage3: &mockStage3{},
-		Log:    testLog(),
+		Stage1:    &mockStage1{result: passStage1()},
+		Stage2:    &mockStage2{result: failStage2("too similar")},
+		Stage3:    &mockStage3{},
+		Committer: &stubCommitter{}, Log: testLog(),
 	})
 
 	result, _ := p.Extract(context.Background(), pipelineTestSession(), []byte("content"))
@@ -422,11 +429,11 @@ func TestPipelineStageResults(t *testing.T) {
 func TestPipelineSamplingOnExtract(t *testing.T) {
 	rev := &mockReviewer{}
 	p, _ := NewPipeline(PipelineConfig{
-		Stage1:     &mockStage1{result: passStage1()},
-		Stage2:     &mockStage2{result: passStage2()},
-		Stage3:     &mockStage3{result: passStage3()},
-		Reviewer:   rev,
-		Log:        testLog(),
+		Stage1:    &mockStage1{result: passStage1()},
+		Stage2:    &mockStage2{result: passStage2()},
+		Stage3:    &mockStage3{result: passStage3()},
+		Reviewer:  rev,
+		Committer: &stubCommitter{}, Log: testLog(),
 		SampleRate: 1.0,
 		RandIntn:   fixedRand(0),
 	})
@@ -446,11 +453,11 @@ func TestPipelineStratifiedSamplingBalance(t *testing.T) {
 	rev := &countingReviewer{}
 	callCount := 0
 	p, _ := NewPipeline(PipelineConfig{
-		Stage1:     &mockStage1{result: passStage1()},
-		Stage2:     &mockStage2{result: passStage2()},
-		Stage3:     &mockStage3{result: passStage3()},
-		Reviewer:   rev,
-		Log:        testLog(),
+		Stage1:    &mockStage1{result: passStage1()},
+		Stage2:    &mockStage2{result: passStage2()},
+		Stage3:    &mockStage3{result: passStage3()},
+		Reviewer:  rev,
+		Committer: &stubCommitter{}, Log: testLog(),
 		SampleRate: 0.5, // high rate so we actually get samples
 		RandIntn:   func(n int) int { callCount++; return callCount % n },
 	})
@@ -557,7 +564,7 @@ func TestNewPipelineNilDeps(t *testing.T) {
 		Stage1: &mockStage1{result: passStage1()},
 		Stage2: &mockStage2{result: passStage2()},
 		// Stage3 missing
-		Log: testLog(),
+		Committer: &stubCommitter{}, Log: testLog(),
 	})
 	if err == nil {
 		t.Error("expected error for nil Stage3")
@@ -578,10 +585,10 @@ func TestPipelineNeverReturnsError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p, _ := NewPipeline(PipelineConfig{
-				Stage1: &mockStage1{result: passStage1()},
-				Stage2: &mockStage2{result: passStage2(), err: tt.s2Err},
-				Stage3: &mockStage3{result: passStage3(), err: tt.s3Err},
-				Log:    testLog(),
+				Stage1:    &mockStage1{result: passStage1()},
+				Stage2:    &mockStage2{result: passStage2(), err: tt.s2Err},
+				Stage3:    &mockStage3{result: passStage3(), err: tt.s3Err},
+				Committer: &stubCommitter{}, Log: testLog(),
 			})
 
 			_, err := p.Extract(context.Background(), pipelineTestSession(), []byte("x"))
@@ -645,10 +652,10 @@ func TestBuildSkillMD(t *testing.T) {
 func TestPipelineTimingOnReject(t *testing.T) {
 	_ = time.Now() // warm up
 	p, _ := NewPipeline(PipelineConfig{
-		Stage1: &mockStage1{result: failStage1("nope")},
-		Stage2: &mockStage2{},
-		Stage3: &mockStage3{},
-		Log:    testLog(),
+		Stage1:    &mockStage1{result: failStage1("nope")},
+		Stage2:    &mockStage2{},
+		Stage3:    &mockStage3{},
+		Committer: &stubCommitter{}, Log: testLog(),
 	})
 
 	result, _ := p.Extract(context.Background(), pipelineTestSession(), []byte("x"))

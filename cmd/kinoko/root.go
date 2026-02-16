@@ -31,4 +31,5 @@ func init() {
 	rootCmd.AddCommand(pullCmd)
 	rootCmd.AddCommand(ingestCmd)
 	rootCmd.AddCommand(matchCmd)
+	rootCmd.AddCommand(rebuildCmd)
 }

@@ -91,17 +91,18 @@ func TestGetLatestByName(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 
+	// Git-first: one row per name+library. Put upserts to latest version.
 	v1 := testSkill("id-v1", "fix-db-conn", "default")
 	v1.Version = 1
 	if err := s.Put(ctx, v1, nil); err != nil {
 		t.Fatalf("put v1: %v", err)
 	}
 
+	// Upsert same name+library with newer version.
 	v2 := testSkill("id-v2", "fix-db-conn", "default")
 	v2.Version = 2
-	v2.ParentID = "id-v1"
 	if err := s.Put(ctx, v2, nil); err != nil {
-		t.Fatalf("put v2: %v", err)
+		t.Fatalf("put v2 (upsert): %v", err)
 	}
 
 	got, err := s.GetLatestByName(ctx, "fix-db-conn", "default")
@@ -110,9 +111,6 @@ func TestGetLatestByName(t *testing.T) {
 	}
 	if got.Version != 2 {
 		t.Errorf("version = %d, want 2", got.Version)
-	}
-	if got.ParentID != "id-v1" {
-		t.Errorf("parent_id = %q, want id-v1", got.ParentID)
 	}
 }
 
@@ -475,19 +473,29 @@ func TestPutNoEmbedding(t *testing.T) {
 	}
 }
 
-func TestUniqueConstraint(t *testing.T) {
+func TestUpsertSameNameLibrary(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 
 	sk := testSkill("id-1", "fix-db-conn", "default")
+	sk.Version = 1
 	if err := s.Put(ctx, sk, nil); err != nil {
 		t.Fatalf("put: %v", err)
 	}
 
+	// Upsert with same name+library should succeed and update.
 	sk2 := testSkill("id-2", "fix-db-conn", "default")
-	err := s.Put(ctx, sk2, nil)
-	if !errors.Is(err, ErrDuplicate) {
-		t.Fatalf("expected ErrDuplicate, got %v", err)
+	sk2.Version = 2
+	if err := s.Put(ctx, sk2, nil); err != nil {
+		t.Fatalf("upsert should succeed: %v", err)
+	}
+
+	got, err := s.GetLatestByName(ctx, "fix-db-conn", "default")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Version != 2 {
+		t.Errorf("version = %d, want 2", got.Version)
 	}
 }
 
@@ -553,14 +561,14 @@ func TestSentinelErrors(t *testing.T) {
 		t.Errorf("GetLatestByName: expected ErrNotFound, got %v", err)
 	}
 
-	// ErrDuplicate from Put
+	// Upsert same name+library should succeed (git-first: one row per name+library).
 	sk := testSkill("id-1", "fix-db-conn", "default")
 	if err := s.Put(ctx, sk, nil); err != nil {
 		t.Fatalf("put: %v", err)
 	}
 	sk2 := testSkill("id-2", "fix-db-conn", "default")
-	err = s.Put(ctx, sk2, nil)
-	if !errors.Is(err, ErrDuplicate) {
-		t.Errorf("Put duplicate: expected ErrDuplicate, got %v", err)
+	sk2.Version = 2
+	if err = s.Put(ctx, sk2, nil); err != nil {
+		t.Errorf("Put upsert: expected success, got %v", err)
 	}
 }

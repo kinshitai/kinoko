@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -15,6 +14,7 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/config"
 	embpkg "github.com/kinoko-dev/kinoko/internal/embedding"
 	"github.com/kinoko-dev/kinoko/internal/extraction"
+	"github.com/kinoko-dev/kinoko/internal/gitserver"
 	"github.com/kinoko-dev/kinoko/internal/llm"
 	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
@@ -127,29 +127,25 @@ func runExtract(cmd *cobra.Command, args []string) error {
 	threshold := cfg.Embedding.GetNoveltyThreshold()
 	novelty := extraction.NewNoveltyClient(apiURL, threshold, logger)
 
-	// Git pusher — skip if --dry-run.
-	var pusher extraction.SkillPusher
-	if !extractDryRun {
-		serverAddr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
-		home, _ := os.UserHomeDir()
-		keyPath := filepath.Join(home, ".kinoko", "id_ed25519")
-		if p, err := extraction.NewGitPusher(serverAddr, keyPath, logger); err != nil {
-			logger.Warn("git pusher unavailable, skills will not be pushed", "error", err)
-		} else {
-			pusher = p
-		}
+	// Git committer — create git server for committing skills.
+	server, err := gitserver.NewServer(cfg)
+	if err != nil {
+		return fmt.Errorf("create git server: %w", err)
 	}
+	committer := gitserver.NewGitCommitter(gitserver.GitCommitterConfig{
+		Server:  server,
+		DataDir: cfg.Server.DataDir,
+		Logger:  logger,
+	})
 
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
 		Stage1:     stage1,
 		Stage2:     stage2,
 		Stage3:     stage3,
-		Writer:     store,
 		Sessions:   store,
-		Embedder:   embedder,
 		Reviewer:   store,
 		Novelty:    novelty,
-		Pusher:     pusher,
+		Committer:  committer,
 		Log:        logger,
 		SampleRate: 0.01,
 		Extractor:  "cli-extract-v1",

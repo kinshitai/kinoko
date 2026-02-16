@@ -4,7 +4,6 @@ package main
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -15,8 +14,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	_ "modernc.org/sqlite"
 
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
@@ -366,7 +363,7 @@ func TestFullFlow_IngestThenMatch(t *testing.T) {
 	cfgPath := writeTmpConfig(t, dir)
 	skillFile := writeValidSkillMD(t, dir, "flow-test-skill")
 
-	// Ingest with --force
+	// Ingest with --force --dry-run: validates and prints summary without committing.
 	oldForce, oldCfg, oldAPI := ingestForce, ingestConfigPath, ingestAPIURL
 	oldDryRun, oldLib := ingestDryRun, ingestLibrary
 	ingestForce = true
@@ -382,66 +379,29 @@ func TestFullFlow_IngestThenMatch(t *testing.T) {
 		ingestLibrary = oldLib
 	})
 
-	err := runIngest(ingestCmd, []string{skillFile})
-	if err != nil {
-		t.Fatalf("ingest failed: %v", err)
-	}
+	// Capture dry-run output and verify summary fields.
+	ingestOut := captureStdout(func() {
+		err := runIngest(ingestCmd, []string{skillFile})
+		if err != nil {
+			t.Fatalf("ingest failed: %v", err)
+		}
+	})
 
-	// P0-1: Verify the skill was actually persisted in SQLite
-	dbPath := filepath.Join(dir, "test.db")
-	db, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		t.Fatalf("open SQLite: %v", err)
-	}
-	defer db.Close()
-
-	var name, category, extractedBy string
-	var version, qProblem, qSolution, qPortability, qReasoning, qAccuracy, qEvidence, qInnovation int
-	var compositeScore, criticConfidence float64
-	err = db.QueryRow(`SELECT name, version, category, extracted_by,
-		q_problem_specificity, q_solution_completeness, q_context_portability,
-		q_reasoning_transparency, q_technical_accuracy, q_verification_evidence,
-		q_innovation_level, q_composite_score, q_critic_confidence
-		FROM skills WHERE name = ?`, "flow-test-skill").Scan(
-		&name, &version, &category, &extractedBy,
-		&qProblem, &qSolution, &qPortability, &qReasoning,
-		&qAccuracy, &qEvidence, &qInnovation,
-		&compositeScore, &criticConfidence,
-	)
-	if err != nil {
-		t.Fatalf("skill not found in SQLite: %v", err)
-	}
-	if name != "flow-test-skill" {
-		t.Errorf("name = %q, want %q", name, "flow-test-skill")
-	}
-	if version != 1 {
-		t.Errorf("version = %d, want 1", version)
-	}
-	if category != "tactical" {
-		t.Errorf("category = %q, want %q", category, "tactical")
-	}
-	if extractedBy != "cli-ingest" {
-		t.Errorf("extracted_by = %q, want %q", extractedBy, "cli-ingest")
-	}
-	// --force bypass sets all quality dimensions to 3, composite 0.6
-	for _, q := range []struct {
-		name string
-		val  int
-	}{
-		{"q_problem_specificity", qProblem}, {"q_solution_completeness", qSolution},
-		{"q_context_portability", qPortability}, {"q_reasoning_transparency", qReasoning},
-		{"q_technical_accuracy", qAccuracy}, {"q_verification_evidence", qEvidence},
-		{"q_innovation_level", qInnovation},
+	// Verify dry-run summary contains expected metadata.
+	for _, want := range []string{
+		"flow-test-skill",
+		"Verdict:  force",
+		"Category: tactical",
+		"Library:  local",
+		"Version:  1",
+		"Committed: no (dry-run)",
 	} {
-		if q.val != 3 {
-			t.Errorf("%s = %d, want 3", q.name, q.val)
+		if !strings.Contains(ingestOut, want) {
+			t.Errorf("ingest output missing %q, got:\n%s", want, ingestOut)
 		}
 	}
-	if compositeScore != 0.6 {
-		t.Errorf("composite_score = %f, want 0.6", compositeScore)
-	}
 
-	// Now match against the mock server
+	// Match against the mock server (independent of ingest — uses API).
 	oldMatchAPI, oldMatchTimeout := matchAPIURL, matchTimeout
 	matchAPIURL = srv.URL
 	matchTimeout = 5 * 1e9

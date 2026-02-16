@@ -56,7 +56,7 @@ func TestG1G2_CredentialRedactionBeforeCommit(t *testing.T) {
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
 		Stage1: s1, Stage2: s2, Stage3: s3,
-		Committer: committer, Embedder: embedder, Log: testLogger(),
+		Committer: committer, Log: testLogger(),
 	})
 
 	// Session log with embedded credentials.
@@ -188,7 +188,7 @@ func TestG1G3_ExtractDiscoverClone(t *testing.T) {
 	committer := &indexingCommitter{indexer: indexer, embedder: embedder}
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
 		Stage1: s1, Stage2: s2, Stage3: s3,
-		Committer: committer, Embedder: embedder, Log: testLogger(),
+		Committer: committer, Log: testLogger(),
 	})
 
 	// Step 1: Extract.
@@ -212,7 +212,7 @@ func TestG1G3_ExtractDiscoverClone(t *testing.T) {
 
 	// Step 3: Discover via API (start real server).
 	port := freePort(t)
-	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Embedder: embedder, Store: store, SSHURL: "ssh://localhost:23231"})
+	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Store: store, Embedder: embedder, SSHURL: "ssh://localhost:23231"})
 	go srv.Start()
 	defer srv.Stop(ctx)
 	waitForServer(t, port)
@@ -264,7 +264,7 @@ func TestFullPipeline_SessionToClientDiscovery(t *testing.T) {
 	committer := &indexingCommitter{indexer: indexer, embedder: embedder}
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
 		Stage1: s1, Stage2: s2, Stage3: s3,
-		Committer: committer, Embedder: embedder, Log: testLogger(),
+		Committer: committer, Log: testLogger(),
 	})
 
 	// Full pipeline: session log with creds → extract → verify clean.
@@ -292,7 +292,7 @@ Tests passed. Solution verified.`
 
 	// Discover via API.
 	port := freePort(t)
-	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Embedder: embedder, Store: store, SSHURL: "ssh://localhost:23231"})
+	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Store: store, Embedder: embedder, SSHURL: "ssh://localhost:23231"})
 	go srv.Start()
 	defer srv.Stop(ctx)
 	waitForServer(t, port)
@@ -316,7 +316,7 @@ Tests passed. Solution verified.`
 // =============================================================================
 
 func TestEdge_EmptySessionLog(t *testing.T) {
-	store := newTestStore(t)
+	_ = newTestStore(t)
 	ctx := context.Background()
 	embedder := newPredictableEmbedder(3)
 
@@ -330,7 +330,7 @@ func TestEdge_EmptySessionLog(t *testing.T) {
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Log: testLogger(),
+		Stage1: s1, Stage2: s2, Stage3: s3, Committer: noopCommitter{}, Log: testLogger(),
 	})
 
 	// Empty log should be rejected at stage1.
@@ -367,7 +367,7 @@ postgres://root:pass@db:5432/prod`
 	}
 
 	// Feed redacted content through extraction — should reject.
-	store := newTestStore(t)
+	_ = newTestStore(t)
 	ctx := context.Background()
 	embedder := newPredictableEmbedder(3)
 
@@ -381,7 +381,7 @@ postgres://root:pass@db:5432/prod`
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Log: testLogger(),
+		Stage1: s1, Stage2: s2, Stage3: s3, Committer: noopCommitter{}, Log: testLogger(),
 	})
 
 	sess := shortSession("sess-onlycreds", "test-lib")
@@ -433,7 +433,7 @@ func TestEdge_ConcurrentSameSkillExtraction(t *testing.T) {
 			s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 			pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
 				Stage1: s1, Stage2: s2, Stage3: s3,
-				Committer: committer, Embedder: embedder, Log: testLogger(),
+				Committer: committer, Log: testLogger(),
 			})
 			sess := goodSession(fmt.Sprintf("sess-concsame-%d", idx), "test-lib")
 			r, err := pipeline.Extract(ctx, sess, []byte("fix database connection pooling"))
@@ -475,7 +475,7 @@ func TestEdge_LargeSessionLog(t *testing.T) {
 		buf.WriteString(line)
 	}
 
-	store := newTestStore(t)
+	_ = newTestStore(t)
 	ctx := context.Background()
 	embedder := newPredictableEmbedder(3)
 
@@ -489,7 +489,7 @@ func TestEdge_LargeSessionLog(t *testing.T) {
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3, Writer: store, Log: testLogger(),
+		Stage1: s1, Stage2: s2, Stage3: s3, Committer: noopCommitter{}, Log: testLogger(),
 	})
 
 	sess := goodSession("sess-large", "test-lib")
@@ -536,7 +536,7 @@ func TestEdge_DiscoverNoMatches(t *testing.T) {
 	embedder := newPredictableEmbedder(3)
 
 	port := freePort(t)
-	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Embedder: embedder, Store: store})
+	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Store: store, Embedder: embedder})
 	go srv.Start()
 	defer srv.Stop(ctx)
 	waitForServer(t, port)
@@ -709,7 +709,7 @@ func TestEdge_APIDiscoverRateLimit(t *testing.T) {
 	embedder := &slowEmbedder{delay: 100 * time.Millisecond, dims: 3}
 
 	port := freePort(t)
-	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Embedder: embedder, Store: store})
+	srv := api.New(api.Config{Host: "127.0.0.1", Port: port, Store: store, Embedder: embedder})
 	go srv.Start()
 	defer srv.Stop(ctx)
 	waitForServer(t, port)

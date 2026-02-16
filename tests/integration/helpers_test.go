@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/extraction"
 	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 )
@@ -128,8 +127,8 @@ type mockQuerier struct {
 	sim float64
 }
 
-func (m *mockQuerier) QueryNearest(_ context.Context, _ []float32, _ string) (*extraction.SkillQueryResult, error) {
-	return &extraction.SkillQueryResult{CosineSim: m.sim}, nil
+func (m *mockQuerier) QueryNearest(_ context.Context, _ []float32, _ string) (*model.SkillQueryResult, error) {
+	return &model.SkillQueryResult{CosineSim: m.sim}, nil
 }
 
 // --- Mock HumanReviewWriter ---
@@ -277,7 +276,12 @@ func assertApprox(t *testing.T, got, want, eps float64, msg string) {
 // the skill into SQLite, mimicking what the real hook pipeline does.
 type indexingCommitter struct {
 	indexer  model.SkillIndexer
-	embedder extraction.SkillEmbedder
+	embedder embeddingEmbedder
+}
+
+// embeddingEmbedder is a local interface for embedding in tests.
+type embeddingEmbedder interface {
+	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
 func (c *indexingCommitter) CommitSkill(ctx context.Context, _ string, skill *model.SkillRecord, body []byte) (string, error) {
@@ -293,6 +297,13 @@ func (c *indexingCommitter) CommitSkill(ctx context.Context, _ string, skill *mo
 		return "", err
 	}
 	return "deadbeef", nil
+}
+
+// noopCommitter is a no-op SkillCommitter for tests that don't need git persistence.
+type noopCommitter struct{}
+
+func (noopCommitter) CommitSkill(_ context.Context, _ string, _ *model.SkillRecord, _ []byte) (string, error) {
+	return "noop000", nil
 }
 
 // insertSession inserts a session record into the sessions table for metrics.

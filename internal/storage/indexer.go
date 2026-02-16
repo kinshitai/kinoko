@@ -44,6 +44,16 @@ func (idx *SQLiteIndexer) IndexSkill(ctx context.Context, skill *model.SkillReco
 	}
 	updatedAt := now
 
+	// Pre-clean child rows for any existing skill with same name+library.
+	// Required because the upsert may change the skill ID, which would violate
+	// foreign key constraints on skill_patterns and skill_embeddings (no ON UPDATE CASCADE).
+	if _, err = tx.ExecContext(ctx, `DELETE FROM skill_patterns WHERE skill_id IN (SELECT id FROM skills WHERE name = ? AND library_id = ?)`, skill.Name, skill.LibraryID); err != nil {
+		return fmt.Errorf("delete old patterns: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM skill_embeddings WHERE skill_id IN (SELECT id FROM skills WHERE name = ? AND library_id = ?)`, skill.Name, skill.LibraryID); err != nil {
+		return fmt.Errorf("delete old embeddings: %w", err)
+	}
+
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO skills (
 			id, name, version, parent_id, library_id, category,
@@ -53,8 +63,8 @@ func (idx *SQLiteIndexer) IndexSkill(ctx context.Context, skill *model.SkillReco
 			injection_count, last_injected_at, success_correlation, decay_score,
 			source_session_id, extracted_by, file_path, created_at, updated_at
 		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(id) DO UPDATE SET
-			name = excluded.name,
+		ON CONFLICT(name, library_id) DO UPDATE SET
+			id = excluded.id,
 			version = excluded.version,
 			parent_id = excluded.parent_id,
 			library_id = excluded.library_id,
@@ -87,24 +97,31 @@ func (idx *SQLiteIndexer) IndexSkill(ctx context.Context, skill *model.SkillReco
 		return fmt.Errorf("upsert skill: %w", err)
 	}
 
+	// Look up the actual stored ID (may differ from skill.ID if upsert updated it).
+	var storedID string
+	err = tx.QueryRowContext(ctx, `SELECT id FROM skills WHERE name = ? AND library_id = ?`, skill.Name, skill.LibraryID).Scan(&storedID)
+	if err != nil {
+		return fmt.Errorf("lookup stored skill id: %w", err)
+	}
+
 	// Replace patterns.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM skill_patterns WHERE skill_id = ?`, skill.ID); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM skill_patterns WHERE skill_id = ?`, storedID); err != nil {
 		return fmt.Errorf("delete patterns: %w", err)
 	}
 	for _, p := range skill.Patterns {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO skill_patterns (skill_id, pattern) VALUES (?, ?)`, skill.ID, p); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO skill_patterns (skill_id, pattern) VALUES (?, ?)`, storedID, p); err != nil {
 			return fmt.Errorf("insert pattern: %w", err)
 		}
 	}
 
 	// Replace embedding.
 	if len(embedding) > 0 {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM skill_embeddings WHERE skill_id = ?`, skill.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM skill_embeddings WHERE skill_id = ?`, storedID); err != nil {
 			return fmt.Errorf("delete embedding: %w", err)
 		}
 		blob := float32sToBytes(embedding)
 		if _, err := tx.ExecContext(ctx, `INSERT INTO skill_embeddings (skill_id, embedding, model, created_at) VALUES (?, ?, ?, ?)`,
-			skill.ID, blob, idx.store.embeddingModel, now); err != nil {
+			storedID, blob, idx.store.embeddingModel, now); err != nil {
 			return fmt.Errorf("insert embedding: %w", err)
 		}
 	}
