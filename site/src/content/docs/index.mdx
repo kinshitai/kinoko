@@ -69,21 +69,24 @@ kinoko init && kinoko serve
 
 [Full quickstart guide →](/quickstart/)
 
-## Project Status
+## Built for Developers
 
-<small>Last updated: 2026-02-16</small>
+<CardGrid>
+  <Card title="Who it's for" icon="laptop">
+    Teams running AI agents at scale — Claude, OpenAI, Codex, or your own. If your agents solve the same problems twice, Kinoko pays for itself on day one.
+  </Card>
 
-Kinoko is in active development. What exists today:
+  <Card title="How it's built" icon="seti:config">
+    Single Go binary. Git-first — your knowledge lives in repos you control, not someone else's cloud. SQLite for speed, git for truth. Self-host everything.
+  </Card>
+</CardGrid>
 
-- 117 Go files · 456 tests · ~30K lines · 16 internal packages · 73.6% test coverage
-- 3-stage extraction pipeline with LLM critic
-- 7-dimension quality scoring
-- Pattern-based injection with embedding similarity
-- Half-life decay with rescue mechanics
-- A/B testing framework
-- SQLite storage with WAL mode
-- Soft Serve git server integration
-- Three-command architecture: `init` (setup), `serve` (infrastructure), `run` (agent daemon)
-- Git-first design — git is truth, SQLite is derived cache
+## Get Involved
 
-The system is functional end-to-end. The API surface is stabilizing but not yet frozen.
+Kinoko is open source and early. That means you can shape it.
+
+- ⭐ [Star the repo](https://github.com/kinshitai/kinoko) to follow along
+- 🐛 [Open an issue](https://github.com/kinshitai/kinoko/issues) — bug reports, feature ideas, questions
+- 🔧 [Contribute](https://github.com/kinshitai/kinoko/blob/main/CONTRIBUTING.md) — PRs welcome, especially around new extraction strategies and injection patterns
+
+[Project status & roadmap →](/project-status/)
