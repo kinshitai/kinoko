@@ -262,9 +262,20 @@ func runIngest(cmd *cobra.Command, args []string) error {
 		SourceSessionID: sourceSessionID,
 		ExtractedBy:     "cli-ingest",
 		FilePath:        fmt.Sprintf("skills/%s/v%d/SKILL.md", skillName, skillVersion),
-		DecayScore:      1.0,
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		Quality: model.QualityScores{
+			ProblemSpecificity:    3,
+			SolutionCompleteness:  3,
+			ContextPortability:    3,
+			ReasoningTransparency: 3,
+			TechnicalAccuracy:     3,
+			VerificationEvidence:  3,
+			InnovationLevel:       3,
+			CompositeScore:        0.6,
+			CriticConfidence:      0.5,
+		},
+		DecayScore: 1.0,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 
 	// Novelty check BEFORE push — gate duplicates.

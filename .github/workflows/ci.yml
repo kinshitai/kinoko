@@ -78,6 +78,57 @@ jobs:
           go tool cover -func=combined.cov | grep 'total:' | awk '{print "**Combined coverage: " $NF "**"}' >> $GITHUB_STEP_SUMMARY
           go tool cover -func=combined.cov | grep 'total:'
 
+  test-embedding:
+    name: Test (embedding)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Soft Serve
+        run: go install github.com/charmbracelet/soft-serve/cmd/soft@latest
+
+      - name: Download ONNX Runtime
+        run: |
+          curl -sSL https://github.com/microsoft/onnxruntime/releases/download/v1.22.0/onnxruntime-linux-x64-1.22.0.tgz \
+            | tar xz
+          mkdir -p $HOME/.kinoko/models/bge-small-en-v1.5
+          cp onnxruntime-linux-x64-1.22.0/lib/libonnxruntime.so.1.22.0 $HOME/.kinoko/models/bge-small-en-v1.5/libonnxruntime.so
+
+      - name: Download libtokenizers
+        run: |
+          curl -sSL -o libtokenizers.tar.gz \
+            https://github.com/daulet/tokenizers/releases/download/v1.25.0/libtokenizers.linux-amd64.tar.gz
+          tar xzf libtokenizers.tar.gz
+          sudo cp libtokenizers.so /usr/local/lib/
+          sudo ldconfig
+
+      - name: Download BGE-small-en-v1.5 ONNX model
+        run: |
+          MODEL_DIR=$HOME/.kinoko/models/bge-small-en-v1.5
+          curl -sSL -o $MODEL_DIR/model.onnx \
+            "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/onnx/model.onnx"
+          curl -sSL -o $MODEL_DIR/tokenizer.json \
+            "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.json"
+
+      - name: Embedding tests
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/onnxruntime-linux-x64-1.22.0/lib
+          CGO_LDFLAGS: -L/usr/local/lib
+        run: |
+          go test -tags embedding -coverpkg=./internal/...,./cmd/...,./pkg/... \
+            -coverprofile=embedding.cov ./internal/embedding/... -timeout 120s
+
+      - name: Embedding coverage
+        run: |
+          echo "## Embedding Coverage" >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=embedding.cov | grep 'total:' | awk '{print "**Embedding coverage: " $NF "**"}' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=embedding.cov | grep 'total:'
+
   build:
     name: Build
     runs-on: ubuntu-latest
