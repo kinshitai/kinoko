@@ -182,6 +182,26 @@ category: FIX
 	}
 }
 
+func TestParseGeneratedSkillMD_CRLFLineEndings(t *testing.T) {
+	raw := "---\r\nname: crlf-skill\r\nversion: 1\r\ncategory: BUILD\r\ntags:\r\n  - go/testing\r\n---\r\n\r\n# CRLF Skill\r\n"
+	name, version, category, tags, err := parseGeneratedSkillMD(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "crlf-skill" {
+		t.Errorf("name = %q, want crlf-skill", name)
+	}
+	if version != 1 {
+		t.Errorf("version = %d, want 1", version)
+	}
+	if category != "BUILD" {
+		t.Errorf("category = %q, want BUILD", category)
+	}
+	if len(tags) != 1 || tags[0] != "go/testing" {
+		t.Errorf("tags = %v, want [go/testing]", tags)
+	}
+}
+
 func TestBuildSkillMD_ContradictionWarning(t *testing.T) {
 	skill := &model.SkillRecord{Name: "test", Version: 1, Category: model.CategoryTactical}
 
