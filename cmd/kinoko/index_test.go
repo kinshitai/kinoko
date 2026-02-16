@@ -1,139 +1,269 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"database/sql"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/spf13/cobra"
+
+	_ "modernc.org/sqlite"
 )
 
-// createBareRepoWithSkill creates a bare git repo with SKILL.md committed at the given path.
-func createBareRepoWithSkill(t *testing.T, skillPath, content string) string {
-	t.Helper()
-
-	// Create a regular repo, commit, then clone --bare.
-	workDir := filepath.Join(t.TempDir(), "work")
-	bareDir := filepath.Join(t.TempDir(), "bare.git")
-
-	// Init regular repo.
-	run(t, workDir, true, "git", "init")
-	run(t, workDir, false, "git", "config", "user.email", "test@test.com")
-	run(t, workDir, false, "git", "config", "user.name", "Test")
-
-	// Write SKILL.md.
-	dir := filepath.Join(workDir, filepath.Dir(skillPath))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
+// skillMD returns a valid SKILL.md with the given name, category, and optional quality block.
+func skillMD(name, category string, withQuality bool) string {
+	quality := ""
+	if withQuality {
+		quality = `quality:
+  problem_specificity: 4
+  solution_completeness: 3
+  context_portability: 5
+  reasoning_transparency: 2
+  technical_accuracy: 4
+  verification_evidence: 3
+  innovation_level: 2
+  composite_score: 3.5
+  critic_confidence: 0.8
+`
 	}
-	if err := os.WriteFile(filepath.Join(workDir, skillPath), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
+	cat := ""
+	if category != "" {
+		cat = "category: " + category + "\n"
 	}
-
-	run(t, workDir, false, "git", "add", ".")
-	run(t, workDir, false, "git", "commit", "-m", "init")
-
-	// Clone as bare.
-	cmd := exec.Command("git", "clone", "--bare", workDir, bareDir)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git clone --bare: %s: %v", out, err)
-	}
-
-	return bareDir
+	return "---\nname: " + name + "\nversion: 1\nauthor: test\nconfidence: 0.9\ncreated: 2025-01-01\ntags:\n  - testing\n" + cat + quality + "---\n\n# " + name + "\n\n## When to Use\n\nAlways.\n\n## Solution\n\nDo the thing.\n"
 }
 
-func run(t *testing.T, dir string, mkdir bool, name string, args ...string) {
+// setupBareRepo creates a bare git repo with SKILL.md committed, under dataDir/repos/<repoName>.git.
+func setupBareRepo(t *testing.T, dataDir, repoName, content string) string {
 	t.Helper()
-	if mkdir {
-		os.MkdirAll(dir, 0o755)
+	repoPath := filepath.Join(dataDir, "repos", repoName+".git")
+	if err := os.MkdirAll(repoPath, 0o755); err != nil {
+		t.Fatal(err)
 	}
+
+	// Init bare repo
+	run(t, repoPath, "git", "init", "--bare")
+
+	// Create a temp working clone to commit into
+	workDir := t.TempDir()
+	run(t, workDir, "git", "clone", repoPath, "work")
+	work := filepath.Join(workDir, "work")
+
+	// Configure git user
+	run(t, work, "git", "config", "user.email", "test@test.com")
+	run(t, work, "git", "config", "user.name", "Test")
+
+	// Write SKILL.md and commit
+	if err := os.WriteFile(filepath.Join(work, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(t, work, "git", "add", ".")
+	run(t, work, "git", "commit", "-m", "init")
+	run(t, work, "git", "push", "origin", "HEAD")
+
+	return repoPath
+}
+
+// updateRepo updates SKILL.md in an existing bare repo.
+func updateRepo(t *testing.T, bareRepoPath, content string) {
+	t.Helper()
+	workDir := t.TempDir()
+	run(t, workDir, "git", "clone", bareRepoPath, "work")
+	work := filepath.Join(workDir, "work")
+	run(t, work, "git", "config", "user.email", "test@test.com")
+	run(t, work, "git", "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(work, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(t, work, "git", "add", ".")
+	run(t, work, "git", "commit", "-m", "update")
+	run(t, work, "git", "push", "origin", "HEAD")
+}
+
+func run(t *testing.T, dir string, name string, args ...string) {
+	t.Helper()
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("%s %v: %s: %v", name, args, out, err)
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("command %s %v failed: %v", name, args, err)
 	}
 }
 
-func TestReadSkillMDFromBareRepo_RootSkill(t *testing.T) {
-	bareDir := createBareRepoWithSkill(t, "SKILL.md", "# Test Skill\n\nversion: 1\n")
+func makeCmd(args ...string) *cobra.Command {
+	cmd := &cobra.Command{RunE: runIndex}
+	cmd.Flags().StringVar(&indexRepo, "repo", "", "")
+	cmd.Flags().StringVar(&indexRev, "rev", "", "")
+	cmd.Flags().StringVar(&indexDSN, "dsn", "", "")
+	cmd.Flags().StringVar(&indexAPIURL, "api-url", "", "")
+	cmd.Flags().StringVar(&indexDataDir, "data-dir", "", "")
+	cmd.Flags().BoolVar(&indexJSON, "json", false, "")
+	cmd.SetArgs(args)
+	return cmd
+}
 
-	path, body, err := readSkillMDFromBareRepo(bareDir)
+func TestIndexCreatesSkill(t *testing.T) {
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, "data")
+	dbPath := filepath.Join(tmpDir, "kinoko.db")
+
+	setupBareRepo(t, dataDir, "local/test-skill", skillMD("test-skill", "tactical", false))
+
+	cmd := makeCmd("--repo", "local/test-skill", "--dsn", dbPath, "--data-dir", dataDir, "--api-url", "http://127.0.0.1:1") // bad api-url so embedding fails gracefully
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("runIndex failed: %v", err)
+	}
+
+	// Verify skill in SQLite
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if path != "SKILL.md" {
-		t.Errorf("expected path SKILL.md, got %q", path)
+	defer db.Close()
+
+	var name, libraryID, category string
+	var version int
+	err = db.QueryRowContext(context.Background(),
+		`SELECT name, library_id, version, category FROM skills WHERE name = ? AND library_id = ?`,
+		"test-skill", "local").Scan(&name, &libraryID, &version, &category)
+	if err != nil {
+		t.Fatalf("skill not found in db: %v", err)
 	}
-	if len(body) == 0 {
-		t.Error("empty body")
+	if name != "test-skill" || libraryID != "local" || version != 1 || category != "tactical" {
+		t.Errorf("unexpected values: name=%s lib=%s ver=%d cat=%s", name, libraryID, version, category)
 	}
 }
 
-func TestReadSkillMDFromBareRepo_VersionedSkill(t *testing.T) {
-	// Create repo with v1/SKILL.md and v2/SKILL.md.
-	workDir := filepath.Join(t.TempDir(), "work")
-	bareDir := filepath.Join(t.TempDir(), "bare.git")
+func TestIndexUpsert(t *testing.T) {
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, "data")
+	dbPath := filepath.Join(tmpDir, "kinoko.db")
 
-	run(t, workDir, true, "git", "init")
-	run(t, workDir, false, "git", "config", "user.email", "test@test.com")
-	run(t, workDir, false, "git", "config", "user.name", "Test")
+	bareRepoPath := setupBareRepo(t, dataDir, "local/upsert-skill", skillMD("upsert-skill", "tactical", false))
 
-	for _, v := range []string{"v1", "v2"} {
-		dir := filepath.Join(workDir, v)
-		os.MkdirAll(dir, 0o755)
-		os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# Skill "+v+"\n\nversion: 1\n"), 0o644)
+	cmd := makeCmd("--repo", "local/upsert-skill", "--dsn", dbPath, "--data-dir", dataDir, "--api-url", "http://127.0.0.1:1")
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("first index failed: %v", err)
 	}
 
-	run(t, workDir, false, "git", "add", ".")
-	run(t, workDir, false, "git", "commit", "-m", "init")
+	// Update the skill
+	updateRepo(t, bareRepoPath, skillMD("upsert-skill", "foundational", true))
 
-	cmd := exec.Command("git", "clone", "--bare", workDir, bareDir)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("clone --bare: %s: %v", out, err)
+	cmd2 := makeCmd("--repo", "local/upsert-skill", "--dsn", dbPath, "--data-dir", dataDir, "--api-url", "http://127.0.0.1:1")
+	if err := cmd2.Execute(); err != nil {
+		t.Fatalf("second index failed: %v", err)
 	}
 
-	path, _, err := readSkillMDFromBareRepo(bareDir)
+	// Verify upsert
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if path != "v2/SKILL.md" {
-		t.Errorf("expected v2/SKILL.md (latest version), got %q", path)
+	defer db.Close()
+
+	var count int
+	db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM skills WHERE name = ? AND library_id = ?`, "upsert-skill", "local").Scan(&count)
+	if count != 1 {
+		t.Errorf("expected 1 skill row, got %d", count)
+	}
+
+	var category string
+	var qPS int
+	db.QueryRowContext(context.Background(), `SELECT category, q_problem_specificity FROM skills WHERE name = ? AND library_id = ?`,
+		"upsert-skill", "local").Scan(&category, &qPS)
+	if category != "foundational" {
+		t.Errorf("expected category foundational, got %s", category)
+	}
+	if qPS != 4 {
+		t.Errorf("expected q_problem_specificity 4, got %d", qPS)
 	}
 }
 
-func TestReadSkillMDFromBareRepo_NoSkill(t *testing.T) {
-	workDir := filepath.Join(t.TempDir(), "work")
-	bareDir := filepath.Join(t.TempDir(), "bare.git")
+func TestIndexJSONOutput(t *testing.T) {
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, "data")
+	dbPath := filepath.Join(tmpDir, "kinoko.db")
 
-	run(t, workDir, true, "git", "init")
-	run(t, workDir, false, "git", "config", "user.email", "test@test.com")
-	run(t, workDir, false, "git", "config", "user.name", "Test")
-	os.WriteFile(filepath.Join(workDir, "README.md"), []byte("hello"), 0o644)
-	run(t, workDir, false, "git", "add", ".")
-	run(t, workDir, false, "git", "commit", "-m", "init")
+	setupBareRepo(t, dataDir, "local/json-skill", skillMD("json-skill", "tactical", false))
 
-	cmd := exec.Command("git", "clone", "--bare", workDir, bareDir)
-	cmd.CombinedOutput()
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
 
-	_, _, err := readSkillMDFromBareRepo(bareDir)
+	cmd := makeCmd("--repo", "local/json-skill", "--dsn", dbPath, "--data-dir", dataDir, "--api-url", "http://127.0.0.1:1", "--json")
+	err := cmd.Execute()
+	w.Close()
+	os.Stdout = oldStdout
+
+	if err != nil {
+		t.Fatalf("runIndex --json failed: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result indexResult
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON output: %v\nraw: %s", err, buf.String())
+	}
+	if result.Repo != "local/json-skill" {
+		t.Errorf("expected repo local/json-skill, got %s", result.Repo)
+	}
+	if result.Skill != "json-skill" {
+		t.Errorf("expected skill json-skill, got %s", result.Skill)
+	}
+	if result.Action != "created" {
+		t.Errorf("expected action created, got %s", result.Action)
+	}
+	if result.Embedded {
+		t.Error("expected embedded false")
+	}
+}
+
+func TestIndexMissingRepo(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "kinoko.db")
+
+	cmd := makeCmd("--repo", "local/nonexistent", "--dsn", dbPath, "--data-dir", tmpDir, "--api-url", "http://127.0.0.1:1")
+	err := cmd.Execute()
 	if err == nil {
-		t.Error("expected error for repo without SKILL.md")
+		t.Fatal("expected error for missing repo")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("repo not found")) {
+		t.Errorf("expected 'repo not found' error, got: %v", err)
 	}
 }
 
-func TestExtractVersion(t *testing.T) {
-	tests := []struct {
-		path string
-		want int
-	}{
-		{"v1/SKILL.md", 1},
-		{"v12/SKILL.md", 12},
-		{"SKILL.md", 0},
-		{"foo/SKILL.md", 0},
+func TestIndexDefaultCategory(t *testing.T) {
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, "data")
+	dbPath := filepath.Join(tmpDir, "kinoko.db")
+
+	// No category in frontmatter
+	setupBareRepo(t, dataDir, "local/no-cat", skillMD("no-cat", "", false))
+
+	cmd := makeCmd("--repo", "local/no-cat", "--dsn", dbPath, "--data-dir", dataDir, "--api-url", "http://127.0.0.1:1")
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("runIndex failed: %v", err)
 	}
-	for _, tt := range tests {
-		got := extractVersion(tt.path)
-		if got != tt.want {
-			t.Errorf("extractVersion(%q) = %d, want %d", tt.path, got, tt.want)
-		}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	var category string
+	db.QueryRowContext(context.Background(), `SELECT category FROM skills WHERE name = ? AND library_id = ?`,
+		"no-cat", "local").Scan(&category)
+	if category != "tactical" {
+		t.Errorf("expected default category tactical, got %s", category)
 	}
 }

@@ -36,10 +36,12 @@ Environment variables:
 }
 
 var (
-	indexRepo   string
-	indexRev    string
-	indexDSN    string
-	indexAPIURL string
+	indexRepo    string
+	indexRev     string
+	indexDSN     string
+	indexAPIURL  string
+	indexDataDir string
+	indexJSON    bool
 )
 
 func init() {
@@ -47,6 +49,17 @@ func init() {
 	indexCmd.Flags().StringVar(&indexRev, "rev", "", "Git revision (default: $KINOKO_REV)")
 	indexCmd.Flags().StringVar(&indexDSN, "dsn", "", "SQLite DSN (default: $KINOKO_STORAGE_DSN)")
 	indexCmd.Flags().StringVar(&indexAPIURL, "api-url", "", "Kinoko API URL (default: $KINOKO_API_URL or http://127.0.0.1:23233)")
+	indexCmd.Flags().StringVar(&indexDataDir, "data-dir", "", "Soft Serve data directory (default: $SOFT_SERVE_DATA_PATH or ~/.kinoko/data)")
+	indexCmd.Flags().BoolVar(&indexJSON, "json", false, "Output result as JSON")
+}
+
+// indexResult holds the JSON output structure.
+type indexResult struct {
+	Repo     string `json:"repo"`
+	Skill    string `json:"skill"`
+	Version  int    `json:"version"`
+	Action   string `json:"action"`
+	Embedded bool   `json:"embedded"`
 }
 
 func runIndex(cmd *cobra.Command, args []string) error {
@@ -77,13 +90,19 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	defer store.Close()
 
 	// Find repo on disk. Soft Serve stores repos in {dataDir}/repos/{name}.git.
-	dataDir := os.Getenv("SOFT_SERVE_DATA_PATH")
+	dataDir := firstNonEmpty(indexDataDir, os.Getenv("SOFT_SERVE_DATA_PATH"))
 	if dataDir == "" {
-		dataDir = "data" // Soft Serve default
+		home, _ := os.UserHomeDir()
+		dataDir = filepath.Join(home, ".kinoko", "data")
 	}
 	repoPath := filepath.Join(dataDir, "repos", repo+".git")
 
-	// P0-3: Read SKILL.md from bare repo using git commands.
+	// Handle missing repo gracefully.
+	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+		return fmt.Errorf("repo not found: %s (looked in %s)", repo, repoPath)
+	}
+
+	// Read SKILL.md from bare repo using git commands.
 	skillPath, body, err := readSkillMDFromBareRepo(repoPath)
 	if err != nil {
 		return fmt.Errorf("find SKILL.md in %s: %w", repo, err)
@@ -103,9 +122,16 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		skillName = parts[1]
 	}
 
+	// Parse category from frontmatter, default to tactical.
 	category := model.CategoryTactical
-	// P2-4: Log a warning when defaulting to CategoryTactical.
-	logger.Warn("defaulting skill category to tactical", "repo", repo, "skill", skillName)
+	if parsed.Category != "" {
+		switch model.SkillCategory(parsed.Category) {
+		case model.CategoryFoundational, model.CategoryTactical, model.CategoryContextual:
+			category = model.SkillCategory(parsed.Category)
+		default:
+			logger.Warn("unknown category in frontmatter, defaulting to tactical", "category", parsed.Category)
+		}
+	}
 
 	skill := &model.SkillRecord{
 		ID:          fmt.Sprintf("%s/%s/v%d", libraryID, skillName, parsed.Version),
@@ -117,6 +143,29 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		ExtractedBy: "kinoko-index",
 		FilePath:    skillPath,
 		DecayScore:  1.0,
+	}
+
+	// Parse quality scores from frontmatter if present.
+	if parsed.Quality != nil {
+		skill.Quality = model.QualityScores{
+			ProblemSpecificity:    parsed.Quality.ProblemSpecificity,
+			SolutionCompleteness:  parsed.Quality.SolutionCompleteness,
+			ContextPortability:    parsed.Quality.ContextPortability,
+			ReasoningTransparency: parsed.Quality.ReasoningTransparency,
+			TechnicalAccuracy:     parsed.Quality.TechnicalAccuracy,
+			VerificationEvidence:  parsed.Quality.VerificationEvidence,
+			InnovationLevel:       parsed.Quality.InnovationLevel,
+			CompositeScore:        parsed.Quality.CompositeScore,
+			CriticConfidence:      parsed.Quality.CriticConfidence,
+		}
+	}
+	// else: Quality stays zero-valued (all 0s)
+
+	// Check if skill already exists (for action reporting).
+	existing, _ := store.GetLatestByName(cmd.Context(), skillName, libraryID)
+	action := "created"
+	if existing != nil {
+		action = "updated"
 	}
 
 	// Compute embedding via server API endpoint.
@@ -131,6 +180,18 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	indexer := storage.NewSQLiteIndexer(store)
 	if err := indexer.IndexSkill(cmd.Context(), skill, emb); err != nil {
 		return fmt.Errorf("index skill: %w", err)
+	}
+
+	if indexJSON {
+		result := indexResult{
+			Repo:     repo,
+			Skill:    skillName,
+			Version:  parsed.Version,
+			Action:   action,
+			Embedded: len(emb) > 0,
+		}
+		enc := json.NewEncoder(os.Stdout)
+		return enc.Encode(result)
 	}
 
 	logger.Info("skill indexed", "repo", repo, "rev", rev, "skill", skillName, "version", parsed.Version)
