@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -26,6 +28,7 @@ var (
 	matchLimit    int
 	matchMinScore float64
 	matchFile     string
+	matchTimeout  time.Duration
 )
 
 func init() {
@@ -33,6 +36,7 @@ func init() {
 	matchCmd.Flags().IntVar(&matchLimit, "limit", 5, "Maximum number of results")
 	matchCmd.Flags().Float64Var(&matchMinScore, "min-score", 0.5, "Minimum match score (0.0-1.0)")
 	matchCmd.Flags().StringVar(&matchFile, "file", "", "Read query text from file instead of argument")
+	matchCmd.Flags().DurationVar(&matchTimeout, "timeout", 30*time.Second, "Command timeout")
 }
 
 func runMatch(cmd *cobra.Command, args []string) error {
@@ -54,11 +58,18 @@ func runMatch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("query text is empty")
 	}
 
+	parentCtx := cmd.Context()
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parentCtx, matchTimeout)
+	defer cancel()
+
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	apiURL := firstNonEmpty(matchAPIURL, os.Getenv("KINOKO_API_URL"), "http://127.0.0.1:23233")
 
 	client := injection.NewClient(apiURL, logger)
-	result, err := client.MatchWithMinScore(cmd.Context(), queryText, matchLimit, matchMinScore)
+	result, err := client.MatchWithMinScore(ctx, queryText, matchLimit, matchMinScore)
 	if err != nil {
 		return fmt.Errorf("match failed: %w", err)
 	}

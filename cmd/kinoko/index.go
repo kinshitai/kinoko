@@ -122,7 +122,7 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	// Compute embedding via server API endpoint.
 	var emb []float32
 	apiURL := firstNonEmpty(indexAPIURL, os.Getenv("KINOKO_API_URL"), "http://127.0.0.1:23233")
-	emb, err = fetchEmbedding(apiURL, string(body))
+	emb, err = fetchEmbedding(sharedHTTPClient, apiURL, string(body))
 	if err != nil {
 		logger.Warn("embedding failed, indexing without", "repo", repo, "error", err)
 		emb = nil
@@ -202,14 +202,16 @@ func extractVersion(path string) int {
 	return v
 }
 
+// sharedHTTPClient is reused across embedding calls to avoid per-call connection overhead.
+var sharedHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
 // fetchEmbedding calls the server's /api/v1/embed endpoint.
-func fetchEmbedding(apiURL, text string) ([]float32, error) {
+func fetchEmbedding(client *http.Client, apiURL, text string) ([]float32, error) {
 	payload, err := json.Marshal(map[string]string{"text": text})
 	if err != nil {
 		return nil, fmt.Errorf("marshal embed request: %w", err)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Post(apiURL+"/api/v1/embed", "application/json", bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("embed request: %w", err)

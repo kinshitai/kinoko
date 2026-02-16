@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -45,7 +47,11 @@ var (
 	ingestDryRun     bool
 	ingestForce      bool
 	ingestConfigPath string
+	ingestTimeout    time.Duration
 )
+
+// skillNameRe matches valid skill name characters.
+var skillNameRe = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
 
 func init() {
 	ingestCmd.Flags().StringVar(&ingestName, "name", "", "Skill name (kebab-case; default: derived from filename or LLM)")
@@ -56,9 +62,26 @@ func init() {
 	ingestCmd.Flags().BoolVar(&ingestDryRun, "dry-run", false, "Evaluate only, don't push to git")
 	ingestCmd.Flags().BoolVar(&ingestForce, "force", false, "Skip critic, validate structure and push as-is")
 	ingestCmd.Flags().StringVar(&ingestConfigPath, "config", "", "Config file path")
+	ingestCmd.Flags().DurationVar(&ingestTimeout, "timeout", 5*time.Minute, "Command timeout")
+}
+
+// sanitizeSkillName strips characters not in [a-zA-Z0-9_-] and rejects empty results.
+func sanitizeSkillName(name string) (string, error) {
+	clean := skillNameRe.ReplaceAllString(name, "")
+	if clean == "" {
+		return "", fmt.Errorf("skill name %q is empty after sanitization", name)
+	}
+	return strings.ToLower(clean), nil
 }
 
 func runIngest(cmd *cobra.Command, args []string) error {
+	parentCtx := cmd.Context()
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parentCtx, ingestTimeout)
+	defer cancel()
+
 	filePath := args[0]
 
 	body, err := os.ReadFile(filePath)
@@ -79,6 +102,7 @@ func runIngest(cmd *cobra.Command, args []string) error {
 	var skillTags []string
 	var skillVersion int
 	var verdict string
+	var sourceSessionID string
 
 	if ingestForce {
 		// --force: skip critic, but validate basic structure.
@@ -97,18 +121,21 @@ func runIngest(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("file is not valid UTF-8 (binary?)")
 		}
 
-		// Parse front matter if present.
-		if strings.HasPrefix(strings.TrimSpace(string(body)), "---") {
-			parsedName, parsedVersion, parsedCategory, parsedTags, parseErr := extraction.ParseGeneratedSkillMD(string(body))
-			if parseErr == nil {
-				skillName = parsedName
-				skillVersion = parsedVersion
-				skillCategory = parsedCategory
-				skillTags = parsedTags
-			} else {
-				logger.Warn("front matter parse failed", "error", parseErr)
-			}
+		// --force still requires valid YAML front matter with a name field.
+		if !strings.HasPrefix(strings.TrimSpace(string(body)), "---") {
+			return fmt.Errorf("--force requires valid YAML front matter (file must start with ---)")
 		}
+		parsedName, parsedVersion, parsedCategory, parsedTags, parseErr := extraction.ParseGeneratedSkillMD(string(body))
+		if parseErr != nil {
+			return fmt.Errorf("--force requires valid front matter: %w", parseErr)
+		}
+		if parsedName == "" {
+			return fmt.Errorf("--force requires 'name' field in front matter")
+		}
+		skillName = parsedName
+		skillVersion = parsedVersion
+		skillCategory = parsedCategory
+		skillTags = parsedTags
 	} else {
 		// Run through Stage 3 critic.
 		llmAPIKey := cfg.LLM.APIKey
@@ -143,9 +170,10 @@ func runIngest(cmd *cobra.Command, args []string) error {
 			StartedAt: time.Now(),
 			EndedAt:   time.Now(),
 		}
+		sourceSessionID = session.ID
 
 		// Run critic with nil Stage2 result (we're skipping Stage 1+2).
-		result, err := stage3.Evaluate(cmd.Context(), session, body, nil)
+		result, err := stage3.Evaluate(ctx, session, body, nil)
 		if err != nil {
 			return fmt.Errorf("critic evaluation failed: %w", err)
 		}
@@ -186,9 +214,13 @@ func runIngest(cmd *cobra.Command, args []string) error {
 		base := filepath.Base(filePath)
 		ext := filepath.Ext(base)
 		skillName = strings.TrimSuffix(base, ext)
-		skillName = strings.ToLower(skillName)
-		skillName = strings.ReplaceAll(skillName, " ", "-")
-		skillName = strings.ReplaceAll(skillName, "_", "-")
+	}
+
+	// P1-4: Sanitize skill name to prevent path traversal.
+	var sanitizeErr error
+	skillName, sanitizeErr = sanitizeSkillName(skillName)
+	if sanitizeErr != nil {
+		return sanitizeErr
 	}
 	if ingestCategory != "" {
 		skillCategory = ingestCategory
@@ -214,7 +246,7 @@ func runIngest(cmd *cobra.Command, args []string) error {
 	defer store.Close()
 
 	// Compute embedding via server API.
-	emb, embErr := fetchEmbedding(apiURL, string(skillBody))
+	emb, embErr := fetchEmbedding(sharedHTTPClient, apiURL, string(skillBody))
 	if embErr != nil {
 		logger.Warn("embedding failed, indexing without vector", "error", embErr)
 		emb = nil
@@ -228,7 +260,8 @@ func runIngest(cmd *cobra.Command, args []string) error {
 		LibraryID:   ingestLibrary,
 		Category:    model.SkillCategory(skillCategory),
 		Patterns:    skillTags,
-		ExtractedBy: "cli-ingest",
+		SourceSessionID: sourceSessionID,
+		ExtractedBy:     "cli-ingest",
 		FilePath:    fmt.Sprintf("skills/%s/v%d/SKILL.md", skillName, skillVersion),
 		DecayScore:  1.0,
 		CreatedAt:   now,
@@ -238,7 +271,7 @@ func runIngest(cmd *cobra.Command, args []string) error {
 	// Novelty check BEFORE push — gate duplicates.
 	threshold := cfg.Embedding.GetNoveltyThreshold()
 	noveltyClient := extraction.NewNoveltyClient(apiURL, threshold, logger)
-	noveltyResult, noveltyErr := noveltyClient.Check(cmd.Context(), string(skillBody))
+	noveltyResult, noveltyErr := noveltyClient.Check(ctx, string(skillBody))
 
 	isNovel := true // fail-open
 	if noveltyErr != nil {
@@ -252,7 +285,7 @@ func runIngest(cmd *cobra.Command, args []string) error {
 
 	// Index locally (always — even duplicates are useful in local store).
 	indexer := storage.NewSQLiteIndexer(store)
-	if err := indexer.IndexSkill(cmd.Context(), skill, emb); err != nil {
+	if err := indexer.IndexSkill(ctx, skill, emb); err != nil {
 		return fmt.Errorf("index skill: %w", err)
 	}
 
@@ -266,7 +299,7 @@ func runIngest(cmd *cobra.Command, args []string) error {
 		if pushErr != nil {
 			logger.Warn("git pusher unavailable, skill not pushed", "error", pushErr)
 		} else {
-			if err := pusher.Push(cmd.Context(), skillName, ingestLibrary, skillBody); err != nil {
+			if err := pusher.Push(ctx, skillName, ingestLibrary, skillBody); err != nil {
 				logger.Error("push failed", "error", err)
 			} else {
 				pushed = true

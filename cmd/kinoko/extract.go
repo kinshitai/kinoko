@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -31,6 +33,7 @@ var (
 	extractLibrary    string
 	extractAPIURL     string
 	extractDryRun     bool
+	extractTimeout    time.Duration
 )
 
 func init() {
@@ -38,9 +41,17 @@ func init() {
 	extractCmd.Flags().StringVar(&extractLibrary, "library", "", "Library ID (default: first configured library)")
 	extractCmd.Flags().StringVar(&extractAPIURL, "api-url", "", "Kinoko API URL (default: $KINOKO_API_URL or http://127.0.0.1:23233)")
 	extractCmd.Flags().BoolVar(&extractDryRun, "dry-run", false, "Run pipeline but skip git push")
+	extractCmd.Flags().DurationVar(&extractTimeout, "timeout", 5*time.Minute, "Command timeout")
 }
 
 func runExtract(cmd *cobra.Command, args []string) error {
+	parentCtx := cmd.Context()
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parentCtx, extractTimeout)
+	defer cancel()
+
 	logPath := args[0]
 
 	content, err := os.ReadFile(logPath)
@@ -84,7 +95,7 @@ func runExtract(cmd *cobra.Command, args []string) error {
 	} else {
 		logger.Warn("no embedding API key set, Stage2 scoring will use server embed endpoint or be skipped")
 		// Use HTTP embedder via server API as fallback.
-		embedder = &httpEmbedder{apiURL: apiURL, logger: logger}
+		embedder = &httpEmbedder{apiURL: apiURL, client: sharedHTTPClient, logger: logger}
 	}
 
 	// Initialize LLM client — Stage2 and Stage3 need it.
@@ -147,7 +158,7 @@ func runExtract(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("create pipeline: %w", err)
 	}
 
-	result, err := pipeline.Extract(cmd.Context(), session, content)
+	result, err := pipeline.Extract(ctx, session, content)
 	if err != nil {
 		return fmt.Errorf("extraction failed: %w", err)
 	}
@@ -211,11 +222,19 @@ func printExtractSummary(result *model.ExtractionResult, dryRun bool) {
 // httpEmbedder implements embedding.Embedder via the server's /api/v1/embed endpoint.
 type httpEmbedder struct {
 	apiURL string
+	client *http.Client
 	logger *slog.Logger
 }
 
+func (e *httpEmbedder) httpClient() *http.Client {
+	if e.client != nil {
+		return e.client
+	}
+	return sharedHTTPClient
+}
+
 func (e *httpEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
-	vec, err := fetchEmbedding(e.apiURL, text)
+	vec, err := fetchEmbedding(e.httpClient(), e.apiURL, text)
 	if err != nil {
 		e.logger.Warn("HTTP embedding failed", "error", err)
 		return nil, err
@@ -236,7 +255,7 @@ func (e *httpEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]floa
 }
 
 func (e *httpEmbedder) Dimensions() int {
-	return 1536 // Default OpenAI text-embedding-3-small dimensions.
+	return 384 // bge-small-en-v1.5 dimensions (ONNX server model). TODO: probe server dynamically.
 }
 
 // exitError signals a non-zero exit code without calling os.Exit directly.
