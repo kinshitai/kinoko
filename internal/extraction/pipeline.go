@@ -51,6 +51,8 @@ type Pipeline struct {
 	log        *slog.Logger
 	sampleRate float64 // 0.0–1.0, e.g. 0.01 for 1%
 	randIntn   RandIntn
+	novelty    NoveltyChecker           // optional: checks skill novelty before push
+	pusher     SkillPusher              // optional: pushes skills to git (Phase C)
 	committer  model.SkillCommitter    // optional: pushes skills to git
 	scanner    *sanitize.Scanner       // optional: credential scanner
 	tracer     *debug.Tracer           // optional: pipeline debug tracing
@@ -75,6 +77,8 @@ type PipelineConfig struct {
 	Log        *slog.Logger
 	SampleRate float64
 	RandIntn   RandIntn
+	Novelty    NoveltyChecker
+	Pusher     SkillPusher
 	Committer  model.SkillCommitter
 	Scanner    *sanitize.Scanner
 	Extractor  string
@@ -118,6 +122,8 @@ func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 		sessions:   cfg.Sessions,
 		embedder:   cfg.Embedder,
 		reviewer:   cfg.Reviewer,
+		novelty:    cfg.Novelty,
+		pusher:     cfg.Pusher,
 		committer:  cfg.Committer,
 		scanner:    cfg.Scanner,
 		tracer:     cfg.Tracer,
@@ -378,8 +384,37 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 		body = []byte(p.scanner.Redact(string(body)))
 	}
 
+	// Novelty check: if configured, skip non-novel skills.
+	novel := true
+	if p.novelty != nil {
+		noveltyResult, noveltyErr := p.novelty.Check(ctx, string(body))
+		if noveltyErr != nil {
+			p.log.Warn("novelty check failed, treating as novel", "session_id", session.ID, "error", noveltyErr)
+		} else if !noveltyResult.Novel {
+			novel = false
+			similarName := ""
+			if len(noveltyResult.Similar) > 0 {
+				similarName = noveltyResult.Similar[0].Name
+			}
+			p.log.Info("skill not novel, skipping push",
+				"session_id", session.ID,
+				"skill_name", skillName,
+				"score", noveltyResult.Score,
+				"similar_to", similarName,
+			)
+		}
+	}
+
+	// Phase C pusher: push to git if novel.
+	if p.pusher != nil && novel {
+		if pushErr := p.pusher.Push(ctx, skillName, session.LibraryID, body); pushErr != nil {
+			p.log.Error("skill push failed", "session_id", session.ID, "skill_name", skillName, "error", pushErr)
+			// Non-fatal: continue to local persistence.
+		}
+	}
+
 	// Git push is the only write path. The post-receive hook populates SQLite.
-	if p.committer != nil {
+	if p.committer != nil && novel {
 		commitStart := time.Now()
 		commitHash, commitErr := p.committer.CommitSkill(ctx, session.LibraryID, skill, body)
 		commitMs := time.Since(commitStart).Milliseconds()
