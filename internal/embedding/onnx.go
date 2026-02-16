@@ -103,7 +103,7 @@ func (e *ONNXEngine) EmbedBatch(ctx context.Context, texts []string) ([][]float3
 }
 
 func (e *ONNXEngine) embedSingle(text string) ([]float32, error) {
-	ids, _ := e.tokenizer.Encode(text, true)
+	ids, _ := e.tokenizer.Encode(text, true) // returns ([]uint32 ids, []string tokens)
 	seqLen := int64(len(ids))
 	batchSize := int64(1)
 
