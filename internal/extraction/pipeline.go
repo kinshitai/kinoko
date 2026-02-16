@@ -348,7 +348,7 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 	var generatedBody []byte
 
 	if s3.SkillMD != "" {
-		parsedName, parsedVersion, parsedCategory, parsedTags, parseErr := parseGeneratedSkillMD(s3.SkillMD)
+		parsedName, parsedVersion, parsedCategory, parsedTags, parseErr := ParseGeneratedSkillMD(s3.SkillMD)
 		if parseErr != nil {
 			p.log.Warn("failed to parse LLM-generated SKILL.md, falling back to template",
 				"session_id", session.ID, "error", parseErr)

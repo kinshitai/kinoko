@@ -29,4 +29,6 @@ func init() {
 	rootCmd.AddCommand(queueCmd)
 	rootCmd.AddCommand(indexCmd)
 	rootCmd.AddCommand(pullCmd)
+	rootCmd.AddCommand(ingestCmd)
+	rootCmd.AddCommand(matchCmd)
 }

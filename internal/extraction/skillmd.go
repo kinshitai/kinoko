@@ -9,10 +9,10 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
-// parseGeneratedSkillMD extracts name, version, category, and tags from the
+// ParseGeneratedSkillMD extracts name, version, category, and tags from the
 // YAML front matter of an LLM-generated SKILL.md. Returns an error if the
 // front matter is missing or the name field is absent.
-func parseGeneratedSkillMD(raw string) (name string, version int, category string, tags []string, err error) {
+func ParseGeneratedSkillMD(raw string) (name string, version int, category string, tags []string, err error) {
 	raw = strings.TrimSpace(raw)
 	if !strings.HasPrefix(raw, "---") {
 		return "", 0, "", nil, fmt.Errorf("missing YAML front matter delimiter")
