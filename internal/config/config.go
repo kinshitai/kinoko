@@ -23,6 +23,13 @@ type Config struct {
 	LLM        LLMConfig        `yaml:"llm,omitempty"`
 	Hooks      HooksConfig      `yaml:"hooks,omitempty"`
 	Defaults   DefaultsConfig   `yaml:"defaults,omitempty"`
+	Debug      DebugConfig      `yaml:"debug,omitempty"`
+}
+
+// DebugConfig configures pipeline debug tracing.
+type DebugConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Dir     string `yaml:"dir"`
 }
 
 // EmbeddingConfig configures the embedding provider.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/kinoko-dev/kinoko/internal/debug"
 	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/sanitize"
 )
@@ -51,6 +52,7 @@ type Pipeline struct {
 	randIntn   RandIntn
 	committer  model.SkillCommitter // optional: pushes skills to git
 	scanner    *sanitize.Scanner    // optional: credential scanner
+	tracer     *debug.Tracer         // optional: pipeline debug tracing
 	extractor  string               // pipeline version identifier
 
 	// Stratified sampling counters: maintain ~50/50 extracted vs rejected.
@@ -74,6 +76,7 @@ type PipelineConfig struct {
 	Committer  model.SkillCommitter
 	Scanner    *sanitize.Scanner
 	Extractor  string
+	Tracer     *debug.Tracer
 }
 
 // NewPipeline creates a Pipeline. If RandIntn is nil, crypto/rand is used.
@@ -114,6 +117,7 @@ func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 		reviewer:   cfg.Reviewer,
 		committer:  cfg.Committer,
 		scanner:    cfg.Scanner,
+		tracer:     cfg.Tracer,
 		log:        cfg.Log,
 		sampleRate: cfg.SampleRate,
 		randIntn:   r,
@@ -134,6 +138,10 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 		ProcessedAt: start,
 	}
 
+	// Debug tracing — all writes are best-effort, nil-safe.
+	trace := p.tracer.StartRun()
+	trace.WriteSession(content)
+
 	p.log.Info("pipeline start", "session_id", session.ID)
 
 	// Persist session before extraction begins.
@@ -152,6 +160,18 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 	s1Ms := time.Since(s1Start).Milliseconds()
 	result.Stage1 = s1
 
+	// Debug: stage 1 trace
+	trace.WriteStage("stage1-filter", debug.Stage1Trace{
+		Passed: s1.Passed,
+		Filters: map[string]debug.FilterTrace{
+			"duration":         {Value: session.DurationMinutes, Threshold: "config", Passed: s1.DurationOK},
+			"tool_call_count":  {Value: session.ToolCallCount, Threshold: "config", Passed: s1.ToolCallCountOK},
+			"error_rate":       {Value: session.ErrorRate, Threshold: "config", Passed: s1.ErrorRateOK},
+			"has_success_exec": {Value: session.HasSuccessfulExec, Threshold: true, Passed: s1.HasSuccessExec},
+		},
+		DurationMs: s1Ms,
+	})
+
 	if !s1.Passed {
 		result.Status = model.StatusRejected
 		result.DurationMs = time.Since(start).Milliseconds()
@@ -164,6 +184,8 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 		)
 		p.updateSessionStatus(ctx, &session, result)
 		p.maybeSample(ctx, session.ID, result)
+		rejAt := "stage1"
+		p.writeTraceSummary(trace, result, &rejAt, 0, s1Ms, 0, 0)
 		return result, nil
 	}
 	p.log.Info("stage1 pass", "session_id", session.ID, "stage1_ms", s1Ms)
@@ -186,9 +208,26 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 		)
 		p.updateSessionStatus(ctx, &session, result)
 		p.maybeSample(ctx, session.ID, result)
+		rejAt := "stage2-error"
+		p.writeTraceSummary(trace, result, &rejAt, 0, s1Ms, s2Ms, 0)
 		return result, nil
 	}
 	result.Stage2 = s2
+
+	// Debug: stage 2 trace
+	// TODO: Add raw LLM request/response capture (.req.json.gz, .resp.json.gz)
+	// when we thread raw LLM capture through the stage interfaces.
+	trace.WriteStage("stage2-scoring", debug.Stage2Trace{
+		Passed: s2.Passed,
+		EmbeddingNovelty: &debug.EmbeddingTrace{
+			Distance: s2.EmbeddingDistance,
+		},
+		RubricScores: map[string]float64{
+			"composite": s2.RubricScores.CompositeScore,
+		},
+		RubricAggregate: s2.RubricScores.CompositeScore,
+		DurationMs:      s2Ms,
+	})
 
 	if !s2.Passed {
 		result.Status = model.StatusRejected
@@ -202,6 +241,8 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 		)
 		p.updateSessionStatus(ctx, &session, result)
 		p.maybeSample(ctx, session.ID, result)
+		rejAt := "stage2"
+		p.writeTraceSummary(trace, result, &rejAt, 0, s1Ms, s2Ms, 0)
 		return result, nil
 	}
 	p.log.Info("stage2 pass", "session_id", session.ID, "stage2_ms", s2Ms)
@@ -224,9 +265,27 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 		)
 		p.updateSessionStatus(ctx, &session, result)
 		p.maybeSample(ctx, session.ID, result)
+		rejAt := "stage3-error"
+		p.writeTraceSummary(trace, result, &rejAt, 0, s1Ms, s2Ms, s3Ms)
 		return result, nil
 	}
 	result.Stage3 = s3
+
+	// Debug: stage 3 trace
+	// TODO: Add raw LLM request/response capture (.req.json.gz, .resp.json.gz)
+	// when we thread raw LLM capture through the stage interfaces.
+	trace.WriteStage("stage3-critic", debug.Stage3Trace{
+		Passed:                 s3.Passed,
+		Verdict:                s3.CriticVerdict,
+		Confidence:             0, // not yet exposed in Stage3Result
+		Reasoning:              s3.CriticReasoning,
+		ContradictionsDetected: s3.ContradictsBestPractices,
+		Meta: &debug.LLMMeta{
+			TokensOut: s3.TokensUsed,
+			LatencyMs: s3.LatencyMs,
+		},
+		DurationMs: s3Ms,
+	})
 
 	if !s3.Passed {
 		result.Status = model.StatusRejected
@@ -240,6 +299,8 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 		)
 		p.updateSessionStatus(ctx, &session, result)
 		p.maybeSample(ctx, session.ID, result)
+		rejAt := "stage3"
+		p.writeTraceSummary(trace, result, &rejAt, 0, s1Ms, s2Ms, s3Ms)
 		return result, nil
 	}
 	p.log.Info("stage3 pass", "session_id", session.ID, "stage3_ms", s3Ms)
@@ -277,6 +338,9 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 
 	body := buildSkillMD(skill, s3, content)
 
+	// Debug: write extracted skill
+	trace.WriteSkill(skillName, body)
+
 	// Credential scanning: redact secrets before git push.
 	if p.scanner != nil && p.scanner.HasSecrets(string(body)) {
 		p.log.Warn("credentials detected in generated skill, redacting",
@@ -304,6 +368,7 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 			)
 			p.updateSessionStatus(ctx, &session, result)
 			p.maybeSample(ctx, session.ID, result)
+			p.writeTraceSummary(trace, result, nil, 0, s1Ms, s2Ms, s3Ms)
 			return result, nil
 		}
 		result.CommitHash = commitHash
@@ -330,6 +395,7 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 		}
 	}
 
+	p.writeTraceSummary(trace, result, nil, 1, s1Ms, s2Ms, s3Ms)
 	p.maybeSample(ctx, session.ID, result)
 	return result, nil
 }
@@ -359,4 +425,39 @@ func (p *Pipeline) updateSessionStatus(ctx context.Context, session *model.Sessi
 	if err := p.sessions.UpdateSessionResult(ctx, session); err != nil {
 		p.log.Error("failed to update session result", "session_id", session.ID, "error", err)
 	}
+}
+
+// writeTraceSummary writes the debug summary. All args are best-effort; trace may be nil.
+func (p *Pipeline) writeTraceSummary(trace *debug.RunTrace, result *model.ExtractionResult, rejectedAt *string, skillsExtracted int, s1Ms, s2Ms, s3Ms int64) {
+	if trace == nil {
+		return
+	}
+	now := time.Now()
+	stages := map[string]debug.StageSum{
+		"stage1": {Passed: result.Stage1 != nil && result.Stage1.Passed, DurationMs: s1Ms},
+	}
+	if result.Stage2 != nil {
+		stages["stage2"] = debug.StageSum{Passed: result.Stage2.Passed, DurationMs: s2Ms}
+	}
+	if result.Stage3 != nil {
+		stages["stage3"] = debug.StageSum{Passed: result.Stage3.Passed, DurationMs: s3Ms}
+	}
+
+	var cost *debug.CostEstimate
+	if result.Stage3 != nil && result.Stage3.TokensUsed > 0 {
+		cost = &debug.CostEstimate{TokensOut: result.Stage3.TokensUsed}
+	}
+
+	trace.WriteSummary(debug.Summary{
+		TraceID:         trace.TraceID,
+		SessionFile:     "session.log",
+		StartedAt:       trace.Started(),
+		FinishedAt:      now,
+		DurationMs:      result.DurationMs,
+		Result:          string(result.Status),
+		RejectedAt:      rejectedAt,
+		SkillsExtracted: skillsExtracted,
+		Stages:          stages,
+		CostEstimate:    cost,
+	})
 }
