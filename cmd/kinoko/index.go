@@ -2,18 +2,20 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/kinoko-dev/kinoko/internal/embedding"
 	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 	skillpkg "github.com/kinoko-dev/kinoko/pkg/skill"
@@ -34,15 +36,17 @@ Environment variables:
 }
 
 var (
-	indexRepo string
-	indexRev  string
-	indexDSN  string
+	indexRepo   string
+	indexRev    string
+	indexDSN    string
+	indexAPIURL string
 )
 
 func init() {
 	indexCmd.Flags().StringVar(&indexRepo, "repo", "", "Repo name (default: $KINOKO_REPO)")
 	indexCmd.Flags().StringVar(&indexRev, "rev", "", "Git revision (default: $KINOKO_REV)")
 	indexCmd.Flags().StringVar(&indexDSN, "dsn", "", "SQLite DSN (default: $KINOKO_STORAGE_DSN)")
+	indexCmd.Flags().StringVar(&indexAPIURL, "api-url", "", "Kinoko API URL (default: $KINOKO_API_URL or http://127.0.0.1:23233)")
 }
 
 func runIndex(cmd *cobra.Command, args []string) error {
@@ -115,20 +119,13 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		DecayScore:  1.0,
 	}
 
-	// Compute embedding if API key available.
+	// Compute embedding via server API endpoint.
 	var emb []float32
-	apiKey := os.Getenv("KINOKO_EMBEDDING_API_KEY")
-	if apiKey == "" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
-	}
-	if apiKey != "" {
-		embCfg := embedding.DefaultConfig()
-		embCfg.APIKey = apiKey
-		embedder := embedding.New(embCfg, logger)
-		emb, err = embedder.Embed(cmd.Context(), string(body))
-		if err != nil {
-			logger.Warn("embedding failed, indexing without", "repo", repo, "error", err)
-		}
+	apiURL := firstNonEmpty(indexAPIURL, os.Getenv("KINOKO_API_URL"), "http://127.0.0.1:23233")
+	emb, err = fetchEmbedding(apiURL, string(body))
+	if err != nil {
+		logger.Warn("embedding failed, indexing without", "repo", repo, "error", err)
+		emb = nil
 	}
 
 	indexer := storage.NewSQLiteIndexer(store)
@@ -203,6 +200,33 @@ func extractVersion(path string) int {
 	var v int
 	_, _ = fmt.Sscanf(m[1], "%d", &v)
 	return v
+}
+
+// fetchEmbedding calls the server's /api/v1/embed endpoint.
+func fetchEmbedding(apiURL, text string) ([]float32, error) {
+	payload, err := json.Marshal(map[string]string{"text": text})
+	if err != nil {
+		return nil, fmt.Errorf("marshal embed request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Post(apiURL+"/api/v1/embed", "application/json", bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("embed request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("embed endpoint returned %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Vector []float32 `json:"vector"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode embed response: %w", err)
+	}
+	return result.Vector, nil
 }
 
 func firstNonEmpty(vals ...string) string {

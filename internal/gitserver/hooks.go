@@ -21,7 +21,7 @@ func validateSafePath(name, value string) error {
 
 // InstallHooks writes global pre-receive and post-receive hook scripts to
 // the Soft Serve data directory. Idempotent: overwrites existing scripts.
-func InstallHooks(dataDir, kinokoBinary string) error {
+func InstallHooks(dataDir, kinokoBinary string, apiPort int) error {
 	// P0-1: Validate inputs to prevent shell injection.
 	if err := validateSafePath("dataDir", dataDir); err != nil {
 		return err
@@ -41,9 +41,9 @@ func InstallHooks(dataDir, kinokoBinary string) error {
 KINOKO_DATA_DIR="%s"
 while read oldrev newrev refname; do
     repo=$(echo "$GIT_DIR" | sed "s|${KINOKO_DATA_DIR}/repos/||;s|\.git$||")
-    KINOKO_REPO="$repo" KINOKO_REV="$newrev" %s index 2>&1 | logger -t kinoko-hook &
+    KINOKO_API_URL="http://127.0.0.1:%d" KINOKO_REPO="$repo" KINOKO_REV="$newrev" %s index 2>&1 | logger -t kinoko-hook &
 done
-`, dataDir, kinokoBinary)
+`, dataDir, apiPort, kinokoBinary)
 
 	preReceive := fmt.Sprintf(`#!/bin/sh
 # Kinoko pre-receive hook: credential scanning.

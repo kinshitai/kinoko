@@ -137,7 +137,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		kinokoBin = "kinoko" // fallback to PATH
 	}
-	if err := gitserver.InstallHooks(cfg.Server.DataDir, kinokoBin); err != nil {
+	if err := gitserver.InstallHooks(cfg.Server.DataDir, kinokoBin, cfg.Server.GetAPIPort()); err != nil {
 		logger.Warn("failed to install git hooks", "error", err)
 	} else {
 		logger.Info("git hooks installed", "data_dir", cfg.Server.DataDir)
@@ -180,6 +180,19 @@ func runServe(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("extraction not available on server — use 'kinoko run' to process sessions")
 		},
 	})
+	// Wire embedding engine for /api/v1/embed endpoint.
+	// Built with -tags embedding: real ONNX engine. Without: nil (503).
+	embedEngine, err := initEmbedEngine(cfg, logger)
+	switch {
+	case err != nil:
+		logger.Error("failed to init embedding engine", "error", err)
+	case embedEngine != nil:
+		apiSrv.SetEmbedEngine(embedEngine)
+		logger.Info("Embedding engine enabled", "model", embedEngine.ModelID(), "dims", embedEngine.Dims())
+	default:
+		logger.Info("Embedding engine disabled (built without native deps)")
+	}
+
 	if err := apiSrv.Start(); err != nil {
 		logger.Error("failed to start API server", "error", err)
 	} else {
