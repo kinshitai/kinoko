@@ -73,15 +73,24 @@ func runExtract(cmd *cobra.Command, args []string) error {
 	embedder := embedding.New(embCfg, logger)
 
 	// Initialize LLM client — Stage2 and Stage3 need it.
-	// For CLI extract, we use the embedder's API key with a simple LLM shim.
-	llmAPIKey := os.Getenv("KINOKO_LLM_API_KEY")
+	llmAPIKey := cfg.LLM.APIKey
+	if llmAPIKey == "" {
+		llmAPIKey = os.Getenv("KINOKO_LLM_API_KEY")
+	}
 	if llmAPIKey == "" {
 		llmAPIKey = os.Getenv("OPENAI_API_KEY")
 	}
 	if llmAPIKey == "" {
 		return fmt.Errorf("OPENAI_API_KEY or KINOKO_LLM_API_KEY required for extraction")
 	}
-	llmClient := llm.NewOpenAIClient(llmAPIKey, "gpt-4o-mini")
+	llmModel := cfg.LLM.Model
+	if llmModel == "" {
+		llmModel = "gpt-4o-mini"
+	}
+	llmClient, err := llm.NewClient(cfg.LLM.Provider, llmAPIKey, llmModel, cfg.LLM.BaseURL)
+	if err != nil {
+		return fmt.Errorf("create LLM client: %w", err)
+	}
 
 	// Build pipeline stages
 	stage1 := extraction.NewStage1Filter(cfg.Extraction, logger)

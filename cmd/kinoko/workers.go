@@ -35,7 +35,14 @@ func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, gitSrv *gitse
 	}
 	embedder := embedding.New(embCfg, logger)
 
-	llmClient := llm.NewOpenAIClient(llmAPIKey, "gpt-4o-mini")
+	llmModel := cfg.LLM.Model
+	if llmModel == "" {
+		llmModel = "gpt-4o-mini"
+	}
+	llmClient, err := llm.NewClient(cfg.LLM.Provider, llmAPIKey, llmModel, cfg.LLM.BaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("create LLM client: %w", err)
+	}
 	stage1 := extraction.NewStage1Filter(cfg.Extraction, logger)
 	stage2 := extraction.NewStage2Scorer(embedder, storage.NewSkillQuerier(store), llmClient, cfg.Extraction, logger)
 	stage3 := extraction.NewStage3Critic(llmClient, cfg.Extraction, logger)

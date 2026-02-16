@@ -11,7 +11,7 @@ import (
 
 func TestWithHTTPClient(t *testing.T) {
 	custom := &http.Client{}
-	c := NewOpenAIClient("key", "model", WithHTTPClient(custom))
+	c := NewOpenAIClient("key", "model", "", WithHTTPClient(custom))
 	if c.httpClient != custom {
 		t.Fatal("WithHTTPClient did not set custom client")
 	}
@@ -36,7 +36,7 @@ func TestComplete_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewOpenAIClient("test-key", "gpt-4o-mini", WithHTTPClient(srv.Client()))
+	c := NewOpenAIClient("test-key", "gpt-4o-mini", "", WithHTTPClient(srv.Client()))
 	// Override the URL by using a custom transport that redirects to our test server.
 	c.httpClient = srv.Client()
 
@@ -66,7 +66,7 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestComplete_Non200(t *testing.T) {
-	c := NewOpenAIClient("key", "model")
+	c := NewOpenAIClient("key", "model", "")
 	c.httpClient = &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			rec := httptest.NewRecorder()
@@ -90,7 +90,7 @@ func TestComplete_Non200(t *testing.T) {
 }
 
 func TestComplete_BadJSON(t *testing.T) {
-	c := NewOpenAIClient("key", "model")
+	c := NewOpenAIClient("key", "model", "")
 	c.httpClient = &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			rec := httptest.NewRecorder()
@@ -107,7 +107,7 @@ func TestComplete_BadJSON(t *testing.T) {
 }
 
 func TestComplete_EmptyChoices(t *testing.T) {
-	c := NewOpenAIClient("key", "model")
+	c := NewOpenAIClient("key", "model", "")
 	c.httpClient = &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			rec := httptest.NewRecorder()
