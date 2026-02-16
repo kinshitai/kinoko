@@ -22,7 +22,7 @@ func TestNoveltyClient_Novel(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewNoveltyClient(srv.URL, slog.Default())
+	c := NewNoveltyClient(srv.URL, 0.7, slog.Default())
 	res, err := c.Check(context.Background(), "some content")
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func TestNoveltyClient_NotNovel(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewNoveltyClient(srv.URL, slog.Default())
+	c := NewNoveltyClient(srv.URL, 0.7, slog.Default())
 	res, err := c.Check(context.Background(), "duplicate content")
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +60,7 @@ func TestNoveltyClient_NotNovel(t *testing.T) {
 
 func TestNoveltyClient_ServerUnreachable(t *testing.T) {
 	// Point at a port that nothing listens on.
-	c := NewNoveltyClient("http://127.0.0.1:1", slog.Default())
+	c := NewNoveltyClient("http://127.0.0.1:1", 0.7, slog.Default())
 	c.httpClient.Timeout = 1 * time.Second
 
 	res, err := c.Check(context.Background(), "content")
@@ -78,7 +78,7 @@ func TestNoveltyClient_MalformedResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewNoveltyClient(srv.URL, slog.Default())
+	c := NewNoveltyClient(srv.URL, 0.7, slog.Default())
 	_, err := c.Check(context.Background(), "content")
 	if err == nil {
 		t.Error("expected error on malformed response")
@@ -92,7 +92,7 @@ func TestNoveltyClient_ServerTimeout(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewNoveltyClient(srv.URL, slog.Default())
+	c := NewNoveltyClient(srv.URL, 0.7, slog.Default())
 	c.httpClient.Timeout = 100 * time.Millisecond
 
 	res, err := c.Check(context.Background(), "content")
