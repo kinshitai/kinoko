@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -80,10 +81,21 @@ func runIngest(cmd *cobra.Command, args []string) error {
 	var verdict string
 
 	if ingestForce {
-		// --force: skip critic, validate structure, normalize.
+		// --force: skip critic, but validate basic structure.
 		verdict = "force"
 		skillBody = body
 		skillVersion = 1
+
+		// Validate: non-empty, valid UTF-8, reasonable size.
+		if len(body) == 0 {
+			return fmt.Errorf("file is empty")
+		}
+		if len(body) > 1<<20 { // 1MB
+			return fmt.Errorf("file too large (%d bytes, max 1MB for --force)", len(body))
+		}
+		if !utf8.Valid(body) {
+			return fmt.Errorf("file is not valid UTF-8 (binary?)")
+		}
 
 		// Parse front matter if present.
 		if strings.HasPrefix(strings.TrimSpace(string(body)), "---") {
@@ -223,14 +235,30 @@ func runIngest(cmd *cobra.Command, args []string) error {
 		UpdatedAt:   now,
 	}
 
+	// Novelty check BEFORE push — gate duplicates.
+	threshold := cfg.Embedding.GetNoveltyThreshold()
+	noveltyClient := extraction.NewNoveltyClient(apiURL, threshold, logger)
+	noveltyResult, noveltyErr := noveltyClient.Check(cmd.Context(), string(skillBody))
+
+	isNovel := true // fail-open
+	if noveltyErr != nil {
+		logger.Warn("novelty check failed, treating as novel", "error", noveltyErr)
+	} else if noveltyResult != nil && !noveltyResult.Novel {
+		isNovel = false
+		logger.Warn("skill is not novel, skipping push",
+			"score", noveltyResult.Score,
+			"similar", len(noveltyResult.Similar))
+	}
+
+	// Index locally (always — even duplicates are useful in local store).
 	indexer := storage.NewSQLiteIndexer(store)
 	if err := indexer.IndexSkill(cmd.Context(), skill, emb); err != nil {
 		return fmt.Errorf("index skill: %w", err)
 	}
 
-	// Push to git if not dry-run.
+	// Push to git if novel and not dry-run.
 	pushed := false
-	if !ingestDryRun {
+	if !ingestDryRun && isNovel {
 		serverAddr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 		home, _ := os.UserHomeDir()
 		keyPath := filepath.Join(home, ".kinoko", "id_ed25519")
@@ -245,11 +273,6 @@ func runIngest(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
-
-	// Novelty check (informational — we push anyway for ingest).
-	threshold := cfg.Embedding.GetNoveltyThreshold()
-	noveltyClient := extraction.NewNoveltyClient(apiURL, threshold, logger)
-	noveltyResult, _ := noveltyClient.Check(cmd.Context(), string(skillBody))
 
 	// Print summary.
 	fmt.Println("─── Ingest Summary ───")
@@ -271,11 +294,14 @@ func runIngest(cmd *cobra.Command, args []string) error {
 	if noveltyResult != nil {
 		fmt.Printf("  Novel:    %v (score: %.3f)\n", noveltyResult.Novel, noveltyResult.Score)
 	}
-	if ingestDryRun {
+	switch {
+	case ingestDryRun:
 		fmt.Println("  Pushed:   no (dry-run)")
-	} else if pushed {
+	case !isNovel:
+		fmt.Println("  Pushed:   no (duplicate)")
+	case pushed:
 		fmt.Println("  Pushed:   yes")
-	} else {
+	default:
 		fmt.Println("  Pushed:   no")
 	}
 	fmt.Println("──────────────────────")

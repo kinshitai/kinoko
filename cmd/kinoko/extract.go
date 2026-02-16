@@ -184,19 +184,21 @@ func printExtractSummary(result *model.ExtractionResult, dryRun bool) {
 			fmt.Printf("  Version: %d\n", result.Skill.Version)
 			fmt.Printf("  Quality: %.2f\n", result.Skill.Quality.CompositeScore)
 		}
-		if dryRun {
+		switch {
+		case dryRun:
 			fmt.Println("  Pushed:  no (dry-run)")
-		} else if result.CommitHash != "" {
+		case result.CommitHash != "":
 			fmt.Printf("  Pushed:  yes (%s)\n", result.CommitHash)
-		} else {
+		default:
 			fmt.Println("  Pushed:  no")
 		}
 	case model.StatusRejected:
-		if result.Stage1 != nil && !result.Stage1.Passed {
+		switch {
+		case result.Stage1 != nil && !result.Stage1.Passed:
 			fmt.Printf("  Rejected at: Stage 1 — %s\n", result.Stage1.Reason)
-		} else if result.Stage2 != nil && !result.Stage2.Passed {
+		case result.Stage2 != nil && !result.Stage2.Passed:
 			fmt.Printf("  Rejected at: Stage 2 — %s\n", result.Stage2.Reason)
-		} else if result.Stage3 != nil && !result.Stage3.Passed {
+		case result.Stage3 != nil && !result.Stage3.Passed:
 			fmt.Printf("  Rejected at: Stage 3 — %s\n", result.Stage3.CriticReasoning)
 		}
 	case model.StatusError:

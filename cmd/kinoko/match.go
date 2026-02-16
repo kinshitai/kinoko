@@ -37,15 +37,16 @@ func init() {
 
 func runMatch(cmd *cobra.Command, args []string) error {
 	var queryText string
-	if matchFile != "" {
+	switch {
+	case matchFile != "":
 		data, err := os.ReadFile(matchFile)
 		if err != nil {
 			return fmt.Errorf("read file: %w", err)
 		}
 		queryText = string(data)
-	} else if len(args) > 0 {
+	case len(args) > 0:
 		queryText = args[0]
-	} else {
+	default:
 		return fmt.Errorf("provide query text as argument or use --file")
 	}
 
