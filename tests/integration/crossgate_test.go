@@ -118,7 +118,7 @@ func TestG2G1_PreReceiveHookRejectsCredentials(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Install hooks.
-	err := gitserver.InstallHooks(tmpDir, "/usr/bin/kinoko")
+	err := gitserver.InstallHooks(tmpDir, "/usr/bin/kinoko", 23233)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -681,17 +681,17 @@ func TestEdge_SanitizerComprehensive(t *testing.T) {
 // =============================================================================
 
 func TestEdge_HookInstallUnsafePath(t *testing.T) {
-	err := gitserver.InstallHooks("/tmp/safe-path", "/usr/bin/kinoko")
+	err := gitserver.InstallHooks("/tmp/safe-path", "/usr/bin/kinoko", 23233)
 	if err != nil {
 		t.Errorf("safe path should work: %v", err)
 	}
 
-	err = gitserver.InstallHooks("/tmp/; rm -rf /", "/usr/bin/kinoko")
+	err = gitserver.InstallHooks("/tmp/; rm -rf /", "/usr/bin/kinoko", 23233)
 	if err == nil {
 		t.Error("unsafe dataDir should be rejected")
 	}
 
-	err = gitserver.InstallHooks("/tmp/safe", "/usr/bin/kinoko; echo pwned")
+	err = gitserver.InstallHooks("/tmp/safe", "/usr/bin/kinoko; echo pwned", 23233)
 	if err == nil {
 		t.Error("unsafe binary path should be rejected")
 	}

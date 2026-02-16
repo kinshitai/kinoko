@@ -25,6 +25,7 @@ type Server struct {
 	logger      *slog.Logger
 	enqueue     func(ctx context.Context, session model.SessionRecord, log []byte) error
 	discoverSem chan struct{} // P1-7: semaphore to limit concurrent discover requests
+	embedEngine embedding.Engine
 	noveltyMux  *http.ServeMux
 }
 

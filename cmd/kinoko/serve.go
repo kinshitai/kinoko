@@ -137,7 +137,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		kinokoBin = "kinoko" // fallback to PATH
 	}
-	if err := gitserver.InstallHooks(cfg.Server.DataDir, kinokoBin); err != nil {
+	if err := gitserver.InstallHooks(cfg.Server.DataDir, kinokoBin, cfg.Server.GetAPIPort()); err != nil {
 		logger.Warn("failed to install git hooks", "error", err)
 	} else {
 		logger.Info("git hooks installed", "data_dir", cfg.Server.DataDir)

@@ -10,7 +10,7 @@ func TestInstallHooks_CreatesScripts(t *testing.T) {
 	dataDir := t.TempDir()
 	kinokoBin := "/usr/local/bin/kinoko"
 
-	if err := InstallHooks(dataDir, kinokoBin); err != nil {
+	if err := InstallHooks(dataDir, kinokoBin, 23233); err != nil {
 		t.Fatalf("InstallHooks: %v", err)
 	}
 
@@ -41,7 +41,7 @@ func TestInstallHooks_PostReceiveContainsBinary(t *testing.T) {
 	dataDir := t.TempDir()
 	kinokoBin := "/opt/kinoko/bin/kinoko"
 
-	if err := InstallHooks(dataDir, kinokoBin); err != nil {
+	if err := InstallHooks(dataDir, kinokoBin, 23233); err != nil {
 		t.Fatal(err)
 	}
 
@@ -58,10 +58,10 @@ func TestInstallHooks_PostReceiveContainsBinary(t *testing.T) {
 func TestInstallHooks_Idempotent(t *testing.T) {
 	dataDir := t.TempDir()
 
-	if err := InstallHooks(dataDir, "/bin/kinoko"); err != nil {
+	if err := InstallHooks(dataDir, "/bin/kinoko", 23233); err != nil {
 		t.Fatal(err)
 	}
-	if err := InstallHooks(dataDir, "/bin/kinoko"); err != nil {
+	if err := InstallHooks(dataDir, "/bin/kinoko", 23233); err != nil {
 		t.Fatalf("second call: %v", err)
 	}
 }
@@ -81,7 +81,7 @@ func TestInstallHooks_RejectsShellInjection(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := InstallHooks(tt.dataDir, tt.binary)
+			err := InstallHooks(tt.dataDir, tt.binary, 23233)
 			if err == nil {
 				t.Error("expected error for unsafe input, got nil")
 			}
@@ -133,7 +133,7 @@ func TestInstallHooks_ScriptContent(t *testing.T) {
 	dataDir := t.TempDir()
 	kinokoBin := "/usr/local/bin/kinoko"
 
-	if err := InstallHooks(dataDir, kinokoBin); err != nil {
+	if err := InstallHooks(dataDir, kinokoBin, 23233); err != nil {
 		t.Fatal(err)
 	}
 
@@ -163,6 +163,18 @@ func TestInstallHooks_ScriptContent(t *testing.T) {
 	}
 }
 
+func TestInstallHooks_PostReceiveContainsAPIURL(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := InstallHooks(dataDir, "/usr/local/bin/kinoko", 9999); err != nil {
+		t.Fatal(err)
+	}
+	content, _ := os.ReadFile(filepath.Join(dataDir, "hooks", "post-receive"))
+	s := string(content)
+	if !contains(s, `KINOKO_API_URL="http://127.0.0.1:9999"`) {
+		t.Error("post-receive should contain KINOKO_API_URL with correct port")
+	}
+}
+
 func TestInstallHooks_PathValidationRejectsMalicious(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -175,7 +187,7 @@ func TestInstallHooks_PathValidationRejectsMalicious(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := InstallHooks(tt.dataDir, tt.binary)
+			err := InstallHooks(tt.dataDir, tt.binary, 23233)
 			if err == nil {
 				t.Error("expected error for unsafe input")
 			}
