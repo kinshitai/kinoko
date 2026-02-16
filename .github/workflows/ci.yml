@@ -44,6 +44,12 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # NOTE: All test steps use -short because many integration and e2e tests
+      # require Soft Serve (git server) and other external services that aren't
+      # available in CI. The -short flag skips those tests while still running
+      # everything that doesn't need external dependencies.
+      # Skipped: gitserver tests, CLI serve/run tests, crossgate large-log test,
+      # hook-index test, e2e stress tests, and the pavel timeout test.
       - name: Unit tests
         run: go test -short -coverpkg=./internal/... -coverprofile=unit.cov ./internal/... -timeout 120s
 
