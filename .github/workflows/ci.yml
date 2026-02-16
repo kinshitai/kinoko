@@ -56,45 +56,6 @@ jobs:
       - name: Install Soft Serve
         run: go install github.com/charmbracelet/soft-serve/cmd/soft@latest
 
-      - name: Vet
-        run: go vet ./...
-
-      - name: Unit tests
-        run: go test -coverpkg=./internal/...,./cmd/...,./pkg/... -coverprofile=unit.cov ./internal/... -timeout 120s
-
-      - name: Integration tests
-        run: go test -tags integration -coverpkg=./internal/...,./cmd/...,./pkg/... -coverprofile=integration.cov ./tests/integration/ -timeout 60s
-
-      - name: E2E tests
-        run: go test -tags integration -coverpkg=./internal/...,./cmd/...,./pkg/... -coverprofile=e2e.cov ./tests/e2e/ -timeout 90s
-
-      - name: Merge coverage
-        run: |
-          head -1 unit.cov > combined.cov
-          tail -n +2 unit.cov >> combined.cov
-          tail -n +2 integration.cov >> combined.cov
-          tail -n +2 e2e.cov >> combined.cov
-
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-test
-          path: combined.cov
-
-  test-embedding:
-    name: Test (embedding)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Install Soft Serve
-        run: go install github.com/charmbracelet/soft-serve/cmd/soft@latest
-
       - name: Download ONNX Runtime
         run: |
           curl -sSL https://github.com/microsoft/onnxruntime/releases/download/v1.22.0/onnxruntime-linux-x64-1.22.0.tgz \
@@ -118,6 +79,18 @@ jobs:
           curl -sSL -o $MODEL_DIR/tokenizer.json \
             "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer.json"
 
+      - name: Vet
+        run: go vet ./...
+
+      - name: Unit tests
+        run: go test -coverpkg=./internal/...,./cmd/...,./pkg/... -coverprofile=unit.cov ./internal/... -timeout 120s
+
+      - name: Integration tests
+        run: go test -tags integration -coverpkg=./internal/...,./cmd/...,./pkg/... -coverprofile=integration.cov ./tests/integration/ -timeout 60s
+
+      - name: E2E tests
+        run: go test -tags integration -coverpkg=./internal/...,./cmd/...,./pkg/... -coverprofile=e2e.cov ./tests/e2e/ -timeout 90s
+
       - name: Embedding tests
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/onnxruntime-linux-x64-1.22.0/lib
@@ -125,37 +98,16 @@ jobs:
           go test -v -tags embedding -coverpkg=./internal/...,./cmd/...,./pkg/... \
             -coverprofile=embedding.cov ./internal/embedding/... -timeout 120s
 
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-embedding
-          path: embedding.cov
-
-  coverage:
-    name: Coverage
-    runs-on: ubuntu-latest
-    needs: [test, test-embedding]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Download coverage artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: coverage-*
-
-      - name: Merge all coverage
+      - name: Coverage report
         run: |
-          head -1 coverage-test/combined.cov > all.cov
-          tail -n +2 coverage-test/combined.cov >> all.cov
-          tail -n +2 coverage-embedding/embedding.cov >> all.cov
-          echo "## Combined Coverage (all jobs)" >> $GITHUB_STEP_SUMMARY
-          go tool cover -func=all.cov | grep 'total:' | awk '{print "**Combined coverage: " $NF "**"}' >> $GITHUB_STEP_SUMMARY
-          go tool cover -func=all.cov | grep 'total:'
+          head -1 unit.cov > combined.cov
+          tail -n +2 unit.cov >> combined.cov
+          tail -n +2 integration.cov >> combined.cov
+          tail -n +2 e2e.cov >> combined.cov
+          tail -n +2 embedding.cov >> combined.cov
+          echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=combined.cov | grep 'total:' | awk '{print "**Combined coverage: " $NF "**"}' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=combined.cov | grep 'total:'
 
   build:
     name: Build
@@ -173,4 +125,3 @@ jobs:
 
       - name: Verify binary
         run: ./kinoko --help
-
