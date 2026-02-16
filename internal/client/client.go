@@ -45,7 +45,7 @@ type Client struct {
 
 // ClientConfig configures a Client.
 type ClientConfig struct {
-	APIURL   string // HTTP API base URL (e.g. http://localhost:23232)
+	APIURL   string // HTTP API base URL (e.g. http://localhost:23233)
 	SSHURL   string // SSH URL for git clone (e.g. ssh://localhost:23231)
 	CacheDir string // Local cache directory (e.g. ~/.kinoko/cache)
 }
@@ -249,7 +249,7 @@ func ParseServerURL(raw string) (string, error) {
 	}
 	// Default API port
 	if u.Port() == "" {
-		u.Host = u.Hostname() + ":23232"
+		u.Host = u.Hostname() + ":23233"
 	}
 	u.Scheme = "http"
 	u.Path = ""

@@ -301,14 +301,20 @@ libraries: []`, tempDir, tempDir)
 			t.Fatalf("Failed to write privileged config: %v", err)
 		}
 
-		cmd := exec.Command(binaryPath, "serve", "--config", privilegedConfig)
-		cmd.Dir = tempDir
-
 		// Create data directory first
 		dataDir := filepath.Join(tempDir, "data")
 		if err := os.MkdirAll(dataDir, 0755); err != nil {
 			t.Fatalf("Failed to create data dir: %v", err)
 		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, binaryPath, "serve", "--config", privilegedConfig)
+		cmd.Cancel = func() error {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		}
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.Dir = tempDir
 
 		output, err := cmd.CombinedOutput()
 		if err == nil {

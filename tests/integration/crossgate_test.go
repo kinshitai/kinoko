@@ -592,7 +592,7 @@ func TestEdge_ClientSyncDeletedRepo(t *testing.T) {
 	gitRunIn(t, repoDir, "remote", "add", "origin", "ssh://nonexistent:23231/test-lib/deleted-skill")
 
 	cli := client.New(client.ClientConfig{
-		APIURL:   "http://localhost:23232",
+		APIURL:   "http://localhost:23233",
 		CacheDir: cacheDir,
 	})
 

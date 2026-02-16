@@ -23,7 +23,7 @@ func TestLoadLocalConfig(t *testing.T) {
 
 	content := `client:
   server: "ssh://localhost:23231"
-  api: "http://localhost:23232"
+  api: "http://localhost:23233"
   cache_dir: "/tmp/cache"
   pull_interval: "5m"
 `
@@ -38,7 +38,7 @@ func TestLoadLocalConfig(t *testing.T) {
 	if cfg.Client.Server != "ssh://localhost:23231" {
 		t.Fatalf("Server = %q", cfg.Client.Server)
 	}
-	if cfg.Client.API != "http://localhost:23232" {
+	if cfg.Client.API != "http://localhost:23233" {
 		t.Fatalf("API = %q", cfg.Client.API)
 	}
 	if cfg.Client.CacheDir != "/tmp/cache" {
@@ -73,7 +73,7 @@ func TestSaveClientConfig(t *testing.T) {
 
 	section := ClientSection{
 		Server:       "ssh://localhost:23231",
-		API:          "http://localhost:23232",
+		API:          "http://localhost:23233",
 		CacheDir:     "/tmp/cache",
 		PullInterval: "10m",
 	}

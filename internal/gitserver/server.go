@@ -185,8 +185,8 @@ func (s *Server) Stop() error {
 		return nil
 	}
 
-	// Send SIGTERM for graceful shutdown
-	if err := s.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+	// Send SIGTERM to the entire process group for graceful shutdown
+	if err := syscall.Kill(-s.cmd.Process.Pid, syscall.SIGTERM); err != nil {
 		s.logger.Warn("Failed to send SIGTERM", "error", err)
 	}
 
@@ -196,7 +196,7 @@ func (s *Server) Stop() error {
 		s.logger.Info("Git server stopped gracefully")
 	case <-time.After(10 * time.Second):
 		s.logger.Warn("Graceful shutdown timed out, sending SIGKILL")
-		if err := s.cmd.Process.Kill(); err != nil {
+		if err := syscall.Kill(-s.cmd.Process.Pid, syscall.SIGKILL); err != nil {
 			s.logger.Error("Failed to kill process", "error", err)
 			return err
 		}

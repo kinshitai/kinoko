@@ -5,6 +5,7 @@
 package integration
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -13,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -290,18 +290,25 @@ sshReady:
 		t.Error("serve did not create admin public key")
 	}
 
-	// API health endpoint (port+1)
-	apiPort := sshPort + 1
+	// API health endpoint (port+2; port+1 is Soft Serve HTTP)
+	apiPort := sshPort + 2
 	healthURL := fmt.Sprintf("http://127.0.0.1:%d/api/v1/health", apiPort)
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(healthURL)
-	if err != nil {
-		t.Logf("API health check failed (may need OPENAI_API_KEY): %v", err)
-	} else {
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			t.Logf("health returned %d (endpoint may not be registered)", resp.StatusCode)
+	client := &http.Client{Timeout: 2 * time.Second}
+	healthDeadline := time.Now().Add(5 * time.Second)
+	var healthOK bool
+	for time.Now().Before(healthDeadline) {
+		resp, err := client.Get(healthURL)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				healthOK = true
+				break
+			}
 		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if !healthOK {
+		t.Fatal("API health endpoint never returned 200")
 	}
 
 	// Graceful stop
@@ -353,8 +360,6 @@ func TestServe_NoInitRequired(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRun_WorkerStartsAndProcesses(t *testing.T) {
-	// `kinoko run` requires an LLM API key for the extraction pipeline.
-	// Without it, it errors out. We verify that behavior cleanly.
 	tmp := t.TempDir()
 	bin := buildBinary(t, tmp)
 	dataDir := filepath.Join(tmp, "data")
@@ -365,47 +370,71 @@ func TestRun_WorkerStartsAndProcesses(t *testing.T) {
 
 	writeMinimalConfig(t, cfgPath, dataDir, dbPath, sshPort)
 
-	// Without OPENAI_API_KEY, run should fail with a clear error (not panic)
-	cmd := exec.Command(bin, "run", "--config", cfgPath)
-	cmd.Env = filterEnv("OPENAI_API_KEY", "KINOKO_LLM_API_KEY")
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Log("run succeeded without API key (unexpected but not fatal)")
-	} else {
-		outStr := string(out)
-		if strings.Contains(outStr, "panic") {
-			t.Fatalf("run panicked:\n%s", outStr)
-		}
-		if !strings.Contains(outStr, "LLM") && !strings.Contains(outStr, "API key") &&
-			!strings.Contains(outStr, "pipeline") {
-			t.Logf("run error doesn't mention LLM/API key: %s", outStr)
-		}
-	}
-
-	// If API key is available, verify run starts workers
-	if os.Getenv("OPENAI_API_KEY") != "" {
+	t.Run("degraded_mode_without_api_key", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		cmd2 := exec.CommandContext(ctx, bin, "run", "--config", cfgPath)
-		cmd2.Cancel = func() error {
-			return syscall.Kill(-cmd2.Process.Pid, syscall.SIGTERM)
+		var stderr bytes.Buffer
+		cmd := exec.CommandContext(ctx, bin, "run", "--config", cfgPath)
+		cmd.Cancel = func() error {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 		}
-		cmd2.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		cmd2.Stdout = io.Discard
-		cmd2.Stderr = io.Discard
-		if err := cmd2.Start(); err != nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.Env = filterEnv("OPENAI_API_KEY", "KINOKO_LLM_API_KEY")
+		cmd.Stdout = io.Discard
+		cmd.Stderr = &stderr
+		if err := cmd.Start(); err != nil {
 			cancel()
 			t.Fatalf("run start: %v", err)
 		}
-		defer stopProcess(cmd2, cancel)
+		defer stopProcess(cmd, cancel)
 
-		// Give it a few seconds to start
-		time.Sleep(3 * time.Second)
-
-		// Process should still be running (not crashed)
-		if cmd2.ProcessState != nil && cmd2.ProcessState.Exited() {
-			t.Error("run process exited prematurely")
+		// Wait for degraded mode log message
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			if strings.Contains(stderr.String(), "No LLM API key") ||
+				strings.Contains(stderr.String(), "extraction disabled") ||
+				strings.Contains(stderr.String(), "degraded") {
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
 		}
-		stopProcess(cmd2, cancel)
+
+		// Verify process is still running (daemon, not crashed)
+		if cmd.ProcessState != nil {
+			t.Fatal("run exited unexpectedly in degraded mode")
+		}
+
+		output := stderr.String()
+		if strings.Contains(output, "panic") {
+			t.Fatalf("run panicked:\n%s", output)
+		}
+
+		stopProcess(cmd, cancel)
+	})
+
+	// If API key is available, verify run starts workers
+	if os.Getenv("OPENAI_API_KEY") != "" {
+		t.Run("with_api_key", func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cmd := exec.CommandContext(ctx, bin, "run", "--config", cfgPath)
+			cmd.Cancel = func() error {
+				return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+			}
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			cmd.Stdout = io.Discard
+			cmd.Stderr = io.Discard
+			if err := cmd.Start(); err != nil {
+				cancel()
+				t.Fatalf("run start: %v", err)
+			}
+			defer stopProcess(cmd, cancel)
+
+			time.Sleep(3 * time.Second)
+
+			if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+				t.Error("run process exited prematurely")
+			}
+			stopProcess(cmd, cancel)
+		})
 	}
 }
 
@@ -445,12 +474,12 @@ func TestCLI_InitRunServeIntegration(t *testing.T) {
 		t.Fatal("init did not create config")
 	}
 
-	// Patch config to use a free port
+	// Write a proper server config with a free port (init config has no server section)
 	sshPort := freePort(t)
+	dataDir := filepath.Join(kd, "data")
+	dbPath := filepath.Join(kd, "test.db")
 	cfgPath := filepath.Join(kd, "config.yaml")
-	cfgBytes, _ := os.ReadFile(cfgPath)
-	patched := strings.ReplaceAll(string(cfgBytes), "port: 23231", fmt.Sprintf("port: %d", sshPort))
-	os.WriteFile(cfgPath, []byte(patched), 0644)
+	writeMinimalConfig(t, cfgPath, dataDir, dbPath, sshPort)
 
 	// Step 2: serve
 	ctx, cancel := context.WithCancel(context.Background())
@@ -482,18 +511,46 @@ func TestCLI_InitRunServeIntegration(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	// Step 3: run (will likely fail without API key, but shouldn't crash)
-	runCmd := exec.Command(bin, "run", "--config", cfgPath)
-	runCmd.Env = append(os.Environ(), "HOME="+home)
-	runOut, runErr := runCmd.CombinedOutput()
-	if runErr != nil {
-		if strings.Contains(string(runOut), "panic") {
-			t.Fatalf("run panicked:\n%s", runOut)
-		}
-		t.Logf("run exited (expected without API key): %s", runOut)
-	} else {
-		t.Log("full init→serve→run flow succeeded")
+	// Step 3: run as daemon (enters degraded mode without API key)
+	runCtx, runCancel := context.WithCancel(context.Background())
+	var runStderr bytes.Buffer
+	runCmd := exec.CommandContext(runCtx, bin, "run", "--config", cfgPath)
+	runCmd.Cancel = func() error {
+		return syscall.Kill(-runCmd.Process.Pid, syscall.SIGTERM)
 	}
+	runCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	runCmd.Env = append(os.Environ(), "HOME="+home)
+	runCmd.Stdout = io.Discard
+	runCmd.Stderr = &runStderr
+	if err := runCmd.Start(); err != nil {
+		runCancel()
+		t.Fatalf("run start: %v", err)
+	}
+	defer stopProcess(runCmd, runCancel)
+
+	// Wait for log confirmation
+	runDeadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(runDeadline) {
+		output := runStderr.String()
+		if strings.Contains(output, "No LLM API key") ||
+			strings.Contains(output, "extraction disabled") ||
+			strings.Contains(output, "degraded") ||
+			strings.Contains(output, "daemon") {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	if runCmd.ProcessState != nil {
+		t.Fatal("run exited unexpectedly")
+	}
+
+	if strings.Contains(runStderr.String(), "panic") {
+		t.Fatalf("run panicked:\n%s", runStderr.String())
+	}
+
+	t.Log("full init→serve→run flow succeeded")
+	stopProcess(runCmd, runCancel)
 }
 
 // ---------------------------------------------------------------------------
@@ -597,19 +654,43 @@ func TestRun_ServerUnreachable(t *testing.T) {
 	deadPort := freePort(t)
 	writeMinimalConfig(t, cfgPath, dataDir, dbPath, deadPort)
 
-	cmd := exec.Command(bin, "run", "--config", cfgPath)
-	cmd.Env = filterEnv() // keep env as-is
-	out, err := cmd.CombinedOutput()
-	outStr := string(out)
+	// kinoko run uses local SQLite — start as daemon, verify it runs, stop.
+	ctx, cancel := context.WithCancel(context.Background())
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, bin, "run", "--config", cfgPath)
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Env = filterEnv("OPENAI_API_KEY", "KINOKO_LLM_API_KEY")
+	cmd.Stdout = io.Discard
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		cancel()
+		t.Fatalf("run start: %v", err)
+	}
+	defer stopProcess(cmd, cancel)
 
-	// Should NOT panic
-	if strings.Contains(outStr, "panic") {
-		t.Fatalf("run panicked when server unreachable:\n%s", outStr)
+	// Wait for startup log
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		output := stderr.String()
+		if strings.Contains(output, "No LLM API key") ||
+			strings.Contains(output, "extraction disabled") ||
+			strings.Contains(output, "degraded") {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 
-	// It may fail (no pipeline, etc.) but that's OK — no crash.
-	if err != nil {
-		t.Logf("run exited with error (expected): %v — %s", err, outStr)
+	// Verify process is still running
+	if cmd.ProcessState != nil {
+		t.Fatal("run exited unexpectedly with unreachable server config")
 	}
-	_ = strconv.Itoa(deadPort) // suppress unused import
+
+	if strings.Contains(stderr.String(), "panic") {
+		t.Fatalf("run panicked:\n%s", stderr.String())
+	}
+
+	stopProcess(cmd, cancel)
 }

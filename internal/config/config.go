@@ -58,16 +58,17 @@ type DecayConfig struct {
 type ServerConfig struct {
 	Host    string `yaml:"host"`
 	Port    int    `yaml:"port"`
-	APIPort int    `yaml:"apiPort,omitempty"` // P2-5: HTTP API port, defaults to Port+1
+	APIPort int    `yaml:"apiPort,omitempty"` // P2-5: HTTP API port, defaults to Port+2 (Port+1 is Soft Serve HTTP)
 	DataDir string `yaml:"dataDir"`
 }
 
-// GetAPIPort returns the configured API port, defaulting to Port+1.
+// GetAPIPort returns the configured API port, defaulting to Port+2.
+// Port+1 is reserved for Soft Serve HTTP.
 func (s ServerConfig) GetAPIPort() int {
 	if s.APIPort > 0 {
 		return s.APIPort
 	}
-	return s.Port + 1
+	return s.Port + 2
 }
 
 // StorageConfig contains storage backend configuration

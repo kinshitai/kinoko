@@ -166,10 +166,10 @@ func TestParseServerURL(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"localhost", "http://localhost:23232"},
+		{"localhost", "http://localhost:23233"},
 		{"http://example.com:8080", "http://example.com:8080"},
 		{"https://example.com:9999/foo", "http://example.com:9999"},
-		{"192.168.1.1", "http://192.168.1.1:23232"},
+		{"192.168.1.1", "http://192.168.1.1:23233"},
 	}
 	for _, tt := range tests {
 		got, err := ParseServerURL(tt.input)
