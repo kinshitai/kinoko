@@ -3,10 +3,10 @@ title: Kinoko
 description: Knowledge-sharing infrastructure for AI agents.
 template: splash
 hero:
-  tagline: "Every problem solved once is solved for everyone. Knowledge-sharing infrastructure for AI agents — when an agent solves a problem, Kinoko extracts the knowledge and injects it into future sessions, automatically."
+  tagline: "Every problem solved once is solved for everyone."
   actions:
     - text: Get Started
-      link: /quickstart/
+      link: /what-is-kinoko/
       icon: right-arrow
       variant: primary
     - text: View on GitHub
@@ -17,7 +17,11 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## The Core Loop
+## What Kinoko Does
+
+AI agents solve problems all day — debugging breakthroughs, architecture insights, clever workarounds. Every solution dies when the session ends. The next person with the same problem starts from zero.
+
+Kinoko captures what agents learn and delivers it to future sessions. Automatically, securely, without anyone lifting a finger.
 
 ```
 Agent solves problem → Knowledge extracted → Stored in git → Injected into future sessions
@@ -25,31 +29,33 @@ Agent solves problem → Knowledge extracted → Stored in git → Injected into
         └──────────────────────────────────────────────────────────────┘
 ```
 
-## How It Works
+Like mycelium connecting trees in a forest, Kinoko connects agents through shared knowledge — nutrients flowing invisibly through the network, making every node stronger.
+
+## The Pipeline
 
 <CardGrid>
-  <Card title="🪙 Gold Panning" icon="seti:pipeline">
-    Multi-stage extraction filters noise cheaply. Metadata checks first, LLM critique last. You can afford expensive quality checks if you eliminate the noise cheaply first.
+  <Card title="Extraction" icon="seti:pipeline">
+    Multi-stage filtering eliminates noise cheaply. Metadata checks first, LLM critique last. Most sessions aren't worth keeping — Kinoko finds the ones that are.
 
-    [Learn more →](/concepts/extraction/)
+    [How extraction works →](/concepts/extraction/)
   </Card>
 
-  <Card title="🍷 Wine Tasting" icon="star">
-    7-dimension quality scoring, not thumbs up/down. Each dimension is scored independently with explicit criteria. Structured evaluation beats holistic judgment.
+  <Card title="Quality Scoring" icon="star">
+    7-dimension evaluation, not thumbs up/down. Each skill is scored on specificity, completeness, portability, accuracy, and more. Structured judgment you can debug.
 
-    [Learn more →](/concepts/quality/)
+    [How quality works →](/concepts/quality/)
   </Card>
 
-  <Card title="📚 Reference Librarian" icon="open-book">
+  <Card title="Injection" icon="open-book">
     Pattern matching, not just keyword search. Understands the problem beneath the question. The most useful knowledge often doesn't look like what you asked for.
 
-    [Learn more →](/concepts/injection/)
+    [How injection works →](/concepts/injection/)
   </Card>
 
-  <Card title="🔥 Forest Fires" icon="warning">
-    Knowledge decays. That's a feature. Different knowledge types have different shelf lives. The system forgets gracefully and can remember again when evidence warrants it.
+  <Card title="Decay" icon="warning">
+    Knowledge has a half-life. Tactical fixes expire faster than foundational patterns. The system forgets gracefully — and can remember again when evidence warrants it.
 
-    [Learn more →](/concepts/decay/)
+    [How decay works →](/concepts/decay/)
   </Card>
 </CardGrid>
 
@@ -61,19 +67,26 @@ cd kinoko && go install ./cmd/kinoko
 kinoko init && kinoko serve
 ```
 
-## Project Status
+[Full quickstart guide →](/quickstart/)
 
-Kinoko is in active development. What exists today:
+## Built for Developers
 
-- 117 Go files · 456 tests · ~30K lines · 16 internal packages · 73.6% test coverage
-- 3-stage extraction pipeline with LLM critic
-- 7-dimension quality scoring
-- Pattern-based injection with embedding similarity
-- Half-life decay with rescue mechanics
-- A/B testing framework
-- SQLite storage with WAL mode
-- Soft Serve git server integration
-- Three-command architecture: `init` (setup), `serve` (infrastructure), `run` (agent daemon)
-- Git-first design — git is truth, SQLite is derived cache
+<CardGrid>
+  <Card title="Who it's for" icon="laptop">
+    Teams running AI agents at scale — Claude, OpenAI, Codex, or your own. If your agents solve the same problems twice, Kinoko pays for itself on day one.
+  </Card>
 
-The system is functional end-to-end. The API surface is stabilizing but not yet frozen.
+  <Card title="How it's built" icon="seti:config">
+    Single Go binary. Git-first — your knowledge lives in repos you control, not someone else's cloud. SQLite for speed, git for truth. Self-host everything.
+  </Card>
+</CardGrid>
+
+## Get Involved
+
+Kinoko is open source and early. That means you can shape it.
+
+- ⭐ [Star the repo](https://github.com/kinshitai/kinoko) to follow along
+- 🐛 [Open an issue](https://github.com/kinshitai/kinoko/issues) — bug reports, feature ideas, questions
+- 🔧 [Contribute](https://github.com/kinshitai/kinoko/blob/main/CONTRIBUTING.md) — PRs welcome, especially around new extraction strategies and injection patterns
+
+[Project status & roadmap →](/project-status/)

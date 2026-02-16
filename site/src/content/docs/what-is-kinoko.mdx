@@ -1,0 +1,64 @@
+---
+title: What is Kinoko?
+description: A plain-language introduction to what Kinoko does, who it's for, and how it works.
+slug: what-is-kinoko
+---
+
+## The Problem
+
+Every day, AI agents help developers solve problems — debugging sessions, architecture decisions, tricky workarounds. Every solution disappears when the session ends. The next developer with the same problem starts from scratch.
+
+This isn't a documentation problem. People don't write docs for every debugging session, and they never will. The knowledge just evaporates.
+
+## What Kinoko Does
+
+Kinoko is **knowledge infrastructure for AI agents**. It sits alongside your AI agent workflow and does three things:
+
+1. **Captures** — When an agent session produces something useful, Kinoko automatically extracts the knowledge into a structured format called a *skill*.
+2. **Evaluates** — Each skill is scored across seven quality dimensions. Bad knowledge is worse than no knowledge, so Kinoko is selective.
+3. **Delivers** — When a future agent session encounters a related problem, Kinoko injects relevant skills into the context. The agent gets better answers without the developer doing anything.
+
+All of this happens automatically. No tagging, no reviewing, no publishing. Developers work normally; their agents get smarter over time.
+
+## A Concrete Example
+
+**Monday:** A developer on your team spends 45 minutes debugging a CORS issue with a specific API gateway configuration. Their AI agent helps them find the fix — a non-obvious header combination.
+
+Kinoko's extraction pipeline detects this is a novel, well-defined solution. It extracts a skill: the problem pattern, the solution, the reasoning, the verification that it worked.
+
+**Wednesday:** A different developer hits the same CORS issue. Their AI agent's session is enriched with the skill from Monday. Instead of 45 minutes of debugging, the agent already knows the fix. The developer doesn't search for anything, doesn't ask for help, doesn't even know Kinoko exists. They just get a better answer, faster.
+
+## Who It's For
+
+- **Solo developers** who want their AI agent to accumulate knowledge across sessions instead of starting fresh every time
+- **Teams** who want knowledge to flow between developers automatically — no wikis, no Slack threads, no "did anyone solve this before?"
+- **Organizations** (future) who want to build a shared knowledge base from the collective problem-solving of their entire engineering team
+
+## How It's Built
+
+Kinoko is a Go binary with three commands:
+
+| Command | What it does |
+|---------|-------------|
+| `kinoko init` | Sets up your workspace — config, SSH keys, local cache |
+| `kinoko serve` | Runs shared infrastructure — a git server for skills, a discovery API, security hooks |
+| `kinoko run` | Runs the local agent daemon — extraction workers, quality scoring, injection engine, decay scheduler |
+
+Skills are stored as Markdown files in git repositories. Git is the source of truth; everything else (SQLite indexes, embeddings) is a derived cache. This means skills are portable, auditable, and diffable.
+
+Security is built in from day one: credential scanning runs on every push and during extraction. Secrets never make it into the knowledge base.
+
+## Key Design Decisions
+
+- **Zero friction** — If a developer has to do anything manually, adoption dies. Everything is automatic by default.
+- **Quality over quantity** — One good skill beats a thousand bad ones. Multi-stage filtering and dimensional scoring ensure the knowledge base stays useful.
+- **Knowledge decays** — Yesterday's API workaround might be wrong today. Skills have half-lives and lose relevance over time unless they're re-validated.
+- **Git-first** — No proprietary formats, no lock-in. Your knowledge lives in git repos you control.
+- **Open by default** — The value is in the network effect, not in locking knowledge down.
+
+## Next Steps
+
+- **[Quickstart](/quickstart/)** — Get a working Kinoko setup in 5 minutes
+- **[Architecture](/concepts/architecture/)** — Understand the init/serve/run split in detail
+- **[How Kinoko Thinks](/concepts/overview/)** — Deep dive into the four mental models behind the pipeline
+- **[The Manifesto](/manifesto/)** — Why this project exists and what success looks like

@@ -28,12 +28,13 @@ export default defineConfig({
         },
       ],
       social: {
-        github: 'https://github.com/kinoko-dev/kinoko',
+        github: 'https://github.com/kinshitai/kinoko',
       },
       sidebar: [
         {
           label: 'Getting Started',
           items: [
+            { label: 'What is Kinoko?', slug: 'what-is-kinoko' },
             { label: 'Quickstart', slug: 'quickstart' },
             { label: 'Installation', slug: 'installation' },
           ],
@@ -44,10 +45,10 @@ export default defineConfig({
             { label: 'Overview', slug: 'concepts/overview' },
             { label: 'Architecture', slug: 'concepts/architecture' },
             { label: 'Security', slug: 'concepts/security' },
-            { label: 'Extraction (Gold Panning)', slug: 'concepts/extraction' },
-            { label: 'Quality (Wine Tasting)', slug: 'concepts/quality' },
-            { label: 'Injection (Reference Librarian)', slug: 'concepts/injection' },
-            { label: 'Decay (Forest Fires)', slug: 'concepts/decay' },
+            { label: 'Extraction', slug: 'concepts/extraction' },
+            { label: 'Quality', slug: 'concepts/quality' },
+            { label: 'Injection', slug: 'concepts/injection' },
+            { label: 'Decay', slug: 'concepts/decay' },
           ],
         },
         {
@@ -66,8 +67,10 @@ export default defineConfig({
           ],
         },
         {
-          label: 'Manifesto',
-          slug: 'manifesto',
+          label: 'Project',
+          items: [
+            { label: 'Manifesto', slug: 'manifesto' },
+          ],
         },
       ],
     }),
