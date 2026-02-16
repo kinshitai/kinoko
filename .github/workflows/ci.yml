@@ -110,10 +110,11 @@ jobs:
       - name: Download BGE-small-en-v1.5 ONNX model
         run: |
           MODEL_DIR=$HOME/.kinoko/models/bge-small-en-v1.5
+          # Pinned to commit 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a (2024-02-22)
           curl -sSL -o $MODEL_DIR/model.onnx \
-            "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/onnx/model.onnx"
+            "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/onnx/model.onnx"
           curl -sSL -o $MODEL_DIR/tokenizer.json \
-            "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.json"
+            "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer.json"
 
       - name: Embedding tests
         env:

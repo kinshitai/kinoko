@@ -1,9 +1,14 @@
 package main
 
+// NOTE: tests mutate package globals; do not use t.Parallel()
+
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/kinoko-dev/kinoko/internal/model"
+	_ "modernc.org/sqlite"
 )
 
 // ── mock API server ──
@@ -31,9 +37,26 @@ func newMockAPI(t *testing.T) *httptest.Server {
 			http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
 			return
 		}
+		// Generate deterministic but input-dependent vectors via FNV hash
+		h := fnv.New32a()
+		h.Write([]byte(req.Text))
+		seed := h.Sum32()
 		vec := make([]float32, 384)
 		for i := range vec {
-			vec[i] = 0.01 * float32(i%10)
+			// Mix seed with index for per-dimension variation
+			bits := seed ^ uint32(i*2654435761)
+			vec[i] = float32(bits%1000) / 1000.0
+		}
+		// Normalize to unit vector
+		var norm float64
+		for _, v := range vec {
+			norm += float64(v) * float64(v)
+		}
+		norm = math.Sqrt(norm)
+		if norm > 0 {
+			for i := range vec {
+				vec[i] = float32(float64(vec[i]) / norm)
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -361,6 +384,57 @@ func TestFullFlow_IngestThenMatch(t *testing.T) {
 	err := runIngest(ingestCmd, []string{skillFile})
 	if err != nil {
 		t.Fatalf("ingest failed: %v", err)
+	}
+
+	// P0-1: Verify the skill was actually persisted in SQLite
+	dbPath := filepath.Join(dir, "test.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open SQLite: %v", err)
+	}
+	defer db.Close()
+
+	var name, category, extractedBy string
+	var version, qProblem, qSolution, qPortability, qReasoning, qAccuracy, qEvidence, qInnovation int
+	var compositeScore, criticConfidence float64
+	err = db.QueryRow(`SELECT name, version, category, extracted_by,
+		q_problem_specificity, q_solution_completeness, q_context_portability,
+		q_reasoning_transparency, q_technical_accuracy, q_verification_evidence,
+		q_innovation_level, q_composite_score, q_critic_confidence
+		FROM skills WHERE name = ?`, "flow-test-skill").Scan(
+		&name, &version, &category, &extractedBy,
+		&qProblem, &qSolution, &qPortability, &qReasoning,
+		&qAccuracy, &qEvidence, &qInnovation,
+		&compositeScore, &criticConfidence,
+	)
+	if err != nil {
+		t.Fatalf("skill not found in SQLite: %v", err)
+	}
+	if name != "flow-test-skill" {
+		t.Errorf("name = %q, want %q", name, "flow-test-skill")
+	}
+	if version != 1 {
+		t.Errorf("version = %d, want 1", version)
+	}
+	if category != "tactical" {
+		t.Errorf("category = %q, want %q", category, "tactical")
+	}
+	if extractedBy != "cli-ingest" {
+		t.Errorf("extracted_by = %q, want %q", extractedBy, "cli-ingest")
+	}
+	// --force bypass sets all quality dimensions to 3, composite 0.6
+	for _, q := range []struct{ name string; val int }{
+		{"q_problem_specificity", qProblem}, {"q_solution_completeness", qSolution},
+		{"q_context_portability", qPortability}, {"q_reasoning_transparency", qReasoning},
+		{"q_technical_accuracy", qAccuracy}, {"q_verification_evidence", qEvidence},
+		{"q_innovation_level", qInnovation},
+	} {
+		if q.val != 3 {
+			t.Errorf("%s = %d, want 3", q.name, q.val)
+		}
+	}
+	if compositeScore != 0.6 {
+		t.Errorf("composite_score = %f, want 0.6", compositeScore)
 	}
 
 	// Now match against the mock server

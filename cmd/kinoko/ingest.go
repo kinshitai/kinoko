@@ -262,6 +262,7 @@ func runIngest(cmd *cobra.Command, args []string) error {
 		SourceSessionID: sourceSessionID,
 		ExtractedBy:     "cli-ingest",
 		FilePath:        fmt.Sprintf("skills/%s/v%d/SKILL.md", skillName, skillVersion),
+		// Default mid-range scores for --force bypass (skips critic evaluation)
 		Quality: model.QualityScores{
 			ProblemSpecificity:    3,
 			SolutionCompleteness:  3,
