@@ -3,10 +3,10 @@ title: Kinoko
 description: Knowledge-sharing infrastructure for AI agents.
 template: splash
 hero:
-  tagline: "Every problem solved once is solved for everyone. Knowledge-sharing infrastructure for AI agents — when an agent solves a problem, Kinoko extracts the knowledge and injects it into future sessions, automatically."
+  tagline: "Every problem solved once is solved for everyone."
   actions:
     - text: Get Started
-      link: /quickstart/
+      link: /what-is-kinoko/
       icon: right-arrow
       variant: primary
     - text: View on GitHub
@@ -17,7 +17,11 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## The Core Loop
+## What Kinoko Does
+
+AI agents solve problems all day — debugging breakthroughs, architecture insights, clever workarounds. Every solution dies when the session ends. The next person with the same problem starts from zero.
+
+Kinoko captures what agents learn and delivers it to future sessions. Automatically, securely, without anyone lifting a finger.
 
 ```
 Agent solves problem → Knowledge extracted → Stored in git → Injected into future sessions
@@ -25,31 +29,33 @@ Agent solves problem → Knowledge extracted → Stored in git → Injected into
         └──────────────────────────────────────────────────────────────┘
 ```
 
-## How It Works
+Like mycelium connecting trees in a forest, Kinoko connects agents through shared knowledge — nutrients flowing invisibly through the network, making every node stronger.
+
+## The Pipeline
 
 <CardGrid>
-  <Card title="🪙 Gold Panning" icon="seti:pipeline">
-    Multi-stage extraction filters noise cheaply. Metadata checks first, LLM critique last. You can afford expensive quality checks if you eliminate the noise cheaply first.
+  <Card title="Extraction" icon="seti:pipeline">
+    Multi-stage filtering eliminates noise cheaply. Metadata checks first, LLM critique last. Most sessions aren't worth keeping — Kinoko finds the ones that are.
 
-    [Learn more →](/concepts/extraction/)
+    [How extraction works →](/concepts/extraction/)
   </Card>
 
-  <Card title="🍷 Wine Tasting" icon="star">
-    7-dimension quality scoring, not thumbs up/down. Each dimension is scored independently with explicit criteria. Structured evaluation beats holistic judgment.
+  <Card title="Quality Scoring" icon="star">
+    7-dimension evaluation, not thumbs up/down. Each skill is scored on specificity, completeness, portability, accuracy, and more. Structured judgment you can debug.
 
-    [Learn more →](/concepts/quality/)
+    [How quality works →](/concepts/quality/)
   </Card>
 
-  <Card title="📚 Reference Librarian" icon="open-book">
+  <Card title="Injection" icon="open-book">
     Pattern matching, not just keyword search. Understands the problem beneath the question. The most useful knowledge often doesn't look like what you asked for.
 
-    [Learn more →](/concepts/injection/)
+    [How injection works →](/concepts/injection/)
   </Card>
 
-  <Card title="🔥 Forest Fires" icon="warning">
-    Knowledge decays. That's a feature. Different knowledge types have different shelf lives. The system forgets gracefully and can remember again when evidence warrants it.
+  <Card title="Decay" icon="warning">
+    Knowledge has a half-life. Tactical fixes expire faster than foundational patterns. The system forgets gracefully — and can remember again when evidence warrants it.
 
-    [Learn more →](/concepts/decay/)
+    [How decay works →](/concepts/decay/)
   </Card>
 </CardGrid>
 
@@ -61,7 +67,11 @@ cd kinoko && go install ./cmd/kinoko
 kinoko init && kinoko serve
 ```
 
+[Full quickstart guide →](/quickstart/)
+
 ## Project Status
+
+<small>Last updated: 2026-02-16</small>
 
 Kinoko is in active development. What exists today:
 
