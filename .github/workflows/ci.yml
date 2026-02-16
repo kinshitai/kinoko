@@ -81,9 +81,6 @@ jobs:
   test-embedding:
     name: Test (embedding)
     runs-on: ubuntu-latest
-    env:
-      CGO_LDFLAGS: -L/usr/local/lib -L${{ github.workspace }}/onnxruntime-linux-x64-1.22.0/lib
-      LD_LIBRARY_PATH: ${{ github.workspace }}/onnxruntime-linux-x64-1.22.0/lib
     steps:
       - uses: actions/checkout@v4
 
@@ -119,9 +116,27 @@ jobs:
           curl -sSL -o $MODEL_DIR/tokenizer.json \
             "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer.json"
 
-      - name: Embedding tests
+      - name: Verify native libs
         run: |
-          go test -v -x -tags embedding -coverpkg=./internal/...,./cmd/...,./pkg/... \
+          echo "=== libtokenizers ==="
+          ls -la /usr/local/lib/libtokenizers* || echo "NOT FOUND"
+          nm /usr/local/lib/libtokenizers.a 2>/dev/null | grep tokenizers_version || echo "NO VERSION SYMBOL"
+          echo "=== onnxruntime ==="
+          ls -la ${{ github.workspace }}/onnxruntime-linux-x64-1.22.0/lib/ || echo "NOT FOUND"
+          echo "=== CGO env ==="
+          echo "CGO_LDFLAGS=$CGO_LDFLAGS"
+          echo "CGO_ENABLED=$CGO_ENABLED"
+          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+          echo "=== ldconfig ==="
+          ldconfig -p | grep -i "tokenizer\|onnx" || echo "not in ldconfig"
+          echo "=== gcc search ==="
+          gcc -print-search-dirs | head -3
+
+      - name: Embedding tests
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/onnxruntime-linux-x64-1.22.0/lib
+        run: |
+          go test -v -tags embedding -coverpkg=./internal/...,./cmd/...,./pkg/... \
             -coverprofile=embedding.cov ./internal/embedding/... -timeout 120s
 
       - name: Embedding coverage
