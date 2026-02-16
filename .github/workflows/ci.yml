@@ -56,6 +56,29 @@ jobs:
       - name: Install Soft Serve
         run: go install github.com/charmbracelet/soft-serve/cmd/soft@latest
 
+      - name: Download ONNX Runtime
+        run: |
+          curl -sSL https://github.com/microsoft/onnxruntime/releases/download/v1.22.0/onnxruntime-linux-x64-1.22.0.tgz \
+            | tar xz
+          mkdir -p $HOME/.kinoko/models/bge-small-en-v1.5
+          cp onnxruntime-linux-x64-1.22.0/lib/libonnxruntime.so.1.22.0 $HOME/.kinoko/models/bge-small-en-v1.5/libonnxruntime.so
+
+      - name: Download libtokenizers
+        run: |
+          curl -sSL -o libtokenizers.tar.gz \
+            https://github.com/daulet/tokenizers/releases/download/v1.25.0/libtokenizers.linux-amd64.tar.gz
+          tar xzf libtokenizers.tar.gz
+          sudo cp libtokenizers.a /usr/lib/x86_64-linux-gnu/libtokenizers.a
+
+      - name: Download BGE-small-en-v1.5 ONNX model
+        run: |
+          MODEL_DIR=$HOME/.kinoko/models/bge-small-en-v1.5
+          # Pinned to commit 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a (2024-02-22)
+          curl -sSL -o $MODEL_DIR/model.onnx \
+            "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/onnx/model.onnx"
+          curl -sSL -o $MODEL_DIR/tokenizer.json \
+            "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/tokenizer.json"
+
       - name: Vet
         run: go vet ./...
 
@@ -68,12 +91,20 @@ jobs:
       - name: E2E tests
         run: go test -tags integration -coverpkg=./internal/...,./cmd/...,./pkg/... -coverprofile=e2e.cov ./tests/e2e/ -timeout 90s
 
-      - name: Merge coverage
+      - name: Embedding tests
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/onnxruntime-linux-x64-1.22.0/lib
+        run: |
+          go test -v -tags embedding -coverpkg=./internal/...,./cmd/...,./pkg/... \
+            -coverprofile=embedding.cov ./internal/embedding/... -timeout 120s
+
+      - name: Coverage report
         run: |
           head -1 unit.cov > combined.cov
           tail -n +2 unit.cov >> combined.cov
           tail -n +2 integration.cov >> combined.cov
           tail -n +2 e2e.cov >> combined.cov
+          tail -n +2 embedding.cov >> combined.cov
           echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
           go tool cover -func=combined.cov | grep 'total:' | awk '{print "**Combined coverage: " $NF "**"}' >> $GITHUB_STEP_SUMMARY
           go tool cover -func=combined.cov | grep 'total:'

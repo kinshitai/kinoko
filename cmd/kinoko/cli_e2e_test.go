@@ -1,52 +1,229 @@
 package main
 
+// NOTE: tests mutate package globals; do not use t.Parallel()
+
 import (
 	"bytes"
+	"database/sql"
+	"encoding/json"
 	"fmt"
+	"hash/fnv"
+	"math"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
-	"unicode/utf8"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
-// ── ingest --force tests ──
+// ── mock API server ──
+
+// newMockAPI spins up an httptest server that handles /api/v1/embed,
+// /api/v1/novelty, and /api/v1/match with canned responses.
+func newMockAPI(t *testing.T) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+
+	// /api/v1/embed — returns a fake 384-dim vector
+	mux.HandleFunc("POST /api/v1/embed", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Text string `json:"text"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Text == "" {
+			http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
+			return
+		}
+		// Generate deterministic but input-dependent vectors via FNV hash
+		h := fnv.New32a()
+		h.Write([]byte(req.Text))
+		seed := h.Sum32()
+		vec := make([]float32, 384)
+		for i := range vec {
+			// Mix seed with index for per-dimension variation
+			bits := seed ^ uint32(i*2654435761)
+			vec[i] = float32(bits%1000) / 1000.0
+		}
+		// Normalize to unit vector
+		var norm float64
+		for _, v := range vec {
+			norm += float64(v) * float64(v)
+		}
+		norm = math.Sqrt(norm)
+		if norm > 0 {
+			for i := range vec {
+				vec[i] = float32(float64(vec[i]) / norm)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"vector": vec,
+			"model":  "mock",
+			"dims":   384,
+		})
+	})
+
+	// /api/v1/novelty — always novel
+	mux.HandleFunc("POST /api/v1/novelty", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"novel":   true,
+			"score":   0.1,
+			"similar": []any{},
+		})
+	})
+
+	// /api/v1/match — returns one canned skill
+	mux.HandleFunc("POST /api/v1/match", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Context  string  `json:"context"`
+			Limit    int     `json:"limit"`
+			MinScore float64 `json:"min_score"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"skills": []map[string]any{
+				{
+					"name":    "test-skill",
+					"score":   0.95,
+					"content": "# Test Skill\nSome content.",
+				},
+			},
+		})
+	})
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// writeTmpConfig creates a minimal kinoko config YAML pointing at a temp SQLite DB.
+func writeTmpConfig(t *testing.T, dir string) string {
+	t.Helper()
+	dbPath := filepath.Join(dir, "test.db")
+	cfgPath := filepath.Join(dir, "config.yaml")
+	cfg := fmt.Sprintf(`server:
+  host: 127.0.0.1
+  port: 23233
+  data_dir: %s
+storage:
+  driver: sqlite
+  dsn: %s
+libraries:
+  - id: local
+    name: local
+    path: %s/libs/local
+`, dir, dbPath, dir)
+	os.MkdirAll(filepath.Join(dir, "libs", "local"), 0755)
+	os.WriteFile(cfgPath, []byte(cfg), 0644)
+	return cfgPath
+}
+
+// writeValidSkillMD writes a well-formed SKILL.md with front matter.
+func writeValidSkillMD(t *testing.T, dir, name string) string {
+	t.Helper()
+	content := fmt.Sprintf(`---
+name: %s
+version: 1
+category: tactical
+tags:
+  - go
+  - testing
+---
+# %s
+
+This is a test skill for E2E testing.
+`, name, strings.ReplaceAll(name, "-", " "))
+	p := filepath.Join(dir, "SKILL.md")
+	os.WriteFile(p, []byte(content), 0644)
+	return p
+}
+
+// ── ingest --force with real infrastructure ──
+
+func TestIngestForce_RealSQLite(t *testing.T) {
+	dir := t.TempDir()
+	srv := newMockAPI(t)
+	cfgPath := writeTmpConfig(t, dir)
+	skillFile := writeValidSkillMD(t, dir, "real-test-skill")
+
+	// Set globals that runIngest reads
+	oldForce, oldCfg, oldAPI := ingestForce, ingestConfigPath, ingestAPIURL
+	oldDryRun, oldLib := ingestDryRun, ingestLibrary
+	ingestForce = true
+	ingestConfigPath = cfgPath
+	ingestAPIURL = srv.URL
+	ingestDryRun = true // skip git push
+	ingestLibrary = "local"
+	t.Cleanup(func() {
+		ingestForce = oldForce
+		ingestConfigPath = oldCfg
+		ingestAPIURL = oldAPI
+		ingestDryRun = oldDryRun
+		ingestLibrary = oldLib
+	})
+
+	err := runIngest(ingestCmd, []string{skillFile})
+	if err != nil {
+		t.Fatalf("runIngest failed: %v", err)
+	}
+}
 
 func TestIngestForce_RejectsEmptyFile(t *testing.T) {
 	dir := t.TempDir()
+	srv := newMockAPI(t)
+	cfgPath := writeTmpConfig(t, dir)
 	f := filepath.Join(dir, "empty.md")
 	os.WriteFile(f, []byte{}, 0644)
 
+	oldForce, oldCfg, oldAPI := ingestForce, ingestConfigPath, ingestAPIURL
 	ingestForce = true
-	defer func() { ingestForce = false }()
+	ingestConfigPath = cfgPath
+	ingestAPIURL = srv.URL
+	t.Cleanup(func() {
+		ingestForce = oldForce
+		ingestConfigPath = oldCfg
+		ingestAPIURL = oldAPI
+	})
 
-	err := runIngestWithArgs(t, f)
-	if err == nil || err.Error() != "file is empty" {
+	err := runIngest(ingestCmd, []string{f})
+	if err == nil || !strings.Contains(err.Error(), "file is empty") {
 		t.Fatalf("expected 'file is empty', got %v", err)
 	}
 }
 
 func TestIngestForce_RejectsBinaryFile(t *testing.T) {
 	dir := t.TempDir()
+	srv := newMockAPI(t)
+	cfgPath := writeTmpConfig(t, dir)
 	f := filepath.Join(dir, "binary.md")
-	// write invalid UTF-8
 	os.WriteFile(f, []byte{0xff, 0xfe, 0x00, 0x01, 'h', 'e', 'l', 'l', 'o'}, 0644)
 
+	oldForce, oldCfg, oldAPI := ingestForce, ingestConfigPath, ingestAPIURL
 	ingestForce = true
-	defer func() { ingestForce = false }()
+	ingestConfigPath = cfgPath
+	ingestAPIURL = srv.URL
+	t.Cleanup(func() {
+		ingestForce = oldForce
+		ingestConfigPath = oldCfg
+		ingestAPIURL = oldAPI
+	})
 
-	err := runIngestWithArgs(t, f)
-	if err == nil {
-		t.Fatal("expected error for binary file")
-	}
-	if err.Error() != "file is not valid UTF-8 (binary?)" {
-		t.Fatalf("unexpected error: %v", err)
+	err := runIngest(ingestCmd, []string{f})
+	if err == nil || !strings.Contains(err.Error(), "not valid UTF-8") {
+		t.Fatalf("expected UTF-8 error, got %v", err)
 	}
 }
 
 func TestIngestForce_RejectsLargeFile(t *testing.T) {
 	dir := t.TempDir()
+	srv := newMockAPI(t)
+	cfgPath := writeTmpConfig(t, dir)
 	f := filepath.Join(dir, "big.md")
 	data := make([]byte, (1<<20)+1)
 	for i := range data {
@@ -54,174 +231,63 @@ func TestIngestForce_RejectsLargeFile(t *testing.T) {
 	}
 	os.WriteFile(f, data, 0644)
 
+	oldForce, oldCfg, oldAPI := ingestForce, ingestConfigPath, ingestAPIURL
 	ingestForce = true
-	defer func() { ingestForce = false }()
+	ingestConfigPath = cfgPath
+	ingestAPIURL = srv.URL
+	t.Cleanup(func() {
+		ingestForce = oldForce
+		ingestConfigPath = oldCfg
+		ingestAPIURL = oldAPI
+	})
 
-	err := runIngestWithArgs(t, f)
-	if err == nil {
-		t.Fatal("expected error for large file")
-	}
-	if got := err.Error(); got[:14] != "file too large" {
-		t.Fatalf("unexpected error: %v", err)
+	err := runIngest(ingestCmd, []string{f})
+	if err == nil || !strings.Contains(err.Error(), "file too large") {
+		t.Fatalf("expected 'file too large', got %v", err)
 	}
 }
 
-func TestIngestForce_ParsesFrontMatter(t *testing.T) {
-	content := `---
-name: my-cool-skill
-version: 3
-category: tactical
-tags:
-  - go
-  - testing
----
-# My Cool Skill
-
-Some content here.
-`
-	// We can't easily run the full ingest (needs DB, API), so we test
-	// the front matter parsing path directly to ensure correctness.
-	// The integration is covered by the validation tests above.
-
+func TestIngestForce_RejectsNoFrontMatter(t *testing.T) {
 	dir := t.TempDir()
-	f := filepath.Join(dir, "SKILL.md")
-	os.WriteFile(f, []byte(content), 0644)
+	srv := newMockAPI(t)
+	cfgPath := writeTmpConfig(t, dir)
+	f := filepath.Join(dir, "nofm.md")
+	os.WriteFile(f, []byte("# Just a heading\nNo front matter here.\n"), 0644)
 
-	body, _ := os.ReadFile(f)
-	if len(body) == 0 {
-		t.Fatal("file should not be empty")
-	}
-	if len(body) > 1<<20 {
-		t.Fatal("file should not be too large")
-	}
+	oldForce, oldCfg, oldAPI := ingestForce, ingestConfigPath, ingestAPIURL
+	ingestForce = true
+	ingestConfigPath = cfgPath
+	ingestAPIURL = srv.URL
+	t.Cleanup(func() {
+		ingestForce = oldForce
+		ingestConfigPath = oldCfg
+		ingestAPIURL = oldAPI
+	})
 
-	// Verify front matter parsing works via extraction package
-	// (we import it indirectly through the ingest code path)
-	// Just validate the content is valid UTF-8 and has front matter prefix
-	if body[0] != '-' {
-		t.Fatal("expected front matter prefix")
+	err := runIngest(ingestCmd, []string{f})
+	if err == nil || !strings.Contains(err.Error(), "front matter") {
+		t.Fatalf("expected front matter error, got %v", err)
 	}
 }
 
-func TestIngestForce_SkillNameFromFilename(t *testing.T) {
-	tests := []struct {
-		filename string
-		want     string
-	}{
-		{"My_Cool_Skill.md", "my-cool-skill"},
-		{"hello world.md", "hello-world"},
-		{"SKILL.md", "skill"},
-		{"test-file.txt", "test-file"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.filename, func(t *testing.T) {
-			base := tc.filename
-			ext := filepath.Ext(base)
-			name := trimAndKebab(base, ext)
-			if name != tc.want {
-				t.Errorf("got %q, want %q", name, tc.want)
-			}
-		})
-	}
-}
-
-// trimAndKebab replicates the name derivation logic from ingest.go
-func trimAndKebab(base, ext string) string {
-	name := base[:len(base)-len(ext)]
-	name = toLowerReplace(name)
-	return name
-}
-
-func toLowerReplace(s string) string {
-	s = stringToLower(s)
-	s = replaceAll(s, " ", "-")
-	s = replaceAll(s, "_", "-")
-	return s
-}
-
-func stringToLower(s string) string {
-	b := make([]byte, len(s))
-	for i := range s {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 32
-		}
-		b[i] = c
-	}
-	return string(b)
-}
-
-func replaceAll(s, old, new string) string {
-	result := ""
-	for i := 0; i < len(s); {
-		if i+len(old) <= len(s) && s[i:i+len(old)] == old {
-			result += new
-			i += len(old)
-		} else {
-			result += string(s[i])
-			i++
-		}
-	}
-	return result
-}
-
-// runIngestWithArgs is a helper that calls the ingest validation path.
-// Since full runIngest needs DB/config, we replicate just the --force validation.
-func runIngestWithArgs(t *testing.T, filePath string) error {
-	t.Helper()
-	body, err := os.ReadFile(filePath)
-	if err != nil {
-		return fmt.Errorf("read file: %w", err)
-	}
-	if len(body) == 0 {
-		return fmt.Errorf("file is empty")
-	}
-	if len(body) > 1<<20 {
-		return fmt.Errorf("file too large (%d bytes, max 1MB for --force)", len(body))
-	}
-	if !utf8.Valid(body) {
-		return fmt.Errorf("file is not valid UTF-8 (binary?)")
-	}
-	return nil
-}
-
-// ── match tests ──
+// ── match with real injection client ──
 
 func TestMatchCmd_RequiresQueryOrFile(t *testing.T) {
-	err := runMatch(matchCmd, nil)
-	if err == nil {
-		t.Fatal("expected error when no args and no --file")
-	}
-	if err.Error() != "provide query text as argument or use --file" {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestMatchCmd_FileReadsFromDisk(t *testing.T) {
-	dir := t.TempDir()
-	f := filepath.Join(dir, "query.txt")
-	os.WriteFile(f, []byte("test query"), 0644)
-
+	// Reset matchFile to ensure clean state
 	oldFile := matchFile
-	matchFile = f
-	defer func() { matchFile = oldFile }()
+	matchFile = ""
+	t.Cleanup(func() { matchFile = oldFile })
 
-	// This will fail at the API call stage, but we verify file reading works
-	// by checking we don't get a file-read error.
 	err := runMatch(matchCmd, nil)
-	// Should get past file reading — error will be about match API or nil (fail-open)
-	if err != nil && err.Error() == "provide query text as argument or use --file" {
-		t.Fatal("should have read from file")
+	if err == nil || !strings.Contains(err.Error(), "provide query text") {
+		t.Fatalf("expected 'provide query' error, got %v", err)
 	}
 }
 
 func TestMatchCmd_EmptyQueryError(t *testing.T) {
 	err := runMatch(matchCmd, []string{""})
-	if err == nil {
-		t.Fatal("expected error for empty query")
-	}
-	if err.Error() != "query text is empty" {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "query text is empty") {
+		t.Fatalf("expected 'empty' error, got %v", err)
 	}
 }
 
@@ -232,18 +298,171 @@ func TestMatchCmd_EmptyFileError(t *testing.T) {
 
 	oldFile := matchFile
 	matchFile = f
-	defer func() { matchFile = oldFile }()
+	t.Cleanup(func() { matchFile = oldFile })
 
 	err := runMatch(matchCmd, nil)
-	if err == nil {
-		t.Fatal("expected error for empty file")
-	}
-	if err.Error() != "query text is empty" {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "query text is empty") {
+		t.Fatalf("expected 'empty' error, got %v", err)
 	}
 }
 
-// ── extract: httpEmbedder tests ──
+func TestMatchCmd_RealAPICall(t *testing.T) {
+	srv := newMockAPI(t)
+
+	oldAPI, oldTimeout := matchAPIURL, matchTimeout
+	matchAPIURL = srv.URL
+	matchTimeout = 5 * 1e9 // 5s
+	t.Cleanup(func() {
+		matchAPIURL = oldAPI
+		matchTimeout = oldTimeout
+	})
+
+	// Capture stdout
+	out := captureStdout(func() {
+		err := runMatch(matchCmd, []string{"database timeout in Go"})
+		if err != nil {
+			t.Fatalf("runMatch failed: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "test-skill") {
+		t.Fatalf("expected 'test-skill' in output, got:\n%s", out)
+	}
+}
+
+func TestMatchCmd_FileReadsFromDisk(t *testing.T) {
+	srv := newMockAPI(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "query.txt")
+	os.WriteFile(f, []byte("test query from file"), 0644)
+
+	oldFile, oldAPI, oldTimeout := matchFile, matchAPIURL, matchTimeout
+	matchFile = f
+	matchAPIURL = srv.URL
+	matchTimeout = 5 * 1e9
+	t.Cleanup(func() {
+		matchFile = oldFile
+		matchAPIURL = oldAPI
+		matchTimeout = oldTimeout
+	})
+
+	out := captureStdout(func() {
+		err := runMatch(matchCmd, nil)
+		if err != nil {
+			t.Fatalf("runMatch failed: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "test-skill") {
+		t.Fatalf("expected match results in output, got:\n%s", out)
+	}
+}
+
+// ── Full flow: ingest → SQLite → match ──
+
+func TestFullFlow_IngestThenMatch(t *testing.T) {
+	dir := t.TempDir()
+	srv := newMockAPI(t)
+	cfgPath := writeTmpConfig(t, dir)
+	skillFile := writeValidSkillMD(t, dir, "flow-test-skill")
+
+	// Ingest with --force
+	oldForce, oldCfg, oldAPI := ingestForce, ingestConfigPath, ingestAPIURL
+	oldDryRun, oldLib := ingestDryRun, ingestLibrary
+	ingestForce = true
+	ingestConfigPath = cfgPath
+	ingestAPIURL = srv.URL
+	ingestDryRun = true
+	ingestLibrary = "local"
+	t.Cleanup(func() {
+		ingestForce = oldForce
+		ingestConfigPath = oldCfg
+		ingestAPIURL = oldAPI
+		ingestDryRun = oldDryRun
+		ingestLibrary = oldLib
+	})
+
+	err := runIngest(ingestCmd, []string{skillFile})
+	if err != nil {
+		t.Fatalf("ingest failed: %v", err)
+	}
+
+	// P0-1: Verify the skill was actually persisted in SQLite
+	dbPath := filepath.Join(dir, "test.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open SQLite: %v", err)
+	}
+	defer db.Close()
+
+	var name, category, extractedBy string
+	var version, qProblem, qSolution, qPortability, qReasoning, qAccuracy, qEvidence, qInnovation int
+	var compositeScore, criticConfidence float64
+	err = db.QueryRow(`SELECT name, version, category, extracted_by,
+		q_problem_specificity, q_solution_completeness, q_context_portability,
+		q_reasoning_transparency, q_technical_accuracy, q_verification_evidence,
+		q_innovation_level, q_composite_score, q_critic_confidence
+		FROM skills WHERE name = ?`, "flow-test-skill").Scan(
+		&name, &version, &category, &extractedBy,
+		&qProblem, &qSolution, &qPortability, &qReasoning,
+		&qAccuracy, &qEvidence, &qInnovation,
+		&compositeScore, &criticConfidence,
+	)
+	if err != nil {
+		t.Fatalf("skill not found in SQLite: %v", err)
+	}
+	if name != "flow-test-skill" {
+		t.Errorf("name = %q, want %q", name, "flow-test-skill")
+	}
+	if version != 1 {
+		t.Errorf("version = %d, want 1", version)
+	}
+	if category != "tactical" {
+		t.Errorf("category = %q, want %q", category, "tactical")
+	}
+	if extractedBy != "cli-ingest" {
+		t.Errorf("extracted_by = %q, want %q", extractedBy, "cli-ingest")
+	}
+	// --force bypass sets all quality dimensions to 3, composite 0.6
+	for _, q := range []struct {
+		name string
+		val  int
+	}{
+		{"q_problem_specificity", qProblem}, {"q_solution_completeness", qSolution},
+		{"q_context_portability", qPortability}, {"q_reasoning_transparency", qReasoning},
+		{"q_technical_accuracy", qAccuracy}, {"q_verification_evidence", qEvidence},
+		{"q_innovation_level", qInnovation},
+	} {
+		if q.val != 3 {
+			t.Errorf("%s = %d, want 3", q.name, q.val)
+		}
+	}
+	if compositeScore != 0.6 {
+		t.Errorf("composite_score = %f, want 0.6", compositeScore)
+	}
+
+	// Now match against the mock server
+	oldMatchAPI, oldMatchTimeout := matchAPIURL, matchTimeout
+	matchAPIURL = srv.URL
+	matchTimeout = 5 * 1e9
+	t.Cleanup(func() {
+		matchAPIURL = oldMatchAPI
+		matchTimeout = oldMatchTimeout
+	})
+
+	out := captureStdout(func() {
+		err := runMatch(matchCmd, []string{"flow test query"})
+		if err != nil {
+			t.Fatalf("match failed: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "test-skill") {
+		t.Fatalf("expected match result, got:\n%s", out)
+	}
+}
+
+// ── httpEmbedder tests ──
 
 func TestHttpEmbedder_Dimensions(t *testing.T) {
 	e := &httpEmbedder{apiURL: "http://unused"}
@@ -252,7 +471,7 @@ func TestHttpEmbedder_Dimensions(t *testing.T) {
 	}
 }
 
-// ── extract: printExtractSummary tests ──
+// ── printExtractSummary tests ──
 
 func TestPrintExtractSummary_Extracted(t *testing.T) {
 	result := &model.ExtractionResult{
@@ -357,6 +576,35 @@ func TestPrintExtractSummary_Error(t *testing.T) {
 	mustContain(t, out, "something broke")
 }
 
+// ── sanitizeSkillName tests ──
+
+func TestSanitizeSkillName(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+		err   bool
+	}{
+		{"My_Cool-Skill", "my_cool-skill", false},
+		{"hello world", "helloworld", false},
+		{"../../../etc/passwd", "etcpasswd", false},
+		{"!!!", "", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			got, err := sanitizeSkillName(tc.input)
+			if tc.err && err == nil {
+				t.Fatal("expected error")
+			}
+			if !tc.err && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // ── helpers ──
 
 func captureStdout(fn func()) string {
@@ -373,16 +621,7 @@ func captureStdout(fn func()) string {
 
 func mustContain(t *testing.T, haystack, needle string) {
 	t.Helper()
-	if !containsStr(haystack, needle) {
+	if !strings.Contains(haystack, needle) {
 		t.Errorf("output missing %q in:\n%s", needle, haystack)
 	}
-}
-
-func containsStr(s, substr string) bool {
-	for i := 0; i+len(substr) <= len(s); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
