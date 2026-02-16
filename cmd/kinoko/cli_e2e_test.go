@@ -423,7 +423,10 @@ func TestFullFlow_IngestThenMatch(t *testing.T) {
 		t.Errorf("extracted_by = %q, want %q", extractedBy, "cli-ingest")
 	}
 	// --force bypass sets all quality dimensions to 3, composite 0.6
-	for _, q := range []struct{ name string; val int }{
+	for _, q := range []struct {
+		name string
+		val  int
+	}{
 		{"q_problem_specificity", qProblem}, {"q_solution_completeness", qSolution},
 		{"q_context_portability", qPortability}, {"q_reasoning_transparency", qReasoning},
 		{"q_technical_accuracy", qAccuracy}, {"q_verification_evidence", qEvidence},
