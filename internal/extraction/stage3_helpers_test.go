@@ -1,5 +1,3 @@
-// stage3_helpers_test.go — Mock LLMs, test fixtures, and helper functions
-// for Stage3 critic tests.
 package extraction
 
 import (
@@ -25,7 +23,6 @@ func (m *mockLLM3) Complete(ctx context.Context, prompt string) (string, error) 
 	return m.completeFn(ctx, prompt)
 }
 
-// mockLLMV2 implements LLMClientV2 for testing token usage and timeouts.
 type mockLLMV2 struct {
 	completeFn            func(ctx context.Context, prompt string) (string, error)
 	completeWithTimeoutFn func(ctx context.Context, prompt string, timeout time.Duration) (*llm.LLMCompleteResult, error)
@@ -58,8 +55,6 @@ func s3errLLM(err error) llm.LLMClient {
 	}}
 }
 
-// --- Test fixtures ---
-
 func s3testConfig() config.ExtractionConfig {
 	return config.ExtractionConfig{MinConfidence: 0.5}
 }
@@ -69,26 +64,16 @@ func s3testLogger() *slog.Logger {
 }
 
 func s3testSession() model.SessionRecord {
-	return model.SessionRecord{
-		ID:        "test-session-123",
-		LibraryID: "test-lib",
-	}
+	return model.SessionRecord{ID: "test-session-123", LibraryID: "test-lib"}
 }
 
 func passingStage2() *model.Stage2Result {
 	return &model.Stage2Result{
-		Passed:            true,
-		EmbeddingDistance: 0.55,
-		NoveltyScore:      0.85,
+		Passed: true, EmbeddingDistance: 0.55, NoveltyScore: 0.85,
 		RubricScores: model.QualityScores{
-			ProblemSpecificity:    4,
-			SolutionCompleteness:  4,
-			ContextPortability:    3,
-			ReasoningTransparency: 3,
-			TechnicalAccuracy:     4,
-			VerificationEvidence:  3,
-			InnovationLevel:       3,
-			CompositeScore:        3.55,
+			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
+			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
+			InnovationLevel: 3, CompositeScore: 3.55,
 		},
 		ClassifiedCategory: model.CategoryTactical,
 		ClassifiedPatterns: []string{"FIX/Backend/DatabaseConnection"},
@@ -121,17 +106,11 @@ func extractVerdictJSONNoSkillMD() string {
 		"verdict": "extract",
 		"reasoning": "This session demonstrates a clear problem-solution pattern with verified results.",
 		"refined_scores": {
-			"problem_specificity": 4,
-			"solution_completeness": 4,
-			"context_portability": 3,
-			"reasoning_transparency": 4,
-			"technical_accuracy": 4,
-			"verification_evidence": 3,
+			"problem_specificity": 4, "solution_completeness": 4, "context_portability": 3,
+			"reasoning_transparency": 4, "technical_accuracy": 4, "verification_evidence": 3,
 			"innovation_level": 3
 		},
-		"confidence": 0.87,
-		"reusable_pattern": true,
-		"explicit_reasoning": true,
+		"confidence": 0.87, "reusable_pattern": true, "explicit_reasoning": true,
 		"contradicts_best_practices": false
 	}`
 }
@@ -141,166 +120,111 @@ func rejectVerdictJSON() string {
 		"verdict": "reject",
 		"reasoning": "Session is too trivial.",
 		"refined_scores": {
-			"problem_specificity": 2,
-			"solution_completeness": 2,
-			"context_portability": 1,
-			"reasoning_transparency": 2,
-			"technical_accuracy": 2,
-			"verification_evidence": 1,
+			"problem_specificity": 2, "solution_completeness": 2, "context_portability": 1,
+			"reasoning_transparency": 2, "technical_accuracy": 2, "verification_evidence": 1,
 			"innovation_level": 1
 		},
-		"confidence": 0.92,
-		"reusable_pattern": false,
-		"explicit_reasoning": false,
+		"confidence": 0.92, "reusable_pattern": false, "explicit_reasoning": false,
 		"contradicts_best_practices": false
 	}`
 }
 
 func extractVerdictWithFlags(reusable, explicit, contradicts bool) string {
 	return fmt.Sprintf(`{
-		"verdict": "extract",
-		"reasoning": "Good session.",
+		"verdict": "extract", "reasoning": "Good session.",
 		"refined_scores": {
-			"problem_specificity": 4,
-			"solution_completeness": 4,
-			"context_portability": 3,
-			"reasoning_transparency": 4,
-			"technical_accuracy": 4,
-			"verification_evidence": 3,
+			"problem_specificity": 4, "solution_completeness": 4, "context_portability": 3,
+			"reasoning_transparency": 4, "technical_accuracy": 4, "verification_evidence": 3,
 			"innovation_level": 3
 		},
-		"confidence": 0.87,
-		"reusable_pattern": %t,
-		"explicit_reasoning": %t,
+		"confidence": 0.87, "reusable_pattern": %t, "explicit_reasoning": %t,
 		"contradicts_best_practices": %t
 	}`, reusable, explicit, contradicts)
 }
 
 func contradictoryVerdictJSON(verdict string, ps, sc, cp, rt, ta, ve, il int) string {
 	return fmt.Sprintf(`{
-		"verdict": %q,
-		"reasoning": "Analysis complete.",
+		"verdict": %q, "reasoning": "Analysis complete.",
 		"refined_scores": {
-			"problem_specificity": %d,
-			"solution_completeness": %d,
-			"context_portability": %d,
-			"reasoning_transparency": %d,
-			"technical_accuracy": %d,
-			"verification_evidence": %d,
+			"problem_specificity": %d, "solution_completeness": %d, "context_portability": %d,
+			"reasoning_transparency": %d, "technical_accuracy": %d, "verification_evidence": %d,
 			"innovation_level": %d
 		},
-		"confidence": 0.8,
-		"reusable_pattern": false,
-		"explicit_reasoning": false,
+		"confidence": 0.8, "reusable_pattern": false, "explicit_reasoning": false,
 		"contradicts_best_practices": false
 	}`, verdict, ps, sc, cp, rt, ta, ve, il)
 }
 
 func verdictWithInvalidScore(score int) string {
 	return fmt.Sprintf(`{
-		"verdict": "extract",
-		"reasoning": "Good.",
+		"verdict": "extract", "reasoning": "Good.",
 		"refined_scores": {
-			"problem_specificity": %d,
-			"solution_completeness": 4,
-			"context_portability": 3,
-			"reasoning_transparency": 4,
-			"technical_accuracy": 4,
-			"verification_evidence": 3,
+			"problem_specificity": %d, "solution_completeness": 4, "context_portability": 3,
+			"reasoning_transparency": 4, "technical_accuracy": 4, "verification_evidence": 3,
 			"innovation_level": 3
 		},
-		"confidence": 0.87,
-		"reusable_pattern": false,
-		"explicit_reasoning": false,
+		"confidence": 0.87, "reusable_pattern": false, "explicit_reasoning": false,
 		"contradicts_best_practices": false
 	}`, score)
 }
 
 func verdictWithConfidence(conf float64) string {
 	return fmt.Sprintf(`{
-		"verdict": "extract",
-		"reasoning": "Good.",
+		"verdict": "extract", "reasoning": "Good.",
 		"refined_scores": {
-			"problem_specificity": 4,
-			"solution_completeness": 4,
-			"context_portability": 3,
-			"reasoning_transparency": 4,
-			"technical_accuracy": 4,
-			"verification_evidence": 3,
+			"problem_specificity": 4, "solution_completeness": 4, "context_portability": 3,
+			"reasoning_transparency": 4, "technical_accuracy": 4, "verification_evidence": 3,
 			"innovation_level": 3
 		},
-		"confidence": %f,
-		"reusable_pattern": false,
-		"explicit_reasoning": false,
+		"confidence": %f, "reusable_pattern": false, "explicit_reasoning": false,
 		"contradicts_best_practices": false
 	}`, conf)
 }
 
 func verdictWithString(verdict string) string {
 	return fmt.Sprintf(`{
-		"verdict": %q,
-		"reasoning": "Analysis.",
+		"verdict": %q, "reasoning": "Analysis.",
 		"refined_scores": {
-			"problem_specificity": 4,
-			"solution_completeness": 4,
-			"context_portability": 3,
-			"reasoning_transparency": 4,
-			"technical_accuracy": 4,
-			"verification_evidence": 3,
+			"problem_specificity": 4, "solution_completeness": 4, "context_portability": 3,
+			"reasoning_transparency": 4, "technical_accuracy": 4, "verification_evidence": 3,
 			"innovation_level": 3
 		},
-		"confidence": 0.87,
-		"reusable_pattern": false,
-		"explicit_reasoning": false,
+		"confidence": 0.87, "reusable_pattern": false, "explicit_reasoning": false,
 		"contradicts_best_practices": false
 	}`, verdict)
 }
 
 func verdictWithEmptyReasoning() string {
 	return `{
-		"verdict": "extract",
-		"reasoning": "",
+		"verdict": "extract", "reasoning": "",
 		"refined_scores": {
-			"problem_specificity": 4,
-			"solution_completeness": 4,
-			"context_portability": 3,
-			"reasoning_transparency": 4,
-			"technical_accuracy": 4,
-			"verification_evidence": 3,
+			"problem_specificity": 4, "solution_completeness": 4, "context_portability": 3,
+			"reasoning_transparency": 4, "technical_accuracy": 4, "verification_evidence": 3,
 			"innovation_level": 3
 		},
-		"confidence": 0.87,
-		"reusable_pattern": false,
-		"explicit_reasoning": false,
+		"confidence": 0.87, "reusable_pattern": false, "explicit_reasoning": false,
 		"contradicts_best_practices": false
 	}`
 }
 
-// --- Helpers ---
-
 func boolPtr(b bool) *bool { return &b }
 
-func newTestCritic(llm llm.LLMClient) Stage3Critic {
-	c := NewStage3Critic(llm, s3testConfig(), s3testLogger()).(*stage3Critic)
-	c.sleep = func(d time.Duration) {} // no-op sleep for tests
+func newTestCritic(l llm.LLMClient) Stage3Critic {
+	c := NewStage3Critic(l, s3testConfig(), s3testLogger()).(*stage3Critic)
+	c.sleep = func(d time.Duration) {}
 	return c
 }
 
-// clockAdapter adapts a func() time.Time to circuitbreaker.Clock.
-type clockAdapter struct {
-	fn func() time.Time
-}
+type clockAdapter struct{ fn func() time.Time }
 
 func (a clockAdapter) Now() time.Time { return a.fn() }
 
-func newTestCriticWithClock(llm llm.LLMClient, clock func() time.Time) *stage3Critic {
-	c := NewStage3Critic(llm, s3testConfig(), s3testLogger()).(*stage3Critic)
+func newTestCriticWithClock(l llm.LLMClient, clock func() time.Time) *stage3Critic {
+	c := NewStage3Critic(l, s3testConfig(), s3testLogger()).(*stage3Critic)
 	c.clock = clock
 	c.sleep = func(d time.Duration) {}
 	cb, err := circuitbreaker.New(circuitbreaker.Config{
-		Threshold:    5,
-		BaseDuration: 5 * time.Minute,
-		MaxDuration:  30 * time.Minute,
+		Threshold: 5, BaseDuration: 5 * time.Minute, MaxDuration: 30 * time.Minute,
 	}, clockAdapter{fn: clock})
 	if err != nil {
 		panic(err)
