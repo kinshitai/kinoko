@@ -3,7 +3,9 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,13 +49,18 @@ func TestKinokoServeLifecycle(t *testing.T) {
 			t.Fatalf("Server process not running: %v", err)
 		}
 
+		pid := env.ServerPID
 		env.StopServer()
 
-		// Process should be gone
-		time.Sleep(1 * time.Second) // Give it a moment
-		if err := syscall.Kill(env.ServerPID, 0); err == nil {
-			t.Error("Server process still running after stop")
+		// Process should be gone — wait up to 5s for it to disappear
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if err := syscall.Kill(pid, 0); err != nil {
+				return // process gone
+			}
+			time.Sleep(200 * time.Millisecond)
 		}
+		t.Error("Server process still running after stop")
 	})
 }
 
@@ -71,13 +78,18 @@ func TestKinokoServeConfigErrors(t *testing.T) {
 	t.Run("missing_config_file", func(t *testing.T) {
 		nonexistentConfig := filepath.Join(tempDir, "missing-config.yaml")
 
-		cmd := exec.Command(binaryPath, "serve", "--config", nonexistentConfig)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, binaryPath, "serve", "--config", nonexistentConfig)
+		cmd.Cancel = func() error {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		}
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		cmd.Dir = tempDir
 
 		output, err := cmd.CombinedOutput()
-		// Should succeed (uses defaults when config doesn't exist)
+		// May succeed (uses defaults) or fail (port conflicts, timeout, etc.)
 		if err != nil {
-			// But might fail due to other reasons (like port conflicts)
 			t.Logf("Serve command output: %s", output)
 		}
 	})
@@ -191,29 +203,35 @@ func TestKinokoServePortConflicts(t *testing.T) {
 		env1.StartServer()
 		defer env1.StopServer()
 
-		// Try to start second server on same port
-		cmd := exec.Command(env2.BinaryPath, "serve", "--config", env2.ConfigPath)
+		// Try to start second server on same port using process group pattern
+		ctx, cancel := context.WithCancel(context.Background())
+		cmd := exec.CommandContext(ctx, env2.BinaryPath, "serve", "--config", env2.ConfigPath)
+		cmd.Cancel = func() error {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		}
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		cmd.Dir = env2.TempDir
+		cmd.Stdout = io.Discard
+		cmd.Stderr = io.Discard
 
-		// Start in background
 		if err := cmd.Start(); err != nil {
+			cancel()
 			t.Fatalf("Failed to start second server: %v", err)
 		}
-		defer cmd.Process.Kill()
 
-		// Wait a bit and check if it's still running
-		time.Sleep(5 * time.Second)
+		// Wait a bit and check if it exited due to port conflict
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
 
-		// It should have exited due to port conflict
-		if cmd.ProcessState == nil {
-			// Process might still be running, kill it
-			cmd.Process.Kill()
-			cmd.Wait()
+		select {
+		case <-done:
+			cancel()
+			t.Log("Second server correctly handled port conflict")
+		case <-time.After(10 * time.Second):
+			cancel()
+			_ = cmd.Wait()
+			t.Log("Second server timed out, killed via process group")
 		}
-
-		// The exact behavior depends on how Soft Serve handles port conflicts
-		// This documents the expected behavior
-		t.Log("Second server correctly handled port conflict")
 	})
 }
 

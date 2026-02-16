@@ -41,17 +41,20 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Install Soft Serve
+        run: go install github.com/charmbracelet/soft-serve/cmd/soft@latest
+
       - name: Vet
         run: go vet ./...
 
       - name: Unit tests
-        run: go test -short -coverpkg=./internal/... -coverprofile=unit.cov ./internal/... -timeout 120s
+        run: go test -coverpkg=./internal/... -coverprofile=unit.cov ./internal/... -timeout 300s
 
       - name: Integration tests
-        run: go test -short -tags integration -coverpkg=./internal/... -coverprofile=integration.cov ./tests/integration/ -timeout 120s
+        run: go test -tags integration -coverpkg=./internal/... -coverprofile=integration.cov ./tests/integration/ -timeout 300s
 
       - name: E2E tests
-        run: go test -short -tags integration -coverpkg=./internal/... -coverprofile=e2e.cov ./tests/e2e/ -timeout 120s
+        run: go test -tags integration -coverpkg=./internal/... -coverprofile=e2e.cov ./tests/e2e/ -timeout 300s
 
       - name: Merge coverage
         run: |

@@ -3,7 +3,9 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -31,11 +33,12 @@ type TestEnvironment struct {
 	ConfigPath string
 
 	// Server management
-	Server    *gitserver.Server
-	ServerCmd *exec.Cmd
-	ServerPID int
-	SSHPort   int
-	HTTPPort  int
+	Server       *gitserver.Server
+	ServerCmd    *exec.Cmd
+	serverCancel context.CancelFunc
+	ServerPID    int
+	SSHPort      int
+	HTTPPort     int
 
 	// SSH keys for testing
 	AdminKeyPath    string
@@ -113,27 +116,32 @@ func (env *TestEnvironment) StartServer() {
 
 	env.t.Logf("Starting kinoko server on port %d", env.SSHPort)
 
-	// Start server process
-	env.ServerCmd = exec.Command(env.BinaryPath, "serve", "--config", env.ConfigPath)
-	env.ServerCmd.Dir = env.TempDir
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(ctx, env.BinaryPath, "serve", "--config", env.ConfigPath)
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Dir = env.TempDir
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
 
-	// Capture server output for debugging
-	env.ServerCmd.Stdout = &testLogWriter{t: env.t, prefix: "[SERVER-OUT]"}
-	env.ServerCmd.Stderr = &testLogWriter{t: env.t, prefix: "[SERVER-ERR]"}
-
-	if err := env.ServerCmd.Start(); err != nil {
+	if err := cmd.Start(); err != nil {
+		cancel()
 		env.t.Fatalf("Failed to start server: %v", err)
 	}
 
-	env.ServerPID = env.ServerCmd.Process.Pid
+	env.ServerCmd = cmd
+	env.serverCancel = cancel
+	env.ServerPID = cmd.Process.Pid
 	env.t.Logf("Server started with PID %d", env.ServerPID)
+
+	// Setup SSH key paths (must be set before waitForServerReady which uses RunSSHCommand)
+	env.AdminKeyPath = filepath.Join(env.DataDir, "kinoko_admin_ed25519")
+	env.AdminPubKeyPath = env.AdminKeyPath + ".pub"
 
 	// Wait for server to be ready
 	env.waitForServerReady()
-
-	// Setup SSH key paths
-	env.AdminKeyPath = filepath.Join(env.DataDir, "kinoko_admin_ed25519")
-	env.AdminPubKeyPath = env.AdminKeyPath + ".pub"
 }
 
 // StopServer gracefully stops the server
@@ -146,27 +154,12 @@ func (env *TestEnvironment) StopServer() {
 
 	env.t.Logf("Stopping server (PID: %d)", env.ServerPID)
 
-	// Send SIGTERM
-	if err := env.ServerCmd.Process.Signal(syscall.SIGTERM); err != nil {
-		env.t.Logf("Failed to send SIGTERM: %v", err)
-	}
+	env.serverCancel() // triggers cmd.Cancel → SIGTERM to process group
+	_ = env.ServerCmd.Wait()
 
-	// Wait for graceful shutdown with timeout
-	done := make(chan error, 1)
-	go func() {
-		done <- env.ServerCmd.Wait()
-	}()
-
-	select {
-	case <-done:
-		env.t.Log("Server stopped gracefully")
-	case <-time.After(15 * time.Second):
-		env.t.Log("Server shutdown timeout, sending SIGKILL")
-		env.ServerCmd.Process.Kill()
-		<-done
-	}
-
+	env.t.Log("Server stopped")
 	env.ServerCmd = nil
+	env.serverCancel = nil
 	env.ServerPID = 0
 }
 
@@ -391,17 +384,6 @@ func (env *TestEnvironment) waitForServerReady() {
 			}
 		}
 	}
-}
-
-// testLogWriter captures server output for test logs
-type testLogWriter struct {
-	t      *testing.T
-	prefix string
-}
-
-func (w *testLogWriter) Write(p []byte) (n int, err error) {
-	w.t.Logf("%s %s", w.prefix, string(p))
-	return len(p), nil
 }
 
 // Helper to skip tests if soft binary is not available
