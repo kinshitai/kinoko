@@ -116,7 +116,7 @@ func (s *Server) Start() error {
 	if err := s.waitForReady(); err != nil {
 		// Kill the process if it's still running
 		if s.cmd.Process != nil {
-			s.cmd.Process.Kill()
+			_ = s.cmd.Process.Kill()
 		}
 		return fmt.Errorf("soft serve failed to start properly: %w", err)
 	}

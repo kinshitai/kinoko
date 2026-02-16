@@ -21,13 +21,13 @@ func TestEmbeddingCB_ClosedToOpenToHalfOpenToClosed(t *testing.T) {
 		callCount++
 		if callCount <= 3 {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"error":{"message":"down"}}`))
+			_, _ = w.Write([]byte(`{"error":{"message":"down"}}`))
 			return
 		}
 		var req embeddingRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		resp := makeResponse(len(req.Input), 3)
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -39,7 +39,7 @@ func TestEmbeddingCB_ClosedToOpenToHalfOpenToClosed(t *testing.T) {
 
 	// Closed → Open
 	for i := 0; i < 3; i++ {
-		client.Embed(context.Background(), "test")
+		_, _ = client.Embed(context.Background(), "test")
 	}
 
 	// Verify open
@@ -72,7 +72,7 @@ func TestEmbeddingCB_HalfOpenFailEscalates(t *testing.T) {
 	// Server always fails
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":{"message":"down"}}`))
+		_, _ = w.Write([]byte(`{"error":{"message":"down"}}`))
 	}))
 	defer srv.Close()
 
@@ -84,12 +84,12 @@ func TestEmbeddingCB_HalfOpenFailEscalates(t *testing.T) {
 
 	// Trip breaker: base 50ms
 	for i := 0; i < 3; i++ {
-		client.Embed(context.Background(), "test")
+		_, _ = client.Embed(context.Background(), "test")
 	}
 
 	// Half-open fail → escalate to 100ms
 	time.Sleep(60 * time.Millisecond)
-	client.Embed(context.Background(), "test")
+	_, _ = client.Embed(context.Background(), "test")
 
 	// Still open at 60ms (duration is now 100ms)
 	time.Sleep(60 * time.Millisecond)

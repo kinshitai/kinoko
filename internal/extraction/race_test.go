@@ -40,7 +40,7 @@ func TestBug_PipelineSamplingRace(t *testing.T) {
 					ID:        fmt.Sprintf("race-sess-%d-%d", id, i),
 					LibraryID: "lib-race",
 				}
-				p.Extract(context.Background(), sess, []byte("content"))
+				_, _ = p.Extract(context.Background(), sess, []byte("content"))
 			}
 		}(g)
 	}

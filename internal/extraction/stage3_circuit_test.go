@@ -74,12 +74,12 @@ func TestStage3CB_HalfOpenFailEscalates(t *testing.T) {
 
 	// Open circuit
 	for i := 0; i < 5; i++ {
-		critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+		_, _ = critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
 	}
 
 	// Half-open probe fails → re-open with 10min
 	now = now.Add(6 * time.Minute)
-	critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+	_, _ = critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
 
 	// Still open at 5min after re-open
 	now = now.Add(5 * time.Minute)
@@ -90,7 +90,7 @@ func TestStage3CB_HalfOpenFailEscalates(t *testing.T) {
 
 	// Open at ~10min → half-open, fail again → re-open with 20min
 	now = now.Add(6 * time.Minute)
-	critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+	_, _ = critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
 
 	// Verify doubled again: still open after 10min
 	now = now.Add(10 * time.Minute)

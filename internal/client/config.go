@@ -51,7 +51,7 @@ func SaveClientConfig(path string, client ClientSection) error {
 	// Try to load existing config to preserve other sections
 	var raw map[string]any
 	if data, err := os.ReadFile(path); err == nil {
-		yaml.Unmarshal(data, &raw)
+		_ = yaml.Unmarshal(data, &raw)
 	}
 	if raw == nil {
 		raw = make(map[string]any)

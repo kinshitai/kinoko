@@ -1085,7 +1085,7 @@ func TestStage3Critic_ConcurrentHalfOpen(t *testing.T) {
 
 	// Open circuit by recording 5 failures.
 	for i := 0; i < 5; i++ {
-		critic.cb.Allow()
+		_ = critic.cb.Allow()
 		critic.cb.RecordFailure()
 	}
 

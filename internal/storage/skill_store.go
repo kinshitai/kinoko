@@ -55,7 +55,7 @@ func (s *SQLiteStore) Put(ctx context.Context, skill *model.SkillRecord, body []
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().UTC()
 	if skill.CreatedAt.IsZero() {

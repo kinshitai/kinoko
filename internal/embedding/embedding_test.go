@@ -68,7 +68,7 @@ func TestEmbed_HappyPath(t *testing.T) {
 
 		resp := makeResponse(len(req.Input), 3)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -86,12 +86,12 @@ func TestEmbed_HappyPath(t *testing.T) {
 func TestEmbedBatch_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req embeddingRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		if len(req.Input) != 3 {
 			t.Errorf("expected 3 inputs, got %d", len(req.Input))
 		}
 		resp := makeResponse(3, 3)
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -122,13 +122,13 @@ func TestRetry_TransientFailure(t *testing.T) {
 		n := calls.Add(1)
 		if n <= 2 {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"error":{"message":"server error"}}`))
+			_, _ = w.Write([]byte(`{"error":{"message":"server error"}}`))
 			return
 		}
 		var req embeddingRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		resp := makeResponse(len(req.Input), 3)
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -148,7 +148,7 @@ func TestRetry_TransientFailure(t *testing.T) {
 func TestRetry_AllFail(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":{"message":"always fails"}}`))
+		_, _ = w.Write([]byte(`{"error":{"message":"always fails"}}`))
 	}))
 	defer srv.Close()
 
@@ -198,9 +198,9 @@ func TestRetry_429(t *testing.T) {
 			return
 		}
 		var req embeddingRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		resp := makeResponse(len(req.Input), 3)
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -223,7 +223,7 @@ func TestCircuitBreaker_NotTrippedBy4xx(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error":{"message":"bad request"}}`))
+		_, _ = w.Write([]byte(`{"error":{"message":"bad request"}}`))
 	}))
 	defer srv.Close()
 
@@ -251,7 +251,7 @@ func TestCircuitBreaker_NotTrippedBy4xx(t *testing.T) {
 func TestCircuitBreaker_OpensAfterThreshold(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":{"message":"fail"}}`))
+		_, _ = w.Write([]byte(`{"error":{"message":"fail"}}`))
 	}))
 	defer srv.Close()
 
@@ -282,9 +282,9 @@ func TestCircuitBreaker_HalfOpenRecovery(t *testing.T) {
 			return
 		}
 		var req embeddingRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		resp := makeResponse(len(req.Input), 3)
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -327,7 +327,7 @@ func TestCircuitBreaker_HalfOpenRecovery(t *testing.T) {
 func TestCircuitBreaker_HalfOpenReopen(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":{"message":"still broken"}}`))
+		_, _ = w.Write([]byte(`{"error":{"message":"still broken"}}`))
 	}))
 	defer srv.Close()
 
@@ -361,7 +361,7 @@ func TestCircuitBreaker_HalfOpenReopen(t *testing.T) {
 func TestCircuitBreaker_EscalatingOpenDuration(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":{"message":"still broken"}}`))
+		_, _ = w.Write([]byte(`{"error":{"message":"still broken"}}`))
 	}))
 	defer srv.Close()
 
@@ -417,9 +417,9 @@ func TestCircuitBreaker_OpenDurationResetsOnRecovery(t *testing.T) {
 			return
 		}
 		var req embeddingRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		resp := makeResponse(len(req.Input), 3)
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -468,7 +468,7 @@ func TestDimensionValidation(t *testing.T) {
 				{Index: 0, Embedding: []float32{1.0, 2.0}}, // 2 dims instead of 3
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -488,7 +488,7 @@ func TestContextCancellation(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":{"message":"fail"}}`))
+		_, _ = w.Write([]byte(`{"error":{"message":"fail"}}`))
 	}))
 	defer srv.Close()
 

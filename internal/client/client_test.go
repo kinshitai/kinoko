@@ -16,7 +16,7 @@ func TestHealth_OK(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.WriteHeader(200)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	}))
 	defer srv.Close()
 
@@ -39,11 +39,11 @@ func TestDiscover(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		var req map[string]any
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		if req["prompt"] != "fix database queries" {
 			t.Errorf("unexpected prompt: %v", req["prompt"])
 		}
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"skills": []map[string]any{
 				{"repo": "local/fix-nplus1", "name": "fix-nplus1", "score": 0.87, "clone_url": "ssh://localhost/local/fix-nplus1"},
 			},
@@ -71,8 +71,8 @@ func TestReadSkill(t *testing.T) {
 	dir := t.TempDir()
 	repo := "local/test-skill"
 	repoDir := filepath.Join(dir, repo)
-	os.MkdirAll(filepath.Join(repoDir, "v1"), 0755)
-	os.WriteFile(filepath.Join(repoDir, "v1", "SKILL.md"), []byte("# Test Skill\nDo the thing."), 0644)
+	_ = os.MkdirAll(filepath.Join(repoDir, "v1"), 0755)
+	_ = os.WriteFile(filepath.Join(repoDir, "v1", "SKILL.md"), []byte("# Test Skill\nDo the thing."), 0644)
 
 	c := New(ClientConfig{CacheDir: dir})
 	md, err := c.ReadSkill(repo)
@@ -128,11 +128,11 @@ func TestDiscoverCloneRead(t *testing.T) {
 	cacheDir := t.TempDir()
 	// Create a fake cloned repo with SKILL.md
 	repoDir := filepath.Join(cacheDir, "local", "test-skill")
-	os.MkdirAll(filepath.Join(repoDir, ".git"), 0755)
-	os.WriteFile(filepath.Join(repoDir, "SKILL.md"), []byte("# Test\nSolution here."), 0644)
+	_ = os.MkdirAll(filepath.Join(repoDir, ".git"), 0755)
+	_ = os.WriteFile(filepath.Join(repoDir, "SKILL.md"), []byte("# Test\nSolution here."), 0644)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"skills": []map[string]any{
 				{"repo": "local/test-skill", "name": "test-skill", "score": 0.9, "clone_url": ""},
 			},

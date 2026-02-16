@@ -35,7 +35,7 @@ func (idx *SQLiteIndexer) IndexSkill(ctx context.Context, skill *model.SkillReco
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().UTC()
 	createdAt := skill.CreatedAt

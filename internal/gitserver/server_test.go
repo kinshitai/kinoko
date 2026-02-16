@@ -253,7 +253,7 @@ func TestRepoManagement(t *testing.T) {
 	}
 
 	defer func() {
-		server.Stop()
+		_ = server.Stop()
 	}()
 
 	// Test creating repository

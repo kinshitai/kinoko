@@ -470,7 +470,7 @@ func TestPipelineStratifiedSamplingBalance(t *testing.T) {
 			p.stage1 = &mockStage1{result: failStage1("nope")}
 			rejIdx++
 		}
-		p.Extract(context.Background(), sess, []byte("content"))
+		_, _ = p.Extract(context.Background(), sess, []byte("content"))
 	}
 
 	// Extracted samples should be >= rejected samples (since extracted pool

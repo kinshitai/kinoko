@@ -74,7 +74,7 @@ func TestOpenToHalfOpenToClosed(t *testing.T) {
 
 	// Trip breaker.
 	for i := 0; i < 3; i++ {
-		b.Allow()
+		_ = b.Allow()
 		b.RecordFailure()
 	}
 
@@ -104,13 +104,13 @@ func TestHalfOpenFailureEscalates(t *testing.T) {
 
 	// Trip: 5min base.
 	for i := 0; i < 3; i++ {
-		b.Allow()
+		_ = b.Allow()
 		b.RecordFailure()
 	}
 
 	// Half-open, then fail → re-open at 10min.
 	clk.Advance(6 * time.Minute)
-	b.Allow()
+	_ = b.Allow()
 	b.RecordFailure()
 
 	// Still open at 6min after re-open (need 10min).
