@@ -44,8 +44,8 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      - name: Test (short + race)
-        run: go test -short -race -coverprofile=coverage.out ./... -timeout 120s
+      - name: Test (race + coverage)
+        run: go test -race -coverprofile=coverage.out ./... -timeout 300s
 
       - name: Coverage summary
         run: go tool cover -func=coverage.out | tail -1

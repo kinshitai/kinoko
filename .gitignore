@@ -29,3 +29,7 @@ coverage.out
 # Internal docs (reviews, audits, reports)
 internal-docs/
 docs/
+
+# Go test artifacts
+*.test
+coverage.out
