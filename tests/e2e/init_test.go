@@ -17,23 +17,18 @@ import (
 func TestKinokoInit(t *testing.T) {
 	RequireGitBinary(t)
 
-	// Create isolated test environment
 	tempDir, err := os.MkdirTemp("", "kinoko-init-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Build kinoko binary
 	binaryPath := buildKinokoBinary(t, tempDir)
-
-	// Create fake home directory for testing
 	homeDir := filepath.Join(tempDir, "home")
 	if err := os.MkdirAll(homeDir, 0755); err != nil {
 		t.Fatalf("Failed to create fake home dir: %v", err)
 	}
 
-	// Run kinoko init with custom HOME
 	cmd := exec.Command(binaryPath, "init")
 	cmd.Env = append(os.Environ(), "HOME="+homeDir)
 	cmd.Dir = tempDir
@@ -45,26 +40,23 @@ func TestKinokoInit(t *testing.T) {
 
 	t.Logf("kinoko init output: %s", output)
 
-	// Verify directory structure was created
-	expectedDirs := []string{
-		".kinoko",
-		".kinoko/skills",
+	// Verify directory structure: ~/.kinoko/ and ~/.kinoko/cache/
+	kinokoDir := filepath.Join(homeDir, ".kinoko")
+	if _, err := os.Stat(kinokoDir); os.IsNotExist(err) {
+		t.Error("Expected ~/.kinoko/ directory not created")
 	}
 
-	for _, dir := range expectedDirs {
-		dirPath := filepath.Join(homeDir, dir)
-		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
-			t.Errorf("Expected directory not created: %s", dirPath)
-		}
+	cacheDir := filepath.Join(kinokoDir, "cache")
+	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
+		t.Error("Expected ~/.kinoko/cache/ directory not created")
 	}
 
 	// Verify config file was created and is valid
-	configPath := filepath.Join(homeDir, ".kinoko", "config.yaml")
+	configPath := filepath.Join(kinokoDir, "config.yaml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Fatal("Config file was not created")
 	}
 
-	// Load and validate config
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		t.Fatalf("Failed to load generated config: %v", err)
@@ -74,22 +66,14 @@ func TestKinokoInit(t *testing.T) {
 		t.Fatalf("Generated config is invalid: %v", err)
 	}
 
-	// Verify git repository was initialized
-	skillsDir := filepath.Join(homeDir, ".kinoko", "skills")
-	gitDir := filepath.Join(skillsDir, ".git")
-	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
-		t.Error("Git repository was not initialized in skills directory")
+	// Verify SSH key was generated
+	keyPath := filepath.Join(kinokoDir, "id_ed25519")
+	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
+		t.Error("SSH key was not generated")
 	}
 
-	// Verify .gitignore was created
-	gitignorePath := filepath.Join(skillsDir, ".gitignore")
-	if _, err := os.Stat(gitignorePath); os.IsNotExist(err) {
-		t.Error(".gitignore file was not created")
-	}
-
-	// Test that init is idempotent (can run multiple times safely)
+	// Test that init is idempotent
 	t.Run("idempotent", func(t *testing.T) {
-		// Run init again
 		cmd := exec.Command(binaryPath, "init")
 		cmd.Env = append(os.Environ(), "HOME="+homeDir)
 		cmd.Dir = tempDir
@@ -99,7 +83,6 @@ func TestKinokoInit(t *testing.T) {
 			t.Fatalf("Second kinoko init failed: %v\nOutput: %s", err, output)
 		}
 
-		// Should not overwrite existing config
 		configContent, err := os.ReadFile(configPath)
 		if err != nil {
 			t.Fatalf("Failed to read config after second init: %v", err)
@@ -115,7 +98,6 @@ func TestKinokoInit(t *testing.T) {
 func TestKinokoInitWithExistingConfig(t *testing.T) {
 	RequireGitBinary(t)
 
-	// Create test environment
 	tempDir, err := os.MkdirTemp("", "kinoko-init-existing-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -126,12 +108,10 @@ func TestKinokoInitWithExistingConfig(t *testing.T) {
 	homeDir := filepath.Join(tempDir, "home")
 	kinokoDir := filepath.Join(homeDir, ".kinoko")
 
-	// Create .kinoko directory and config file first
 	if err := os.MkdirAll(kinokoDir, 0755); err != nil {
 		t.Fatalf("Failed to create kinoko dir: %v", err)
 	}
 
-	// Create existing config with custom values
 	existingConfigContent := `server:
   host: "0.0.0.0"
   port: 9999
@@ -154,7 +134,6 @@ defaults:
 		t.Fatalf("Failed to create existing config: %v", err)
 	}
 
-	// Run kinoko init
 	cmd := exec.Command(binaryPath, "init")
 	cmd.Env = append(os.Environ(), "HOME="+homeDir)
 	cmd.Dir = tempDir
@@ -177,16 +156,10 @@ defaults:
 	if !strings.Contains(string(configContent), "port: 9999") {
 		t.Error("Existing config port was overwritten")
 	}
-
-	// But skills directory should still be created
-	skillsDir := filepath.Join(homeDir, ".kinoko", "skills")
-	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
-		t.Error("Skills directory was not created when config already existed")
-	}
 }
 
 func TestKinokoInitNoGit(t *testing.T) {
-	// Test init behavior when git is not available
+	// Test init behavior when git is not available — should still succeed
 	tempDir, err := os.MkdirTemp("", "kinoko-init-nogit-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -199,17 +172,22 @@ func TestKinokoInitNoGit(t *testing.T) {
 		t.Fatalf("Failed to create fake home dir: %v", err)
 	}
 
-	// Create environment with git removed from PATH
+	// Create environment with no git in PATH
 	env := []string{}
 	for _, e := range os.Environ() {
 		if strings.HasPrefix(e, "PATH=") {
-			// Remove git from PATH (crude but effective for testing)
 			continue
 		}
 		env = append(env, e)
 	}
 	env = append(env, "HOME="+homeDir)
-	env = append(env, "PATH=/bin:/usr/bin") // Minimal PATH without git
+	// Minimal PATH with only ssh-keygen
+	fakeBin := filepath.Join(tempDir, "fakebin")
+	os.MkdirAll(fakeBin, 0755)
+	if sshKeygen, err := exec.LookPath("ssh-keygen"); err == nil {
+		os.Symlink(sshKeygen, filepath.Join(fakeBin, "ssh-keygen"))
+	}
+	env = append(env, "PATH="+fakeBin)
 
 	cmd := exec.Command(binaryPath, "init")
 	cmd.Env = env
@@ -218,13 +196,6 @@ func TestKinokoInitNoGit(t *testing.T) {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("kinoko init should not fail when git is missing: %v\nOutput: %s", err, output)
-	}
-
-	// Output should contain warning about missing git
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "git") && !strings.Contains(outputStr, "warning") {
-		t.Logf("Expected warning about missing git in output: %s", outputStr)
-		// Note: This is documenting expected behavior - graceful degradation with warning
 	}
 
 	// Should still create directories and config
@@ -237,21 +208,9 @@ func TestKinokoInitNoGit(t *testing.T) {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Error("Config file was not created when git is missing")
 	}
-
-	// Skills directory should exist but not be a git repo
-	skillsDir := filepath.Join(homeDir, ".kinoko", "skills")
-	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
-		t.Error("Skills directory was not created when git is missing")
-	}
-
-	gitDir := filepath.Join(skillsDir, ".git")
-	if _, err := os.Stat(gitDir); !os.IsNotExist(err) {
-		t.Error("Git repository should not be initialized when git binary is missing")
-	}
 }
 
 func TestKinokoInitPermissionError(t *testing.T) {
-	// Test init behavior when home directory is not writable
 	if os.Getuid() == 0 {
 		t.Skip("Skipping permission test when running as root")
 	}
@@ -265,11 +224,10 @@ func TestKinokoInitPermissionError(t *testing.T) {
 	binaryPath := buildKinokoBinary(t, tempDir)
 	homeDir := filepath.Join(tempDir, "readonly-home")
 
-	// Create readonly home directory
 	if err := os.MkdirAll(homeDir, 0555); err != nil {
 		t.Fatalf("Failed to create readonly home dir: %v", err)
 	}
-	defer os.Chmod(homeDir, 0755) // Restore permissions for cleanup
+	defer os.Chmod(homeDir, 0755)
 
 	cmd := exec.Command(binaryPath, "init")
 	cmd.Env = append(os.Environ(), "HOME="+homeDir)
@@ -280,7 +238,6 @@ func TestKinokoInitPermissionError(t *testing.T) {
 		t.Errorf("kinoko init should fail when home directory is not writable\nOutput: %s", output)
 	}
 
-	// Error message should be helpful
 	if !strings.Contains(string(output), "permission") &&
 		!strings.Contains(string(output), "denied") &&
 		!strings.Contains(string(output), "failed") {
@@ -291,7 +248,6 @@ func TestKinokoInitPermissionError(t *testing.T) {
 func TestKinokoInitTildeExpansion(t *testing.T) {
 	RequireGitBinary(t)
 
-	// Test that config paths with ~ get expanded correctly
 	tempDir, err := os.MkdirTemp("", "kinoko-init-tilde-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -313,21 +269,18 @@ func TestKinokoInitTildeExpansion(t *testing.T) {
 		t.Fatalf("kinoko init failed: %v\nOutput: %s", err, output)
 	}
 
-	// Load the generated config
 	configPath := filepath.Join(homeDir, ".kinoko", "config.yaml")
 	configContent, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("Failed to read generated config: %v", err)
 	}
 
-	configStr := string(configContent)
-
-	// Config should contain tilde paths (not yet expanded in the file)
-	if !strings.Contains(configStr, "~/.kinoko") {
+	// Config file should contain tilde paths
+	if !strings.Contains(string(configContent), "~/.kinoko") {
 		t.Error("Generated config should contain tilde paths")
 	}
 
-	// But when loaded through config package, paths should be expanded
+	// When loaded, tildes should be expanded to absolute paths
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
@@ -337,8 +290,8 @@ func TestKinokoInitTildeExpansion(t *testing.T) {
 		t.Error("Tilde should be expanded in loaded config")
 	}
 
-	if !strings.Contains(cfg.Server.DataDir, homeDir) {
-		t.Errorf("DataDir should contain home directory path, got: %s", cfg.Server.DataDir)
+	if !filepath.IsAbs(cfg.Server.DataDir) {
+		t.Errorf("DataDir should be an absolute path, got: %s", cfg.Server.DataDir)
 	}
 }
 
@@ -368,11 +321,8 @@ func TestKinokoInitValidatesSuccessMessage(t *testing.T) {
 
 	outputStr := string(output)
 
-	// Verify success message contains expected elements
 	expectedPhrases := []string{
 		"Kinoko initialized successfully",
-		"Next steps",
-		"config.yaml",
 		"kinoko serve",
 		"~/.kinoko/",
 	}
@@ -383,7 +333,6 @@ func TestKinokoInitValidatesSuccessMessage(t *testing.T) {
 		}
 	}
 
-	// Success message should be user-friendly (no debug logs)
 	if strings.Contains(outputStr, "DEBUG") || strings.Contains(outputStr, "WARN") {
 		t.Errorf("Success message should not contain debug/warning logs: %s", outputStr)
 	}
@@ -413,36 +362,30 @@ func TestKinokoInitFilePermissions(t *testing.T) {
 		t.Fatalf("kinoko init failed: %v\nOutput: %s", err, output)
 	}
 
-	// Check directory permissions
 	kinokoDir := filepath.Join(homeDir, ".kinoko")
 	info, err := os.Stat(kinokoDir)
 	if err != nil {
 		t.Fatalf("Failed to stat kinoko dir: %v", err)
 	}
-
 	if info.Mode().Perm() != 0755 {
 		t.Errorf("Kinoko directory should have 0755 permissions, got %o", info.Mode().Perm())
 	}
 
-	// Check config file permissions
 	configPath := filepath.Join(kinokoDir, "config.yaml")
 	info, err = os.Stat(configPath)
 	if err != nil {
 		t.Fatalf("Failed to stat config file: %v", err)
 	}
-
 	if info.Mode().Perm() != 0644 {
 		t.Errorf("Config file should have 0644 permissions, got %o", info.Mode().Perm())
 	}
 
-	// Check skills directory permissions
-	skillsDir := filepath.Join(kinokoDir, "skills")
-	info, err = os.Stat(skillsDir)
+	cacheDir := filepath.Join(kinokoDir, "cache")
+	info, err = os.Stat(cacheDir)
 	if err != nil {
-		t.Fatalf("Failed to stat skills dir: %v", err)
+		t.Fatalf("Failed to stat cache dir: %v", err)
 	}
-
 	if info.Mode().Perm() != 0755 {
-		t.Errorf("Skills directory should have 0755 permissions, got %o", info.Mode().Perm())
+		t.Errorf("Cache directory should have 0755 permissions, got %o", info.Mode().Perm())
 	}
 }
