@@ -51,8 +51,8 @@ type Pipeline struct {
 	log        *slog.Logger
 	sampleRate float64 // 0.0–1.0, e.g. 0.01 for 1%
 	randIntn   RandIntn
-	novelty    NoveltyChecker           // optional: checks skill novelty before push
-	pusher     SkillPusher              // optional: pushes skills to git (Phase C)
+	novelty    NoveltyChecker          // optional: checks skill novelty before push
+	pusher     SkillPusher             // optional: pushes skills to git (Phase C)
 	committer  model.SkillCommitter    // optional: pushes skills to git
 	scanner    *sanitize.Scanner       // optional: credential scanner
 	tracer     *debug.Tracer           // optional: pipeline debug tracing

@@ -96,7 +96,7 @@ func (p *GitPusher) Push(ctx context.Context, skillName, libraryID string, body 
 	}
 
 	for _, args := range commands {
-		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+		cmd := exec.CommandContext(ctx, args[0], args[1:]...) //nolint:gosec // inputs validated in NewGitPusher + Push
 		cmd.Dir = tmpDir
 		cmd.Env = append(os.Environ(), "GIT_SSH_COMMAND="+sshCmd)
 		out, err := cmd.CombinedOutput()

@@ -66,8 +66,9 @@ func seedSkill(t *testing.T, store *storage.SQLiteStore, engine embedding.Engine
 			CriticConfidence:      0.8,
 		},
 		DecayScore: 1.0,
-		FilePath:  skillPath,
+		FilePath:   skillPath,
 	}
+
 	vec, err := engine.Embed(ctx, content)
 	if err != nil {
 		t.Fatal(err)
@@ -80,9 +81,11 @@ func seedSkill(t *testing.T, store *storage.SQLiteStore, engine embedding.Engine
 
 func TestHandleMatch_Success(t *testing.T) {
 	s, store, engine := setupMatchTest(t)
-	seedSkill(t, store, engine, "fix-db-timeout", "# Fix DB Timeout\nRestart the connection pool.")
+	skillContent := "# Fix DB Timeout\nRestart the connection pool."
+	seedSkill(t, store, engine, "fix-db-timeout", skillContent)
 
-	body, _ := json.Marshal(MatchRequest{Context: "database connection timeout", Limit: 5, MinScore: 0.0})
+	// Use same text as seeded content so mock engine produces identical vectors (cosine=1.0).
+	body, _ := json.Marshal(MatchRequest{Context: skillContent, Limit: 5, MinScore: 0.0})
 	req := httptest.NewRequest("POST", "/api/v1/match", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 
