@@ -6,3 +6,4 @@ MD033: false  # Inline HTML — needed for MDX/Astro
 MD034: false  # Bare URLs — fine in RFCs and docs
 MD040: false  # Fenced code language — not always needed
 MD041: false  # First line heading — not always applicable
+MD060: false  # Table column style — our tables use compact separators
