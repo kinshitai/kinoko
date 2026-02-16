@@ -162,28 +162,28 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if embCfgAPI.APIKey == "" {
 		embCfgAPI.APIKey = os.Getenv("OPENAI_API_KEY")
 	}
-	var apiSrv *api.Server
+	var apiEmbedder embedding.Embedder
 	if embCfgAPI.APIKey != "" {
-		apiEmbedder := embedding.New(embCfgAPI, logger)
-		apiPort := cfg.Server.GetAPIPort()
-		apiSrv = api.New(api.Config{
-			Host:     cfg.Server.Host,
-			Port:     apiPort,
-			Store:    store,
-			Embedder: apiEmbedder,
-			SSHURL:   connInfo.SSHUrl,
-			Logger:   logger,
-			Enqueue: func(ctx context.Context, session model.SessionRecord, logContent []byte) error {
-				return fmt.Errorf("extraction not available on server — use 'kinoko run' to process sessions")
-			},
-		})
-		if err := apiSrv.Start(); err != nil {
-			logger.Error("failed to start API server", "error", err)
-		} else {
-			logger.Info("API server ready", "port", apiPort)
-		}
+		apiEmbedder = embedding.New(embCfgAPI, logger)
 	} else {
-		logger.Warn("API server disabled: no embedding API key")
+		logger.Warn("No embedding API key — /discover will return 503")
+	}
+	apiPort := cfg.Server.GetAPIPort()
+	apiSrv := api.New(api.Config{
+		Host:     cfg.Server.Host,
+		Port:     apiPort,
+		Store:    store,
+		Embedder: apiEmbedder,
+		SSHURL:   connInfo.SSHUrl,
+		Logger:   logger,
+		Enqueue: func(ctx context.Context, session model.SessionRecord, logContent []byte) error {
+			return fmt.Errorf("extraction not available on server — use 'kinoko run' to process sessions")
+		},
+	})
+	if err := apiSrv.Start(); err != nil {
+		logger.Error("failed to start API server", "error", err)
+	} else {
+		logger.Info("API server ready", "port", apiPort)
 	}
 
 	// Wait for shutdown signal.
