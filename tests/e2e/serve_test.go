@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -197,40 +198,45 @@ func TestKinokoServePortConflicts(t *testing.T) {
 		t.Fatalf("Failed to save env2 config: %v", err)
 	}
 
-	t.Run("second_server_fails_on_port_conflict", func(t *testing.T) {
-		// Start first server
+	t.Run("second_server_port_conflict", func(t *testing.T) {
+		// Start first server normally
 		env1.StartServer()
 		defer env1.StopServer()
 
-		// Try to start second server on same port using process group pattern
-		ctx, cancel := context.WithCancel(context.Background())
+		// Start second server on same port — don't wait for exit.
+		// kinoko serve doesn't exit on port conflict (Soft Serve dies but
+		// parent keeps running). We just verify the first server stays healthy.
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
 		cmd := exec.CommandContext(ctx, env2.BinaryPath, "serve", "--config", env2.ConfigPath)
-		cmd.Cancel = func() error {
-			return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
-		}
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		cmd.Dir = env2.TempDir
 
 		if err := cmd.Start(); err != nil {
-			cancel()
 			t.Fatalf("Failed to start second server: %v", err)
 		}
-
-		// Wait a bit and check if it exited due to port conflict
-		done := make(chan error, 1)
-		go func() { done <- cmd.Wait() }()
-
-		select {
-		case <-done:
-			cancel()
-			t.Log("Second server correctly handled port conflict")
-		case <-time.After(10 * time.Second):
-			// Force kill the process group, then cancel context
+		defer func() {
+			// Always kill the process group — don't rely on graceful exit
 			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			cancel()
-			<-done // wait for goroutine's cmd.Wait() to return after kill
-			t.Log("Second server timed out, killed via process group")
+			_ = cmd.Wait()
+		}()
+
+		// Give it time to attempt startup and hit port conflict
+		time.Sleep(2 * time.Second)
+
+		// The thing we actually care about: first server is still healthy
+		apiPort := env1.Config.Server.GetAPIPort()
+		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/api/v1/health", apiPort))
+		if err != nil {
+			t.Fatalf("First server should still be healthy after port conflict attempt: %v", err)
 		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("First server health check returned %d, want 200", resp.StatusCode)
+		}
+
+		t.Log("First server remains healthy despite port conflict attempt")
 	})
 }
 
