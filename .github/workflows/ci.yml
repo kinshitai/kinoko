@@ -104,8 +104,7 @@ jobs:
           curl -sSL -o libtokenizers.tar.gz \
             https://github.com/daulet/tokenizers/releases/download/v1.25.0/libtokenizers.linux-amd64.tar.gz
           tar xzf libtokenizers.tar.gz
-          sudo cp libtokenizers.a /usr/local/lib/
-          sudo ldconfig
+          sudo cp libtokenizers.a /usr/lib/
 
       - name: Download BGE-small-en-v1.5 ONNX model
         run: |
