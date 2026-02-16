@@ -2,8 +2,7 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
-  site: 'https://kinshitai.github.io',
-  base: '/kinoko',
+  site: 'https://kinoko.tech',
   output: 'static',
   integrations: [
     starlight({
