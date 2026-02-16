@@ -1,0 +1,70 @@
+---
+title: "Novelty: Don't Pay Twice"
+description: "How Kinoko's novelty checking prevents duplicate knowledge before expensive LLM extraction."
+slug: concepts/novelty
+---
+
+## The Problem
+
+Your agents solve similar problems. That's the whole point of Kinoko — patterns repeat. But if the extraction pipeline processes every session without checking what you already know, you'll generate duplicate skills and waste LLM tokens doing it.
+
+Novelty checking is the economic gate: **don't spend $0.02 on LLM extraction for knowledge you already have.**
+
+## How It Works
+
+```
+  Candidate skill text
+         │
+         ▼
+  ┌──────────────┐
+  │   Embed      │  ~4ms, local ONNX
+  │  (384-dim)   │
+  └──────┬───────┘
+         │
+         ▼
+  ┌──────────────────┐
+  │  Cosine Similarity │  vs. all existing skill vectors
+  │  Search            │
+  └──────┬─────────────┘
+         │
+    score < 0.85?
+    ┌────┴────┐
+   YES       NO
+    │         │
+  Novel    Duplicate
+  (keep)   (discard)
+```
+
+1. The candidate text is embedded locally using the [embedding engine](/reference/embedding-engine) (~4ms)
+2. The vector is compared against all existing skill embeddings via cosine similarity
+3. If the highest similarity score is **below the threshold** (default 0.85), the content is novel
+4. If it's above — someone already extracted this knowledge. Skip it.
+
+## Threshold Tuning
+
+The default threshold of **0.85** is deliberately conservative — it only blocks near-duplicates. You can override it per-request:
+
+- **Lower (0.7)** — more aggressive deduplication, may block related-but-distinct skills
+- **Higher (0.95)** — only blocks near-identical content, more duplicates slip through
+- **Default (0.85)** — good balance for most libraries
+
+## Fail-Open Design
+
+If the novelty server is unreachable or the embedding engine isn't configured, novelty checks **fail open** — treating content as novel. The reasoning:
+
+> It's better to extract a duplicate skill (minor waste) than to miss genuinely new knowledge (permanent loss).
+
+The extraction client logs a warning when failing open so you can investigate connectivity issues.
+
+## Where It Fits in the Pipeline
+
+Novelty runs at two points:
+
+1. **Stage 2** — rough similarity check during the scoring rubric
+2. **Post-Stage 3** — final deduplication gate after the LLM has approved extraction
+
+This two-pass approach means most duplicates are caught cheaply in Stage 2, and the expensive Stage 3 LLM call only runs on genuinely novel candidates.
+
+## API
+
+The novelty check is exposed as [`POST /api/v1/novelty`](/reference/api#post-apiv1novelty) for programmatic access. See the [API reference](/reference/api) for request/response formats.
