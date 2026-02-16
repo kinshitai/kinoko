@@ -130,3 +130,20 @@ func (b *Breaker) RecordFailure() {
 		b.openedAt = b.clock.Now()
 	}
 }
+
+// State returns the current circuit breaker state as a string: "closed", "open", or "half-open".
+func (b *Breaker) State() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	switch b.state {
+	case stateOpen:
+		if b.clock.Now().Sub(b.openedAt) >= b.openDuration {
+			return "half-open"
+		}
+		return "open"
+	case stateHalfOpen:
+		return "half-open"
+	default:
+		return "closed"
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/kinoko-dev/kinoko/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/debug"
 	"github.com/kinoko-dev/kinoko/internal/decay"
 	"github.com/kinoko-dev/kinoko/internal/embedding"
 	"github.com/kinoko-dev/kinoko/internal/extraction"
@@ -48,6 +49,12 @@ func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, gitSrv *gitse
 		})
 	}
 
+	// Create debug tracer from config (nil if debug is disabled).
+	var tracer *debug.Tracer
+	if cfg.Debug.Enabled && cfg.Debug.Dir != "" {
+		tracer = debug.NewTracer(cfg.Debug.Dir)
+	}
+
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
 		Stage1:    stage1,
 		Stage2:    stage2,
@@ -57,8 +64,10 @@ func buildPipeline(cfg *config.Config, store *storage.SQLiteStore, gitSrv *gitse
 		Embedder:  embedder,
 		Reviewer:  store,
 		Committer: committer,
+		Tracer:    tracer,
 		Log:       logger,
 		Extractor: "worker-v1",
+		ExtCfg:    cfg.Extraction,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build extraction pipeline: %w", err)

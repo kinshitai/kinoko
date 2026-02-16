@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -35,11 +36,13 @@ Run 'kinoko serve' separately to start the shared infrastructure server.`,
 var (
 	runConfigPath string
 	runServerURL  string
+	runDebug      bool
 )
 
 func init() {
 	runCmd.Flags().StringVar(&runConfigPath, "config", "", "Config file path (default: ~/.kinoko/config.yaml)")
 	runCmd.Flags().StringVar(&runServerURL, "server", "", "Server URL override (e.g. localhost:23231)")
+	runCmd.Flags().BoolVar(&runDebug, "debug", false, "Enable pipeline debug tracing")
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
@@ -60,6 +63,23 @@ func runRun(cmd *cobra.Command, args []string) error {
 				cfg.Server.Port = p
 			}
 		}
+	}
+
+	// Debug tracing: CLI flag overrides config.
+	if runDebug {
+		cfg.Debug.Enabled = true
+	}
+	if cfg.Debug.Enabled && cfg.Debug.Dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			slog.Warn("debug tracing: failed to determine home directory, debug tracing disabled", "error", err)
+			cfg.Debug.Enabled = false
+		} else {
+			cfg.Debug.Dir = filepath.Join(home, ".kinoko", "debug")
+		}
+	}
+	if cfg.Debug.Enabled {
+		slog.Info("debug tracing enabled", "dir", cfg.Debug.Dir)
 	}
 
 	logger := slog.Default()
