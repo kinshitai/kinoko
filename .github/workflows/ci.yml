@@ -6,33 +6,29 @@ on:
   pull_request:
     branches: [main]
 
-permissions:
-  contents: read
-  packages: read
-  statuses: write
-
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Super Linter
-        uses: super-linter/super-linter@v7
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEFAULT_BRANCH: main
-          VALIDATE_ALL_CODEBASE: false
-          VALIDATE_GO: true
-          VALIDATE_GO_MODULES: true
-          VALIDATE_YAML: true
-          VALIDATE_MARKDOWN: true
-          VALIDATE_GITHUB_ACTIONS: true
-          LINTER_RULES_PATH: .
-          FILTER_REGEX_EXCLUDE: "(site/|internal-docs/|memory/|rfcs/)"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: markdownlint
+        run: npx markdownlint-cli '*.md' 'rfcs/*.md'
 
   test:
     name: Test
