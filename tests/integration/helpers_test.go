@@ -1,7 +1,10 @@
+//go:build integration
+
 package integration
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"math"
@@ -267,5 +270,66 @@ func assertApprox(t *testing.T, got, want, eps float64, msg string) {
 	t.Helper()
 	if math.Abs(got-want) > eps {
 		t.Errorf("%s: got %.4f, want %.4f (±%.4f)", msg, got, want, eps)
+	}
+}
+
+// indexingCommitter simulates the post-receive hook: on CommitSkill it indexes
+// the skill into SQLite, mimicking what the real hook pipeline does.
+type indexingCommitter struct {
+	indexer  model.SkillIndexer
+	embedder extraction.SkillEmbedder
+}
+
+func (c *indexingCommitter) CommitSkill(ctx context.Context, _ string, skill *model.SkillRecord, body []byte) (string, error) {
+	var emb []float32
+	if c.embedder != nil {
+		var err error
+		emb, err = c.embedder.Embed(ctx, string(body))
+		if err != nil {
+			return "", err
+		}
+	}
+	if err := c.indexer.IndexSkill(ctx, skill, emb); err != nil {
+		return "", err
+	}
+	return "deadbeef", nil
+}
+
+// insertSession inserts a session record into the sessions table for metrics.
+func insertSession(t *testing.T, db *sql.DB, sess model.SessionRecord, result *model.ExtractionResult) {
+	t.Helper()
+	status := string(result.Status)
+	rejStage := 0
+	rejReason := ""
+	skillID := ""
+
+	if result.Status == model.StatusRejected {
+		switch {
+		case result.Stage1 != nil && !result.Stage1.Passed:
+			rejStage = 1
+			rejReason = result.Stage1.Reason
+		case result.Stage2 != nil && !result.Stage2.Passed:
+			rejStage = 2
+			rejReason = result.Stage2.Reason
+		case result.Stage3 != nil && !result.Stage3.Passed:
+			rejStage = 3
+			rejReason = result.Stage3.CriticReasoning
+		}
+	}
+	if result.Skill != nil {
+		skillID = result.Skill.ID
+	}
+
+	_, err := db.Exec(`INSERT INTO sessions (id, started_at, ended_at, duration_minutes, tool_call_count,
+		error_count, message_count, error_rate, has_successful_exec, tokens_used, agent_model, user_id,
+		library_id, extraction_status, rejected_at_stage, rejection_reason, extracted_skill_id)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		sess.ID, sess.StartedAt, sess.EndedAt, sess.DurationMinutes, sess.ToolCallCount,
+		sess.ErrorCount, sess.MessageCount, sess.ErrorRate, sess.HasSuccessfulExec,
+		sess.TokensUsed, sess.AgentModel, sess.UserID,
+		sess.LibraryID, status, rejStage, rejReason,
+		sql.NullString{String: skillID, Valid: skillID != ""})
+	if err != nil {
+		t.Fatalf("insert session %s: %v", sess.ID, err)
 	}
 }
