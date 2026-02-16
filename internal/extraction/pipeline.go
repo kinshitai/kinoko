@@ -51,10 +51,10 @@ type Pipeline struct {
 	log        *slog.Logger
 	sampleRate float64 // 0.0–1.0, e.g. 0.01 for 1%
 	randIntn   RandIntn
-	committer  model.SkillCommitter // optional: pushes skills to git
-	scanner    *sanitize.Scanner    // optional: credential scanner
-	tracer     *debug.Tracer         // optional: pipeline debug tracing
-	extractor  string               // pipeline version identifier
+	committer  model.SkillCommitter    // optional: pushes skills to git
+	scanner    *sanitize.Scanner       // optional: credential scanner
+	tracer     *debug.Tracer           // optional: pipeline debug tracing
+	extractor  string                  // pipeline version identifier
 	extCfg     config.ExtractionConfig // extraction config for trace thresholds
 
 	// Stratified sampling counters: maintain ~50/50 extracted vs rejected.

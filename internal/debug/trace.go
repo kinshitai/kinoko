@@ -115,7 +115,6 @@ func (r *RunTrace) WriteRaw(name string, suffix string, data []byte) {
 	if err := gz.Close(); err != nil {
 		slog.Error("debug: gzip close", "path", path, "error", err)
 	}
-	return
 }
 
 // WriteSkill writes a skill body to skills/<skillName>.md.
