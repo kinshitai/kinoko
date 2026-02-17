@@ -1,13 +1,13 @@
-# Contributing to Mycelium
+# Contributing to Kinoko
 
-Welcome to the Mycelium project! This document covers our development workflow, testing practices, architecture patterns, and contribution guidelines.
+Welcome to the Kinoko project! This document covers our development workflow, testing practices, architecture patterns, and contribution guidelines.
 
 ## Quick Start
 
 ```bash
 # Clone and setup
 git clone <repository-url>
-cd mycelium
+cd kinoko
 make install-hooks  # Installs pre-commit hook with full test suite
 
 # Run all tests
@@ -110,7 +110,7 @@ go test -race -cover ./...
 
 ## Architecture Overview
 
-Mycelium is a **client-server system** where:
+Kinoko is a **client-server system** where:
 
 - **Client** (`kinoko run`) extracts knowledge from local sessions
 - **Server** (`kinoko serve`) provides discovery and indexing services

@@ -1,10 +1,10 @@
 # Architecture
 
-Mycelium is a **client-server knowledge extraction and injection system** that automatically captures procedural knowledge from agent sessions and makes it available for future use.
+Kinoko is a **client-server knowledge extraction and injection system** that automatically captures procedural knowledge from agent sessions and makes it available for future use.
 
 ## System Overview
 
-Mycelium consists of two primary components:
+Kinoko consists of two primary components:
 
 - **Client** (`kinoko run`) — Extracts knowledge from local agent sessions and stores them as Skills
 - **Server** (`kinoko serve`) — Indexes extracted Skills and provides discovery APIs

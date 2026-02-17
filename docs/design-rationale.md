@@ -1,6 +1,6 @@
 # Design Rationale
 
-This document explains **why** Mycelium's architecture is designed the way it is, linking key design decisions to research findings and empirical evidence.
+This document explains **why** Kinoko's architecture is designed the way it is, linking key design decisions to research findings and empirical evidence.
 
 ## Research Foundation
 
@@ -351,7 +351,7 @@ Relying only on LLM critic evaluation was rejected because:
 
 ## Summary
 
-Mycelium's architecture emerged from empirical research on what makes Agent Skills effective:
+Kinoko's architecture emerged from empirical research on what makes Agent Skills effective:
 
 1. **Client/server split** — Extraction needs local context, discovery needs global index
 2. **Git-first** — Durability and versioning beat database convenience
