@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/kinoko-dev/kinoko/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/serverclient"
 )
 
 // ── mock API server ──
@@ -422,10 +423,10 @@ func TestFullFlow_IngestThenMatch(t *testing.T) {
 	}
 }
 
-// ── httpEmbedder tests ──
+// ── HTTPEmbedder tests ──
 
-func TestHttpEmbedder_Dimensions(t *testing.T) {
-	e := &httpEmbedder{apiURL: "http://unused"}
+func TestHTTPEmbedder_Dimensions(t *testing.T) {
+	e := serverclient.NewHTTPEmbedder(serverclient.New("http://unused"), 384)
 	if d := e.Dimensions(); d != 384 {
 		t.Fatalf("expected 384, got %d", d)
 	}

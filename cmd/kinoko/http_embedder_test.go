@@ -3,13 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/kinoko-dev/kinoko/internal/serverclient"
 )
 
-func TestHttpEmbedder_Embed(t *testing.T) {
+func TestHTTPEmbedder_Embed(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/embed" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
@@ -25,7 +26,8 @@ func TestHttpEmbedder_Embed(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	e := &httpEmbedder{apiURL: srv.URL, logger: slog.Default()}
+	client := serverclient.New(srv.URL)
+	e := serverclient.NewHTTPEmbedder(client, 3)
 	vec, err := e.Embed(context.Background(), "hello world")
 	if err != nil {
 		t.Fatal(err)
@@ -38,7 +40,7 @@ func TestHttpEmbedder_Embed(t *testing.T) {
 	}
 }
 
-func TestHttpEmbedder_EmbedBatch(t *testing.T) {
+func TestHTTPEmbedder_EmbedBatch(t *testing.T) {
 	callCount := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
@@ -48,7 +50,8 @@ func TestHttpEmbedder_EmbedBatch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	e := &httpEmbedder{apiURL: srv.URL, logger: slog.Default()}
+	client := serverclient.New(srv.URL)
+	e := serverclient.NewHTTPEmbedder(client, 1)
 	vecs, err := e.EmbedBatch(context.Background(), []string{"a", "b", "c"})
 	if err != nil {
 		t.Fatal(err)
@@ -61,13 +64,14 @@ func TestHttpEmbedder_EmbedBatch(t *testing.T) {
 	}
 }
 
-func TestHttpEmbedder_Embed_ServerError(t *testing.T) {
+func TestHTTPEmbedder_Embed_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
-	e := &httpEmbedder{apiURL: srv.URL, logger: slog.Default()}
+	client := serverclient.New(srv.URL)
+	e := serverclient.NewHTTPEmbedder(client, 3)
 	_, err := e.Embed(context.Background(), "test")
 	if err == nil {
 		t.Fatal("expected error on server error")

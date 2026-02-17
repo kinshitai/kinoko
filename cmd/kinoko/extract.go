@@ -5,19 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/kinoko-dev/kinoko/internal/config"
-	embpkg "github.com/kinoko-dev/kinoko/internal/embedding"
+	"github.com/kinoko-dev/kinoko/internal/debug"
 	"github.com/kinoko-dev/kinoko/internal/extraction"
-	"github.com/kinoko-dev/kinoko/internal/gitserver"
 	"github.com/kinoko-dev/kinoko/internal/llm"
 	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/serverclient"
 )
 
 var extractCmd = &cobra.Command{
@@ -39,7 +37,7 @@ var (
 func init() {
 	extractCmd.Flags().StringVar(&extractConfigPath, "config", "", "Config file path")
 	extractCmd.Flags().StringVar(&extractLibrary, "library", "", "Library ID (default: first configured library)")
-	extractCmd.Flags().StringVar(&extractAPIURL, "api-url", "", "Kinoko API URL (default: $KINOKO_API_URL or http://127.0.0.1:23233)")
+	extractCmd.Flags().StringVar(&extractAPIURL, "api-url", "", "Kinoko API URL override")
 	extractCmd.Flags().BoolVar(&extractDryRun, "dry-run", false, "Run pipeline but skip git push")
 	extractCmd.Flags().DurationVar(&extractTimeout, "timeout", 5*time.Minute, "Command timeout")
 }
@@ -74,29 +72,18 @@ func runExtract(cmd *cobra.Command, args []string) error {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	// Initialize store
-	store, err := storage.NewSQLiteStore(cfg.Storage.DSN, "")
-	if err != nil {
-		return fmt.Errorf("open store: %w", err)
+	// Server client for embeddings, skill querying, sessions, reviews.
+	serverURL := cfg.ServerURL()
+	if extractAPIURL != "" {
+		serverURL = extractAPIURL
 	}
-	defer store.Close()
+	serverClient := serverclient.New(serverURL)
 
-	apiURL := firstNonEmpty(extractAPIURL, os.Getenv("KINOKO_API_URL"), "http://127.0.0.1:23233")
+	// Embedder via server HTTP API.
+	embedder := serverclient.NewHTTPEmbedder(serverClient, cfg.Embedding.GetDims())
 
-	// Initialize embedder — try API-key-based first, degrade gracefully.
-	embCfg := embpkg.DefaultConfig()
-	embCfg.APIKey = os.Getenv("KINOKO_EMBEDDING_API_KEY")
-	if embCfg.APIKey == "" {
-		embCfg.APIKey = os.Getenv("OPENAI_API_KEY")
-	}
-	var embedder embpkg.Embedder
-	if embCfg.APIKey != "" {
-		embedder = embpkg.New(embCfg, logger)
-	} else {
-		logger.Warn("no embedding API key set, Stage2 scoring will use server embed endpoint or be skipped")
-		// Use HTTP embedder via server API as fallback.
-		embedder = &httpEmbedder{apiURL: apiURL, client: sharedHTTPClient, logger: logger}
-	}
+	// Skill querier via server HTTP API.
+	querier := serverclient.NewHTTPQuerier(serverClient)
 
 	// Initialize LLM client — Stage2 and Stage3 need it.
 	llmAPIKey := cfg.LLM.APIKey
@@ -120,32 +107,36 @@ func runExtract(cmd *cobra.Command, args []string) error {
 
 	// Build pipeline stages
 	stage1 := extraction.NewStage1Filter(cfg.Extraction, logger)
-	stage2 := extraction.NewStage2Scorer(embedder, storage.NewSkillQuerier(store), llmClient, cfg.Extraction, logger)
+	stage2 := extraction.NewStage2Scorer(embedder, querier, llmClient, cfg.Extraction, logger)
 	stage3 := extraction.NewStage3Critic(llmClient, cfg.Extraction, logger)
 
 	// Novelty checker via server API.
 	threshold := cfg.Embedding.GetNoveltyThreshold()
-	novelty := extraction.NewNoveltyClient(apiURL, threshold, logger)
+	novelty := extraction.NewNoveltyClient(serverURL, threshold, logger)
 
-	// Git committer — create git server for committing skills.
-	server, err := gitserver.NewServer(cfg)
-	if err != nil {
-		return fmt.Errorf("create git server: %w", err)
+	// Git committer via SSH push.
+	sshURL := fmt.Sprintf("ssh://%s:%d", cfg.Server.Host, cfg.Server.Port)
+	committer := serverclient.NewGitPushCommitter(sshURL, cfg.Server.DataDir, logger)
+
+	// Session writer and reviewer via server HTTP API.
+	sessions := serverclient.NewHTTPSessionWriter(serverClient)
+	reviewer := serverclient.NewHTTPReviewer(serverClient)
+
+	// Debug tracer from config (nil if debug is disabled).
+	var tracer *debug.Tracer
+	if cfg.Debug.Enabled && cfg.Debug.Dir != "" {
+		tracer = debug.NewTracer(cfg.Debug.Dir)
 	}
-	committer := gitserver.NewGitCommitter(gitserver.GitCommitterConfig{
-		Server:  server,
-		DataDir: cfg.Server.DataDir,
-		Logger:  logger,
-	})
 
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
 		Stage1:     stage1,
 		Stage2:     stage2,
 		Stage3:     stage3,
-		Sessions:   store,
-		Reviewer:   store,
+		Sessions:   sessions,
+		Reviewer:   reviewer,
 		Novelty:    novelty,
 		Committer:  committer,
+		Tracer:     tracer,
 		Log:        logger,
 		SampleRate: 0.01,
 		Extractor:  "cli-extract-v1",
@@ -213,45 +204,6 @@ func printExtractSummary(result *model.ExtractionResult, dryRun bool) {
 	}
 	fmt.Printf("  Duration: %dms\n", result.DurationMs)
 	fmt.Println("──────────────────────────")
-}
-
-// httpEmbedder implements embedding.Embedder via the server's /api/v1/embed endpoint.
-type httpEmbedder struct {
-	apiURL string
-	client *http.Client
-	logger *slog.Logger
-}
-
-func (e *httpEmbedder) httpClient() *http.Client {
-	if e.client != nil {
-		return e.client
-	}
-	return sharedHTTPClient
-}
-
-func (e *httpEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
-	vec, err := fetchEmbedding(e.httpClient(), e.apiURL, text)
-	if err != nil {
-		e.logger.Warn("HTTP embedding failed", "error", err)
-		return nil, err
-	}
-	return vec, nil
-}
-
-func (e *httpEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
-	results := make([][]float32, len(texts))
-	for i, t := range texts {
-		vec, err := e.Embed(ctx, t)
-		if err != nil {
-			return nil, err
-		}
-		results[i] = vec
-	}
-	return results, nil
-}
-
-func (e *httpEmbedder) Dimensions() int {
-	return 384 // bge-small-en-v1.5 dimensions (ONNX server model). TODO: probe server dynamically.
 }
 
 // exitError signals a non-zero exit code without calling os.Exit directly.
