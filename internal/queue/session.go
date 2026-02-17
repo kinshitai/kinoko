@@ -10,19 +10,19 @@ import (
 
 // SessionMetadata holds the lightweight session info stored client-side.
 type SessionMetadata struct {
-	SessionID        string
-	StartedAt        time.Time
-	EndedAt          time.Time
-	DurationMinutes  float64
-	ToolCallCount    int
-	ErrorCount       int
-	MessageCount     int
-	ErrorRate        float64
+	SessionID         string
+	StartedAt         time.Time
+	EndedAt           time.Time
+	DurationMinutes   float64
+	ToolCallCount     int
+	ErrorCount        int
+	MessageCount      int
+	ErrorRate         float64
 	HasSuccessfulExec bool
-	TokensUsed       int
-	AgentModel       string
-	UserID           string
-	LibraryID        string
+	TokensUsed        int
+	AgentModel        string
+	UserID            string
+	LibraryID         string
 }
 
 // GetSessionMetadata retrieves session metadata by ID.
