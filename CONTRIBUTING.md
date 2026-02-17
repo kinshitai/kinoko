@@ -55,7 +55,7 @@ Keep it English only. No emoji in commit messages.
 | Implementation | Otso 🇫🇮 | Build from specs, branch + PR |
 | Code review | Jazz 👴 | Review every PR, grade B+ minimum to merge |
 | QA | Pavel 🇷🇺 | Test coverage, integration tests, verify on branch |
-| Docs | Charis 🇨🇧 | Update docs when behavior changes, audit regularly |
+| Docs | Charis 🇨🇦 | Update docs when behavior changes, audit regularly |
 | R&D | Luka 🇩🇰 | Research briefs, specs for new features |
 
 ### Review Process
