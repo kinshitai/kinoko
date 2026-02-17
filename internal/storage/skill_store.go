@@ -259,9 +259,16 @@ func (s *SQLiteStore) UpdateUsage(ctx context.Context, id string, outcome string
 
 func (s *SQLiteStore) UpdateDecay(ctx context.Context, id string, decayScore float64) error {
 	now := time.Now().UTC()
-	_, err := s.db.ExecContext(ctx, `UPDATE skills SET decay_score = ?, updated_at = ? WHERE id = ?`, decayScore, now, id)
+	res, err := s.db.ExecContext(ctx, `UPDATE skills SET decay_score = ?, updated_at = ? WHERE id = ?`, decayScore, now, id)
 	if err != nil {
 		return fmt.Errorf("update decay: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update decay rows affected: %w", err)
+	}
+	if n == 0 {
+		return model.ErrNotFound
 	}
 	return nil
 }

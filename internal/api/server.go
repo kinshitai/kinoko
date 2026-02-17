@@ -95,6 +95,17 @@ func New(cfg Config) *Server {
 	mux.HandleFunc("GET /api/v1/discover", s.handleDiscoverGET)
 	mux.HandleFunc("POST /api/v1/ingest", s.handleIngest)
 
+	// T4: New write-path endpoints
+	mux.HandleFunc("POST /api/v1/sessions", s.handleCreateSession)
+	mux.HandleFunc("PUT /api/v1/sessions/{id}", s.handleUpdateSession)
+	mux.HandleFunc("POST /api/v1/review-samples", s.handleCreateReviewSample)
+	mux.HandleFunc("POST /api/v1/injection-events", s.handleCreateInjectionEvent)
+	mux.HandleFunc("PUT /api/v1/injection-events/{session_id}/outcome", s.handleUpdateInjectionOutcome)
+	mux.HandleFunc("POST /api/v1/search", s.handleSearch)
+	mux.HandleFunc("GET /api/v1/skills/decay", s.handleListByDecay)
+	mux.HandleFunc("PATCH /api/v1/skills/{id}/decay", s.handleUpdateDecay)
+	mux.HandleFunc("POST /api/v1/skills/{id}/usage", s.handleUpdateUsage)
+
 	// Novelty endpoint (registered via SetNoveltyChecker after construction)
 	s.noveltyMux = mux
 
@@ -253,6 +264,17 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create session record in store if available.
+	if s.store != nil {
+		sess := &model.SessionRecord{
+			ID:               req.SessionID,
+			ExtractionStatus: model.StatusQueued,
+		}
+		if err := s.store.InsertSession(r.Context(), sess); err != nil {
+			s.logger.Warn("insert session on ingest (may already exist)", "error", err)
+		}
+	}
+
 	if s.enqueue == nil {
 		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "ingestion not available — use 'kinoko run' to process sessions"})
 		return
@@ -261,7 +283,7 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	session := model.SessionRecord{ID: req.SessionID}
 	if err := s.enqueue(r.Context(), session, []byte(req.Log)); err != nil {
 		s.logger.Error("ingest enqueue failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
 
