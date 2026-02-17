@@ -31,8 +31,9 @@ The complete knowledge lifecycle follows this path:
 3. **Git Push** → Extracted Skills committed to Git repositories
 4. **Post-receive Hook** → Server automatically indexes new Skills
 5. **Index (Server)** → Skills stored in SQLite with embeddings
-6. **Discover (Client)** → Client queries server for relevant Skills
-7. **Injection** → Relevant Skills injected into new agent contexts
+6. **Discover (Client)** → Client queries server, gets repo URLs for matching Skills
+7. **Git Clone (Client)** → Client pulls Skill repos to get SKILL.md content
+8. **Injection** → Relevant Skills injected into new agent contexts
 
 ```mermaid
 graph TB
@@ -187,7 +188,7 @@ The SQLite databases on both client and server are **derived caches** for perfor
 **Why Git instead of direct database storage?**
 
 - **Write path**: `Session → Extract → Git → Hook → Index → SQLite`
-- **Read path**: `Query → SQLite → Results` (fast)
+- **Read path**: `Query → SQLite → Repo URLs → Git Clone → SKILL.md` (server returns where to find it, client pulls from git)
 - **Truth**: Git repositories (durable, versioned, recoverable)
 - **Cache**: SQLite databases (fast, derived, replaceable)
 
