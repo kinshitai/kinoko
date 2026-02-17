@@ -41,8 +41,9 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
       <div class="hero-agent-tag hero-agent-tag--kinoko">kinoko</div>
     </div>
   </div>
-  <svg id="hero-paths-svg" class="hero-paths-svg"></svg>
   <div class="hero-underground" id="hero-underground">
+    <svg id="circuit-svg" class="circuit-svg"></svg>
+    <div class="hero-underground-soil"></div>
     <div class="hero-underground-dots" id="underground-dots"></div>
     <div class="hero-underground-label">mycelium network</div>
   </div>
@@ -98,56 +99,61 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   const checkB = document.getElementById("check-b");
   const checkC = document.getElementById("check-c");
   const scene = document.getElementById("hero-scene");
-  const pathsSvg = document.getElementById("hero-paths-svg");
-  const agentB = document.getElementById("hero-agent-b");
-  const agentC = document.getElementById("hero-agent-c");
+  const circuitSvg = document.getElementById("circuit-svg");
   const underground = document.getElementById("hero-underground");
   if (!promptEl || !scene) return;
 
   let taskIdx = 0;
 
-  /* ── Circuit path helpers ── */
-  function getBottomCenter(el) {
-    const r = el.getBoundingClientRect();
-    const sr = scene.getBoundingClientRect();
-    return { x: r.left + r.width / 2 - sr.left, y: r.bottom - sr.top };
-  }
-  function getDotPos(idx) {
-    const dot = document.getElementById("src-dot-" + idx);
-    if (!dot) return { x: 0, y: 0 };
-    const r = dot.getBoundingClientRect();
-    const sr = scene.getBoundingClientRect();
-    return { x: r.left + r.width / 2 - sr.left, y: r.top + r.height / 2 - sr.top };
-  }
-  function rightAnglePath(from, to) {
-    /* from = underground dot, to = agent bottom center */
-    /* Route: go horizontal to align under target, then straight up */
-    const midY = from.y - (from.y - to.y) * 0.3;
-    return "M"+from.x+","+from.y+" L"+from.x+","+midY+" L"+to.x+","+midY+" L"+to.x+","+to.y;
-  }
-  function sizeSvg() {
-    const sr = scene.getBoundingClientRect();
-    pathsSvg.setAttribute("viewBox", "0 0 "+sr.width+" "+sr.height);
-    pathsSvg.style.width = sr.width + "px";
-    pathsSvg.style.height = sr.height + "px";
-  }
+  /* ── Circuit path helpers (split design: SVG inside underground + CSS roots on agents) ── */
+  const AGENT_TARGETS = [
+    { x: 0.5 },    /* Agent B: center of 2nd column */
+    { x: 5/6 },    /* Agent C: center of 3rd column */
+  ];
 
   let activeDot = null;
   function drawPaths() {
-    sizeSvg();
-    pathsSvg.innerHTML = "";
+    circuitSvg.innerHTML = "";
+    const ugW = underground.offsetWidth;
+    const ugH = underground.offsetHeight;
+
+    /* SVG viewBox matches underground dimensions */
+    circuitSvg.setAttribute("viewBox", "0 0 " + ugW + " " + ugH);
+
     const dotIdx = Math.floor(Math.random() * SOURCE_DOTS.length);
     activeDot = document.getElementById("src-dot-" + dotIdx);
     if (activeDot) activeDot.classList.add("source-dot--active");
 
-    const dotPos = getDotPos(dotIdx);
-    const bPos = getBottomCenter(agentB);
-    const cPos = getBottomCenter(agentC);
+    const dot = SOURCE_DOTS[dotIdx];
+    /* 30px buffer at top of underground — dots live in the bottom area */
+    const bufferPx = 30;
+    const dotAreaH = ugH - bufferPx;
+    const dotX = (dot.pctX / 100) * ugW;
+    const dotY = bufferPx + (dot.pctY / 100) * dotAreaH;
+
+    /* All horizontal routing happens inside the soil (below bufferPx).
+       Once a path reaches soil top (y=bufferPx), it only goes straight up. */
+    const soilTop = bufferPx;
+    const junctionY = soilTop + dotAreaH * 0.15;
+    /* Two routing lanes inside the soil, just above junction */
+    const lanes = [soilTop + dotAreaH * 0.05, soilTop + dotAreaH * 0.10];
 
     const ns = "http://www.w3.org/2000/svg";
-    [bPos, cPos].forEach((target, i) => {
+
+    AGENT_TARGETS.forEach((t, i) => {
+      const targetX = t.x * ugW;
+      const laneY = lanes[i];
+      /* midpoint X for zigzag — halfway between dot and target */
+      const midX = dotX + (targetX - dotX) * 0.5;
+
+      /* Path: dot → up to junction → horizontal to midX → up to lane → horizontal to targetX → up through buffer to top */
+      const d = "M"+dotX+","+dotY+
+                " L"+dotX+","+junctionY+
+                " L"+midX+","+junctionY+
+                " L"+midX+","+laneY+
+                " L"+targetX+","+laneY+
+                " L"+targetX+",0";
       const p = document.createElementNS(ns, "path");
-      const d = rightAnglePath(dotPos, target);
       p.setAttribute("d", d);
       p.setAttribute("fill", "none");
       p.setAttribute("stroke", "var(--sl-color-green)");
@@ -156,23 +162,23 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
       const len = p.getTotalLength ? p.getTotalLength() : 300;
       p.style.strokeDasharray = len;
       p.style.strokeDashoffset = len;
-      pathsSvg.appendChild(p);
-      /* stagger: B immediately, C after 300ms */
+      circuitSvg.appendChild(p);
       setTimeout(() => {
         p.style.transition = "stroke-dashoffset 0.7s ease-out";
         p.style.strokeDashoffset = "0";
       }, i * 300);
     });
+
+    /* activate CSS roots on agents */
   }
   function clearPaths() {
-    pathsSvg.querySelectorAll(".circuit-path").forEach(p => {
+    circuitSvg.querySelectorAll(".circuit-path").forEach(p => {
       p.style.transition = "opacity 0.4s";
       p.style.opacity = "0";
     });
     if (activeDot) { activeDot.classList.remove("source-dot--active"); activeDot = null; }
-    setTimeout(() => { pathsSvg.innerHTML = ""; }, 500);
+    setTimeout(() => { circuitSvg.innerHTML = ""; }, 500);
   }
-  window.addEventListener("resize", sizeSvg);
 
   function typeText(el, text, speed) {
     return new Promise(resolve => {

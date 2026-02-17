@@ -153,10 +153,31 @@ code:not(pre code) {
   grid-template-columns: repeat(3, 1fr);
   gap: 0.75rem;
   margin-bottom: 0;
+  align-items: stretch;
   position: relative;
   z-index: 2;
   overflow: visible;
+  min-height: 8rem;
 }
+
+.hero-agents > .hero-agent {
+  margin-top: 0;
+}
+
+/* Kill Starlight's sibling margin rule inside the hero scene */
+.kinoko-hero-scene > * {
+  margin-top: 0 !important;
+}
+.kinoko-hero-scene > *:first-child {
+  margin-top: 0 !important;
+}
+.hero-agents {
+  margin-bottom: 0 !important;
+}
+.hero-underground {
+  margin-top: 0 !important;
+}
+
 
 .hero-agent {
   min-width: 0;
@@ -244,11 +265,12 @@ code:not(pre code) {
   box-shadow: 0 0 14px rgba(91, 140, 90, 0.2);
 }
 
-/* Circuit path overlay */
-.hero-paths-svg {
+/* Circuit path SVG inside underground */
+.circuit-svg {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   z-index: 3;
   overflow: visible;
@@ -273,21 +295,36 @@ code:not(pre code) {
   50% { r: 4; }
 }
 
-/* Underground */
+/* Underground — extra 30px buffer on top (transparent) overlaps behind agents */
 .hero-underground {
   position: relative;
-  height: 80px;
-  margin-top: 0;
+  height: 110px;
+  margin-top: -30px !important;  /* slide up behind agents */
+  padding-top: 30px;             /* buffer zone — transparent, no content */
+  background: none;
+  overflow: visible;
+  z-index: 1;
+}
+
+/* Visible soil area (below the buffer) */
+.hero-underground-soil {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: linear-gradient(180deg, var(--sl-color-gray-5) 0%, #0d1a0d 100%);
   border-radius: 0 0 0.75rem 0.75rem;
   border: 1px solid var(--sl-color-gray-4);
   border-top: none;
-  overflow: visible;
 }
 
 .hero-underground-dots {
   position: absolute;
-  inset: 0;
+  top: 30px;    /* dots start below the buffer */
+  left: 0;
+  right: 0;
+  bottom: 0;
   overflow: hidden;
   border-radius: 0 0 0.75rem 0.75rem;
 }
@@ -461,6 +498,6 @@ code:not(pre code) {
   }
 
   .hero-underground {
-    height: 60px;
+    height: 90px;  /* 30px buffer + 60px content */
   }
 }
