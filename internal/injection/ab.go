@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
 // ABConfig controls the injection A/B test (spec §3.3).
@@ -95,7 +94,7 @@ func (ab *ABInjector) Inject(ctx context.Context, req model.InjectionRequest) (*
 	if ab.eventWriter != nil && req.SessionID != "" {
 		now := time.Now().UTC()
 		for _, sk := range resp.Skills {
-			ev := storage.InjectionEventRecord{
+			ev := model.InjectionEventRecord{
 				ID:             uuid.Must(uuid.NewV7()).String(),
 				SessionID:      req.SessionID,
 				SkillID:        sk.SkillID,

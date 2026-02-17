@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
 // --- mocks ---
@@ -45,9 +44,9 @@ func (m *mockLLM) Complete(_ context.Context, _ string) (string, error) {
 }
 
 type mockStore struct {
-	results []storage.ScoredSkill
+	results []model.ScoredSkill
 	err     error
-	lastQ   storage.SkillQuery
+	lastQ   model.SkillQuery
 }
 
 func (m *mockStore) Put(_ context.Context, _ *model.SkillRecord, _ []byte) error { return nil }
@@ -57,7 +56,7 @@ func (m *mockStore) Get(_ context.Context, _ string) (*model.SkillRecord, error)
 func (m *mockStore) GetLatestByName(_ context.Context, _, _ string) (*model.SkillRecord, error) {
 	return nil, nil
 }
-func (m *mockStore) Query(_ context.Context, q storage.SkillQuery) ([]storage.ScoredSkill, error) {
+func (m *mockStore) Query(_ context.Context, q model.SkillQuery) ([]model.ScoredSkill, error) {
 	m.lastQ = q
 	return m.results, m.err
 }
@@ -68,11 +67,11 @@ func (m *mockStore) ListByDecay(_ context.Context, _ string, _ int) ([]model.Ski
 }
 
 type mockEventWriter struct {
-	events []storage.InjectionEventRecord
+	events []model.InjectionEventRecord
 	err    error
 }
 
-func (m *mockEventWriter) WriteInjectionEvent(_ context.Context, ev storage.InjectionEventRecord) error {
+func (m *mockEventWriter) WriteInjectionEvent(_ context.Context, ev model.InjectionEventRecord) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -87,8 +86,8 @@ func classifyJSON(intent, domain string, patterns []string) string {
 	return string(b)
 }
 
-func makeSkill(id string, patterns []string, successCorr float64) storage.ScoredSkill {
-	return storage.ScoredSkill{
+func makeSkill(id string, patterns []string, successCorr float64) model.ScoredSkill {
+	return model.ScoredSkill{
 		Skill: model.SkillRecord{
 			ID:                 id,
 			Patterns:           patterns,
@@ -113,7 +112,7 @@ func TestFullFlow(t *testing.T) {
 	llm := &mockLLM{response: classifyJSON("BUILD", "Backend", []string{"BUILD/Backend/APIDesign"})}
 	emb := &mockEmbedder{result: []float32{0.1, 0.2, 0.3}}
 	ew := &mockEventWriter{}
-	store := &mockStore{results: []storage.ScoredSkill{
+	store := &mockStore{results: []model.ScoredSkill{
 		makeSkill("s1", []string{"BUILD/Backend/APIDesign"}, 0.5),
 		makeSkill("s2", []string{"BUILD/Backend/DataModeling"}, 0.3),
 	}}
@@ -151,7 +150,7 @@ func TestInjectionEventWriting(t *testing.T) {
 	llm := &mockLLM{response: classifyJSON("BUILD", "Backend", []string{"BUILD/Backend/APIDesign"})}
 	emb := &mockEmbedder{result: []float32{0.1}}
 	ew := &mockEventWriter{}
-	store := &mockStore{results: []storage.ScoredSkill{
+	store := &mockStore{results: []model.ScoredSkill{
 		makeSkill("s1", nil, 0.5),
 		makeSkill("s2", nil, 0.3),
 	}}
@@ -183,7 +182,7 @@ func TestInjectionEventNotWrittenWithoutSessionID(t *testing.T) {
 	llm := &mockLLM{response: classifyJSON("BUILD", "Backend", []string{})}
 	emb := &mockEmbedder{result: []float32{0.1}}
 	ew := &mockEventWriter{}
-	store := &mockStore{results: []storage.ScoredSkill{makeSkill("s1", nil, 0.5)}}
+	store := &mockStore{results: []model.ScoredSkill{makeSkill("s1", nil, 0.5)}}
 
 	inj := newTestInjector(emb, store, llm, ew)
 	_, err := inj.Inject(context.Background(), model.InjectionRequest{
@@ -203,7 +202,7 @@ func TestInjectionEventWriteError(t *testing.T) {
 	llm := &mockLLM{response: classifyJSON("BUILD", "Backend", []string{})}
 	emb := &mockEmbedder{result: []float32{0.1}}
 	ew := &mockEventWriter{err: errors.New("db write failed")}
-	store := &mockStore{results: []storage.ScoredSkill{makeSkill("s1", nil, 0.5)}}
+	store := &mockStore{results: []model.ScoredSkill{makeSkill("s1", nil, 0.5)}}
 
 	inj := newTestInjector(emb, store, llm, ew)
 	// Event write failure should not break injection.
@@ -223,7 +222,7 @@ func TestInjectionEventWriteError(t *testing.T) {
 func TestEmbeddingFallback(t *testing.T) {
 	llm := &mockLLM{response: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"})}
 	emb := &mockEmbedder{err: errors.New("circuit open")}
-	store := &mockStore{results: []storage.ScoredSkill{
+	store := &mockStore{results: []model.ScoredSkill{
 		makeSkill("s1", []string{"FIX/Backend/DatabaseConnection"}, 0.8),
 	}}
 
@@ -245,7 +244,7 @@ func TestEmbeddingFallback(t *testing.T) {
 
 func TestNilEmbedder(t *testing.T) {
 	llm := &mockLLM{response: classifyJSON("BUILD", "Backend", []string{})}
-	store := &mockStore{results: []storage.ScoredSkill{makeSkill("s1", nil, 0.5)}}
+	store := &mockStore{results: []model.ScoredSkill{makeSkill("s1", nil, 0.5)}}
 
 	inj := New(nil, store, llm, nil, slog.Default())
 	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
@@ -286,7 +285,7 @@ func TestEmptyLibrary(t *testing.T) {
 func TestClassificationFailure(t *testing.T) {
 	llm := &mockLLM{err: errors.New("llm down")}
 	emb := &mockEmbedder{result: []float32{0.1}}
-	store := &mockStore{results: []storage.ScoredSkill{makeSkill("s1", nil, 0.5)}}
+	store := &mockStore{results: []model.ScoredSkill{makeSkill("s1", nil, 0.5)}}
 
 	inj := newTestInjector(emb, store, llm, nil)
 	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
@@ -304,7 +303,7 @@ func TestClassificationFailure(t *testing.T) {
 func TestMaxSkillsLimiting(t *testing.T) {
 	llm := &mockLLM{response: classifyJSON("BUILD", "Backend", []string{})}
 	emb := &mockEmbedder{result: []float32{0.1}}
-	skills := make([]storage.ScoredSkill, 10)
+	skills := make([]model.ScoredSkill, 10)
 	for i := range skills {
 		skills[i] = makeSkill(fmt.Sprintf("s%d", i), nil, float64(i)*0.1)
 		skills[i].PatternOverlap = float64(10-i) * 0.1
@@ -336,7 +335,7 @@ func TestLibraryPriorityOrdering(t *testing.T) {
 	s2.CompositeScore = 0.9
 
 	// Store returns sorted — high first.
-	store := &mockStore{results: []storage.ScoredSkill{s2, s1}}
+	store := &mockStore{results: []model.ScoredSkill{s2, s1}}
 
 	inj := newTestInjector(emb, store, llm, nil)
 	resp, err := inj.Inject(context.Background(), model.InjectionRequest{
@@ -360,7 +359,7 @@ func TestLibraryPriorityOrdering(t *testing.T) {
 func TestDefaultMaxSkills(t *testing.T) {
 	llm := &mockLLM{response: classifyJSON("BUILD", "Backend", []string{})}
 	emb := &mockEmbedder{result: []float32{0.1}}
-	skills := make([]storage.ScoredSkill, 10)
+	skills := make([]model.ScoredSkill, 10)
 	for i := range skills {
 		skills[i] = makeSkill(fmt.Sprintf("s%d", i), nil, 0.5)
 	}
@@ -400,7 +399,7 @@ func TestStoreQueryError(t *testing.T) {
 func TestEmptyPrompt(t *testing.T) {
 	llm := &mockLLM{response: classifyJSON("BUILD", "Backend", []string{})}
 	emb := &mockEmbedder{result: []float32{0.1}}
-	store := &mockStore{results: []storage.ScoredSkill{makeSkill("s1", nil, 0.5)}}
+	store := &mockStore{results: []model.ScoredSkill{makeSkill("s1", nil, 0.5)}}
 
 	inj := newTestInjector(emb, store, llm, nil)
 	resp, err := inj.Inject(context.Background(), model.InjectionRequest{

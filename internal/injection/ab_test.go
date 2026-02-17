@@ -7,14 +7,13 @@ import (
 	"testing"
 
 	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
 type recordingEventWriter struct {
-	events []storage.InjectionEventRecord
+	events []model.InjectionEventRecord
 }
 
-func (r *recordingEventWriter) WriteInjectionEvent(_ context.Context, ev storage.InjectionEventRecord) error {
+func (r *recordingEventWriter) WriteInjectionEvent(_ context.Context, ev model.InjectionEventRecord) error {
 	r.events = append(r.events, ev)
 	return nil
 }
