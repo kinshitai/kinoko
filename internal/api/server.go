@@ -40,13 +40,13 @@ type Config struct {
 
 // DiscoverRequest is the JSON body for POST /api/v1/discover.
 type DiscoverRequest struct {
-	Prompt     string     `json:"prompt"`
-	Embedding  []float64  `json:"embedding"`  // Note: API accepts float64, we convert to float32 internally
-	Patterns   []string   `json:"patterns"`
-	LibraryIDs []string   `json:"library_ids"`
-	MinQuality float64    `json:"min_quality"`
-	TopK       int        `json:"top_k"`
-	Limit      int        `json:"limit"` // Keep for backward compatibility
+	Prompt     string    `json:"prompt"`
+	Embedding  []float64 `json:"embedding"` // Note: API accepts float64, we convert to float32 internally
+	Patterns   []string  `json:"patterns"`
+	LibraryIDs []string  `json:"library_ids"`
+	MinQuality float64   `json:"min_quality"`
+	TopK       int       `json:"top_k"`
+	Limit      int       `json:"limit"` // Keep for backward compatibility
 }
 
 // SkillMatch is a single discovery result.
@@ -100,7 +100,7 @@ func New(cfg Config) *Server {
 	mux.HandleFunc("GET /api/v1/skills/decay", s.handleListByDecay)
 	mux.HandleFunc("PATCH /api/v1/skills/{id}/decay", s.handleUpdateDecay)
 
-// Novelty endpoint removed in API consolidation
+	// Novelty endpoint removed in API consolidation
 
 	s.httpServer = &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
@@ -257,28 +257,7 @@ func (s *Server) discoverWithQuery(w http.ResponseWriter, r *http.Request, req D
 	writeJSON(w, http.StatusOK, DiscoverResponse{Skills: skills})
 }
 
-func (s *Server) discover(w http.ResponseWriter, r *http.Request, prompt string, limit int) {
-	// Legacy method - convert to new unified approach
-	req := DiscoverRequest{
-		Prompt: prompt,
-		TopK:   limit,
-	}
-	
-	if s.embedder == nil {
-		http.Error(w, `{"error":"embedding not configured — set KINOKO_EMBEDDING_API_KEY or OPENAI_API_KEY"}`, http.StatusServiceUnavailable)
-		return
-	}
-
-	// Embed the prompt
-	vec, err := s.embedder.Embed(r.Context(), prompt)
-	if err != nil {
-		s.logger.Error("embed prompt failed", "error", err)
-		http.Error(w, `{"error":"embedding failed"}`, http.StatusInternalServerError)
-		return
-	}
-
-	s.discoverWithQuery(w, r, req, vec, limit)
-}
+// Removed unused discover() method - replaced by unified handleDiscover
 
 func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	// P1-6: Limit request body to 10 MB to prevent memory exhaustion.

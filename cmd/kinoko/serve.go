@@ -134,7 +134,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logger.Info("git hooks installed", "data_dir", cfg.Server.DataDir)
 	}
 
-
 	if err := server.Start(); err != nil {
 		return fmt.Errorf("failed to start git server: %w", err)
 	}

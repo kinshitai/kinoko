@@ -79,14 +79,14 @@ func newMockAPI(t *testing.T) *httptest.Server {
 			http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
 			return
 		}
-		
+
 		// Return mock skill results with different scores based on request type
 		score := 0.95
 		if req.TopK > 5 {
 			// For novelty checking (high TopK), return lower similarity score
 			score = 0.1
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"skills": []map[string]any{

@@ -16,6 +16,7 @@ import (
 
 	"github.com/kinoko-dev/kinoko/internal/decay"
 	"github.com/kinoko-dev/kinoko/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/queue"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 	"github.com/kinoko-dev/kinoko/internal/worker"
 )
@@ -36,10 +37,15 @@ func newWorkerTestStore(t *testing.T) *storage.SQLiteStore {
 	return s
 }
 
-func newWorkerQueue(t *testing.T, store *storage.SQLiteStore, cfg worker.Config) (*worker.SQLiteQueue, string) {
+func newWorkerQueue(t *testing.T, store *storage.SQLiteStore, cfg worker.Config) (*queue.Queue, string) {
 	t.Helper()
 	dataDir := t.TempDir()
-	return worker.NewSQLiteQueue(store, dataDir, cfg, testLogger()), dataDir
+	queueStore, err := queue.New("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("new queue store: %v", err)
+	}
+	t.Cleanup(func() { queueStore.Close() })
+	return queue.NewQueue(queueStore, dataDir, cfg, testLogger()), dataDir
 }
 
 func makeWorkerSession(id, libraryID string) model.SessionRecord {
@@ -357,7 +363,12 @@ func TestWorkerConcurrentProcessing(t *testing.T) {
 
 	cfg := workerConfig()
 	cfg.Concurrency = 2 // 2 workers to reduce contention
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 	ctx := context.Background()
 
 	// Enqueue 8 sessions.
@@ -430,7 +441,12 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 
 	cfg := workerConfig()
 	cfg.Concurrency = 1
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 	ctx := context.Background()
 
 	q.Enqueue(ctx, makeWorkerSession("sess-gs", "lib-1"), []byte("log"))
@@ -490,7 +506,12 @@ func TestWorkerPoolE2E(t *testing.T) {
 
 	cfg := workerConfig()
 	cfg.Concurrency = 2
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 	ctx := context.Background()
 
 	// Enqueue sessions: 3 will succeed, 1 will fail permanently.
@@ -900,7 +921,12 @@ func TestWorkerAtomicClaim(t *testing.T) {
 	t.Cleanup(func() { store.Close() })
 
 	cfg := workerConfig()
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 	ctx := context.Background()
 
 	q.Enqueue(ctx, makeWorkerSession("sess-atomic", "lib-1"), []byte("log"))
@@ -1089,7 +1115,12 @@ func TestWorkerDBIntegrity(t *testing.T) {
 	t.Cleanup(func() { store.Close() })
 
 	cfg := workerConfig()
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 	ctx := context.Background()
 
 	// Mix of operations.

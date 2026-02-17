@@ -19,6 +19,7 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/extraction"
 	"github.com/kinoko-dev/kinoko/internal/injection"
 	"github.com/kinoko-dev/kinoko/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/queue"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 	"github.com/kinoko-dev/kinoko/internal/worker"
 )
@@ -125,7 +126,12 @@ func TestWorkerTimeoutMidExtraction(t *testing.T) {
 	cfg := workerConfig()
 	cfg.Concurrency = 1
 	cfg.ProcessTimeout = 3 * time.Second // short timeout for test
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 
 	q.Enqueue(ctx, makeWorkerSession("sess-slow", "lib-1"), []byte("slow log content"))
 
@@ -196,7 +202,12 @@ func TestNoDoubleExtraction(t *testing.T) {
 	ctx := context.Background()
 
 	cfg := workerConfig()
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 
 	q.Enqueue(ctx, makeWorkerSession("sess-dedup", "lib-1"), []byte("log"))
 
@@ -784,7 +795,12 @@ func TestServeLifecycleSimulation(t *testing.T) {
 
 	cfg := workerConfig()
 	cfg.Concurrency = 1
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 
 	// Simulate serve: enqueue a session.
 	session := makeWorkerSession("sess-serve", "lib-1")
@@ -856,7 +872,12 @@ func TestGracefulShutdownDuringExtraction(t *testing.T) {
 
 	cfg := workerConfig()
 	cfg.Concurrency = 1
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 
 	q.Enqueue(ctx, makeWorkerSession("sess-shutdown", "lib-1"), []byte("log"))
 
@@ -1063,7 +1084,12 @@ func TestWorkerPoolWithRealPipeline(t *testing.T) {
 
 	cfg := workerConfig()
 	cfg.Concurrency = 1
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 
 	embedder := newPredictableEmbedder(3)
 	llm := &predictableLLM{
@@ -1269,7 +1295,12 @@ func TestContextCancellationPropagation(t *testing.T) {
 
 	cfg := workerConfig()
 	cfg.Concurrency = 1
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 
 	ctx := context.Background()
 	q.Enqueue(ctx, makeWorkerSession("sess-cancel", "lib-1"), []byte("log"))

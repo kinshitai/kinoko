@@ -28,7 +28,7 @@ func (w *noOpSessionWriter) InsertSession(ctx context.Context, session *model.Se
 }
 
 func (w *noOpSessionWriter) UpdateSessionResult(ctx context.Context, session *model.SessionRecord) error {
-	// No-op: sessions are tracked via git, not separate HTTP records  
+	// No-op: sessions are tracked via git, not separate HTTP records
 	return nil
 }
 
@@ -44,19 +44,19 @@ func (w *localFileReviewWriter) InsertReviewSample(ctx context.Context, sessionI
 		w.logger.Warn("failed to get home directory for reviews", "error", err)
 		return nil // non-critical, don't fail the pipeline
 	}
-	
+
 	reviewDir := homeDir + "/.kinoko/reviews"
 	if err := os.MkdirAll(reviewDir, 0755); err != nil {
 		w.logger.Warn("failed to create review directory", "dir", reviewDir, "error", err)
 		return nil // non-critical, don't fail the pipeline
 	}
-	
+
 	filePath := fmt.Sprintf("%s/%s.json", reviewDir, sessionID)
 	if err := os.WriteFile(filePath, resultJSON, 0644); err != nil {
 		w.logger.Warn("failed to write review sample", "file", filePath, "error", err)
 		return nil // non-critical, don't fail the pipeline
 	}
-	
+
 	w.logger.Info("wrote human review sample", "session_id", sessionID, "file", filePath)
 	return nil
 }
