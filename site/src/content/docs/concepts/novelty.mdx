@@ -17,7 +17,7 @@ Novelty checking is the economic gate: **don't spend $0.02 on LLM extraction for
          │
          ▼
   ┌──────────────┐
-  │   Embed      │  ~4ms, local ONNX
+  │   Embed      │  ~4ms, server-side ONNX
   │  (384-dim)   │
   └──────┬───────┘
          │
@@ -35,7 +35,7 @@ Novelty checking is the economic gate: **don't spend $0.02 on LLM extraction for
   (keep)   (discard)
 ```
 
-1. The candidate text is embedded locally using the [embedding engine](/reference/embedding-engine) (~4ms)
+1. The candidate text is embedded using the server's [embedding engine](/reference/embedding-engine) (~4ms)
 2. The vector is compared against all existing skill embeddings via cosine similarity
 3. If the highest similarity score is **below the threshold** (default 0.85), the content is novel
 4. If it's above — someone already extracted this knowledge. Skip it.

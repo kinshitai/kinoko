@@ -35,7 +35,7 @@ The evaluation method for skill quality. Seven independent dimensions, each scor
 The time period over which a skill's decay score drops by half. Varies by category: 365 days for foundational, 180 for contextual, 90 for tactical.
 
 **Embedding**
-A vector representation of content, used for similarity-based retrieval. Default model: `text-embedding-3-small`.
+A vector representation of content, used for similarity-based retrieval. Default model: `bge-small-en-v1.5` (384 dimensions, ONNX Runtime, server-side).
 
 **Extraction**
 The process of identifying reusable knowledge in an agent session and distilling it into a skill. A three-stage pipeline: metadata pre-filters → embedding novelty + rubric scoring → LLM critic.

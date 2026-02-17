@@ -22,7 +22,10 @@ AVAILABLE COMMANDS:
   decay     Run one decay cycle
   scan      Scan files for credentials and secrets
   index     Index a skill repo into SQLite
+  import    Import session logs into the extraction queue
+  queue     Queue inspection and management
   pull      Clone or update skill repositories
+  rebuild   Rebuild SQLite cache from git repos
   stats     Print pipeline metrics
   help      Help about any command
 
@@ -76,15 +79,17 @@ kinoko serve [flags]
 
 **What it starts:**
 - **Soft Serve git server** (SSH) — skill repos live here
-- **Discovery API** (HTTP) — `/api/v1/discover`, `/api/v1/health`, `/api/v1/ingest`
+- **Embedding engine** (ONNX, `bge-small-en-v1.5`) — all vector operations run server-side
+- **HTTP API** — `/api/v1/embed`, `/api/v1/match`, `/api/v1/novelty`, `/api/v1/discover`, `/api/v1/health`, `/api/v1/ingest`
 - **Git hooks** — credential scanning (pre-receive) and auto-indexing (post-receive)
+- **Decay scheduler** — periodic half-life decay cycles (configurable interval, default 6h)
 - **SQLite indexer** — derived cache from git repos
 
 **Behavior:**
-- Self-bootstraps on first run: creates data dir and admin keypair
+- Self-bootstraps on first run: creates data dir, admin keypair, downloads embedding model
 - Binds to `server.host`:`server.port` from config (default `127.0.0.1:23231`)
 - Handles SIGINT/SIGTERM for graceful shutdown
-- This is **pure infrastructure** — run `kinoko run` separately for the agent daemon
+- Owns all persistent state (index DB, decay, embeddings) — `kinoko run` is a stateless client
 
 **Environment variables:**
 
@@ -115,16 +120,17 @@ kinoko run [flags]
 |------|------|---------|-------------|
 | `--config` | string | `~/.kinoko/config.yaml` | Path to config file |
 | `--server` | string | from config | Server URL override (e.g. `localhost:23231`) |
+| `--debug` | bool | `false` | Enable pipeline debug tracing |
 
 **What it starts:**
-- **Worker pool** — extracts knowledge from local session logs
-- **Scheduler** — decay cron, stale sweep, periodic stats
-- **Injection** — loads relevant skills into agent sessions
+- **Worker pool** — extracts knowledge from local session logs via the 3-stage pipeline
+- **Injection client** — queries the server match API and injects skills into agent sessions
+- **Local queue** — persistent queue for session logs awaiting extraction
 
 **Behavior:**
-- Reads server URL from config to push extracted skills
-- **Degraded mode:** works without LLM key — scheduler and injection still run, only extraction is disabled
-- Without embedding key, injection is disabled
+- Stateless client — communicates with `kinoko serve` via HTTP (`serverclient` package) and git (SSH push)
+- Uses the server's embed, novelty, and match APIs; never runs embeddings locally
+- **Degraded mode:** works without LLM key — injection still works, only extraction is disabled
 - Handles SIGINT/SIGTERM for graceful shutdown
 
 **Environment variables:**
@@ -482,6 +488,91 @@ kinoko stats [flags]
 | Skills by Category | Count per category (foundational, tactical, contextual) |
 | Quality Scores | Average composite score, average confidence |
 | Decay Distribution | Bucketed: dead, low, medium, high, fresh |
+
+---
+
+## `kinoko import`
+
+Import session logs into the extraction queue. Does **not** start workers — sessions wait for `kinoko run` to process them.
+
+```bash
+kinoko import [path...] [flags]
+```
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--config` | string | `""` | Config file path |
+| `--library` | string | first configured | Library ID |
+| `--dir` | string | `""` | Directory of log files to import |
+
+**Examples:**
+```bash
+kinoko import session.log
+kinoko import --dir ./logs/
+kinoko import a.log b.log c.log
+```
+
+---
+
+## `kinoko queue`
+
+Queue inspection and management. Subcommands for viewing and managing the local extraction queue.
+
+```bash
+kinoko queue <subcommand> [flags]
+```
+
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `stats` | Print queue depth and status counts |
+| `list` | List queued, pending, and errored sessions |
+| `retry <session-id>` | Requeue a failed session |
+| `flush` | Delete all queued sessions (use `--force` to skip confirmation) |
+
+**Flags (all subcommands):**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--config` | string | `""` | Config file path |
+
+**Examples:**
+```bash
+kinoko queue stats
+kinoko queue list
+kinoko queue retry abc123
+kinoko queue flush --force
+```
+
+---
+
+## `kinoko rebuild`
+
+Rebuild SQLite cache from git repos. Scans the repos directory for bare git repositories containing SKILL.md files, parses and indexes each one.
+
+```bash
+kinoko rebuild [flags]
+```
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--clean` | bool | `false` | Drop skill tables before rebuilding |
+| `--library` | string | `""` | Only rebuild repos under this library prefix |
+| `--dsn` | string | `$KINOKO_STORAGE_DSN` | SQLite database path |
+| `--api-url` | string | `$KINOKO_API_URL` or `http://127.0.0.1:23233` | Kinoko API URL for re-embedding |
+| `--data-dir` | string | `$SOFT_SERVE_DATA_PATH` or `~/.kinoko/data` | Soft Serve data directory |
+
+**Examples:**
+```bash
+kinoko rebuild
+kinoko rebuild --clean
+kinoko rebuild --library local --clean
+```
 
 ---
 

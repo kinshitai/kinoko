@@ -81,7 +81,7 @@ Output:
 ```
 INFO Kinoko agent daemon started
 INFO Worker pool ready                   workers=4
-INFO Scheduler started                   decay_interval=24h
+INFO Connected to server                 url=http://127.0.0.1:23233
 INFO Injection enabled                   skills_loaded=0
 ```
 
@@ -109,7 +109,7 @@ curl http://localhost:23233/api/v1/health
 
 - ✅ Infrastructure server on `ssh://localhost:23231` with API on `:23233`
 - ✅ Server-side embedding engine (ONNX, `bge-small-en-v1.5`) — clients stay pure Go
-- ✅ Local agent daemon running extraction, injection, and decay
+- ✅ Local agent daemon running extraction and injection (decay runs server-side)
 - ✅ Credential scanning active on all pushes
 - ✅ Ready for agents to start generating knowledge
 
@@ -120,8 +120,8 @@ What you just set up is the **solo** configuration — all three components on o
 | Command | Purpose |
 |---------|---------|
 | `kinoko init` | Set up your workspace and client config |
-| `kinoko serve` | Shared infrastructure (git server, API, hooks) |
-| `kinoko run` | Local agent daemon (extraction, injection, decay) |
+| `kinoko serve` | Shared infrastructure (git server, API, hooks, embedding engine, decay) |
+| `kinoko run` | Local agent daemon (extraction workers, injection) — stateless client |
 
 For **team** use, one machine runs `kinoko serve`, and each team member runs `kinoko init --connect &lt;server-url&gt;` + `kinoko run` locally. See [Architecture](/concepts/architecture/) for details.
 

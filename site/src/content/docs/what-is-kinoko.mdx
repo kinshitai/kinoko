@@ -41,8 +41,8 @@ Kinoko is a Go binary with three commands:
 | Command | What it does |
 |---------|-------------|
 | `kinoko init` | Sets up your workspace — config, SSH keys, local cache |
-| `kinoko serve` | Runs shared infrastructure — a git server for skills, a discovery API, security hooks |
-| `kinoko run` | Runs the local agent daemon — extraction workers, quality scoring, injection engine, decay scheduler |
+| `kinoko serve` | Runs shared infrastructure — git server, embedding engine, discovery API, security hooks, decay scheduler |
+| `kinoko run` | Runs the local agent daemon — a stateless client that extracts knowledge and pushes to the server via HTTP + git |
 
 Skills are stored as Markdown files in git repositories. Git is the source of truth; everything else (SQLite indexes, embeddings) is a derived cache. This means skills are portable, auditable, and diffable.
 

@@ -26,6 +26,10 @@ Specific solutions tied to current tool versions, API behaviors, or library quir
 
 Environment-specific knowledge. Useful in the right context, irrelevant elsewhere. Half-life: **180 days**.
 
+## Where Decay Runs
+
+Decay runs **server-side** inside `kinoko serve` as a periodic scheduled task. This centralizes decay logic so that all clients see consistent skill rankings. The decay interval is configurable (default: 6 hours). You can also run a one-off cycle manually with `kinoko decay`.
+
 ## The Mechanics
 
 Decay is gradual, not sudden. Skills don't get deleted — they lose ranking until they're effectively invisible.

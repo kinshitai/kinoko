@@ -208,6 +208,6 @@ Each developer's `run` daemon extracts knowledge locally (bearing the LLM cost) 
 |---------|--------|
 | LLM key | Extraction disabled; scheduler + injection still work |
 | Server unreachable | Novelty check fails open (skills still extracted); injection disabled |
-| Both | Scheduler only (decay, stats) |
+| Both | Daemon starts but cannot extract or inject |
 
 This means you can start using Kinoko immediately and add API keys later.
