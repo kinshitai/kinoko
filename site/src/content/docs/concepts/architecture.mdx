@@ -49,7 +49,7 @@ From agent session to injected knowledge:
            ▼
   ┌──────────────────────┐
   │ Novelty check via    │──duplicate─▶ discard
-  │ server API           │
+  │ local client logic   │
   └────────┬─────────────┘
            │ novel
            ▼
@@ -84,7 +84,7 @@ From agent session to injected knowledge:
   └────────┬─────────────┘
            ▼
   ┌──────────────────────┐
-  │ POST /api/v1/match   │
+  │ POST /api/v1/discover│
   │ (server)             │
   └────────┬─────────────┘
            ▼
@@ -107,9 +107,9 @@ The server is pure infrastructure. It doesn't run extraction — it hosts data, 
 
 - **Soft Serve git server** (SSH) — the source of truth for all skills
 - **Embedding engine** (ONNX, `bge-small-en-v1.5`) — all embedding runs server-side, clients stay pure Go
-- **Novelty API** — `POST /api/v1/novelty` checks if a skill is too similar to existing ones
-- **Match API** — `POST /api/v1/match` finds relevant skills for a given context
-- **Health/Discovery API** — `GET /api/v1/health`, `GET /api/v1/discover`
+- **Discovery API** — `POST /api/v1/discover` unified endpoint for skill discovery (prompt/embedding/patterns)
+- **Health API** — `GET /api/v1/health` server status and skill count
+- **Decay API** — `GET /api/v1/skills/decay` and `PATCH /api/v1/skills/{id}/decay` for skill lifecycle management
 - **Pre-receive hook** — credential scanning, rejects pushes with secrets
 - **Post-receive hook** — parses SKILL.md, embeds content, indexes into SQLite
 - **SQLite + vec extension** — derived cache for fast vector search; git is the write path
@@ -140,7 +140,7 @@ Sets up the workspace. Run once per machine:
 |------|---------|----------|
 | Port (23231) | Soft Serve git server | SSH |
 | Port+1 (23232) | Soft Serve HTTP / TUI | HTTP |
-| Port+2 (23233) | Kinoko API (match, novelty, health) | HTTP |
+| Port+2 (23233) | Kinoko API (discover, embed, ingest, decay) | HTTP |
 
 All three share the same base. Change `--port 9000` and you get SSH on 9000, HTTP on 9001, API on 9002.
 
@@ -168,7 +168,7 @@ Embedding runs **only on the server**, using ONNX Runtime with `bge-small-en-v1.
 - **Storage:** `~/.kinoko/models/bge-small-en-v1.5/` (model.onnx, tokenizer.json, libonnxruntime.so)
 - **Vector search:** SQLite vec extension, cosine similarity
 
-Clients call the server's novelty and match APIs over HTTP — they never touch embedding models directly.
+Clients call the server's discover API over HTTP — they never touch embedding models directly.
 
 ## Deployment Patterns
 
@@ -207,7 +207,7 @@ Each developer's `run` daemon extracts knowledge locally (bearing the LLM cost) 
 | Missing | Effect |
 |---------|--------|
 | LLM key | Extraction disabled; scheduler + injection still work |
-| Server unreachable | Novelty check fails open (skills still extracted); injection disabled |
+| Server unreachable | Local novelty check used; injection disabled |
 | Both | Scheduler only (decay, stats) |
 
 This means you can start using Kinoko immediately and add API keys later.

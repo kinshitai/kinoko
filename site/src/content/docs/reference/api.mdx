@@ -1,6 +1,6 @@
 ---
-title: "HTTP API Reference"
-description: "Complete reference for Kinoko's REST API — health, embedding, novelty, matching, discovery, and ingestion."
+title: "HTTP API Reference"  
+description: "Complete reference for Kinoko's REST API — health, embedding, unified discovery, ingestion, and decay management."
 slug: reference/api
 ---
 
@@ -13,12 +13,11 @@ Kinoko's HTTP API runs on port **23233** by default (configurable). All endpoint
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/v1/health` | Server health check |
+| `POST` | `/api/v1/discover` | Unified discovery (prompt/embedding/patterns) |
 | `POST` | `/api/v1/embed` | Generate text embeddings |
-| `POST` | `/api/v1/novelty` | Check if content is novel |
-| `POST` | `/api/v1/match` | Find matching skills for context |
-| `POST` | `/api/v1/discover` | Discover skills by prompt |
-| `GET` | `/api/v1/discover` | Discover skills (query param) |
 | `POST` | `/api/v1/ingest` | Submit a session for extraction |
+| `GET` | `/api/v1/skills/decay` | List skills by decay score |
+| `PATCH` | `/api/v1/skills/{id}/decay` | Update skill decay score |
 
 ---
 
@@ -33,6 +32,62 @@ Health check. Returns server status and skill count.
   "skills": 142
 }
 ```
+
+---
+
+## `POST /api/v1/discover`
+
+**Unified discovery endpoint** that handles all skill query patterns — by prompt, pre-computed embedding, patterns, or any combination. This consolidates what used to be separate search, match, and discovery endpoints.
+
+**Request:**
+```json
+{
+  "prompt": "database performance optimization", 
+  "embedding": [0.023, -0.118, 0.042, "...384 floats"],
+  "patterns": ["postgres", "performance"],
+  "library_ids": ["default", "team-backend"],
+  "min_quality": 0.7,
+  "top_k": 10
+}
+```
+
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `prompt` | Conditional* | — | Natural language query (server will embed) |
+| `embedding` | Conditional* | — | Pre-computed vector (skip server embedding) |
+| `patterns` | Conditional* | — | Keyword patterns to filter by |
+| `library_ids` | No | all | Limit to specific skill libraries |
+| `min_quality` | No | `0.0` | Minimum quality threshold |
+| `top_k` | No | `10` | Maximum results to return |
+
+*At least one of `prompt`, `embedding`, or `patterns` must be provided.*
+
+**Response:**
+```json
+{
+  "skills": [
+    {
+      "id": "postgres-query-optimization",
+      "name": "postgres-query-optimization", 
+      "repo": "default",
+      "quality": 0.85,
+      "similarity": 0.72,
+      "ssh_url": "ssh://localhost:23231/default.git",
+      "patterns": ["postgres", "performance", "indexing"]
+    }
+  ]
+}
+```
+
+**Use Cases:**
+- **Injection queries:** Client provides context as `prompt`, gets matching skills for session injection
+- **Pre-computed embedding:** Client has embedding ready, skips server embedding step  
+- **Pattern-based search:** Filter skills by specific keywords or tags
+- **Library scoping:** Search within specific team/project libraries only
+
+<Aside type="note">
+If `prompt` is provided without `embedding`, the server will generate the embedding internally using the configured model (`bge-small-en-v1.5`).
+</Aside>
 
 ---
 
@@ -62,120 +117,9 @@ Generate a vector embedding for text. Requires the [embedding engine](/reference
 
 ---
 
-## `POST /api/v1/novelty`
-
-Check whether content is novel compared to the existing skill library. This is the key deduplication gate — it runs **before** expensive LLM extraction to avoid paying for knowledge you already have.
-
-**Request:**
-```json
-{
-  "content": "Use connection pooling with pgx to avoid per-request TCP handshakes...",
-  "threshold": 0.85
-}
-```
-
-| Field | Required | Default | Description |
-|---|---|---|---|
-| `content` | Yes | — | Text to check for novelty |
-| `threshold` | No | `0.85` | Cosine similarity threshold. Content with a nearest neighbor above this is "not novel" |
-
-**Response:**
-```json
-{
-  "novel": true,
-  "score": 0.42,
-  "similar": [
-    {
-      "name": "postgres-connection-management",
-      "library_id": "default",
-      "score": 0.42
-    }
-  ]
-}
-```
-
-| Field | Description |
-|---|---|
-| `novel` | `true` if highest similarity is below threshold |
-| `score` | Highest cosine similarity found |
-| `similar` | Up to 10 most similar existing skills |
-
-<Aside type="note">
-The novelty check **fails open** — if the embedding engine or database is unavailable, content is treated as novel. Better to extract a duplicate than miss genuine knowledge.
-</Aside>
-
----
-
-## `POST /api/v1/match`
-
-Find skills matching a given context. This is what powers `kinoko match` and skill injection.
-
-**Request:**
-```json
-{
-  "context": "I'm debugging a React hydration mismatch in Next.js...",
-  "limit": 5,
-  "min_score": 0.5
-}
-```
-
-| Field | Required | Default | Description |
-|---|---|---|---|
-| `context` | Yes | — | Problem context or query |
-| `limit` | No | `5` | Max skills to return |
-| `min_score` | No | `0.5` | Minimum cosine similarity |
-
-**Response:**
-```json
-{
-  "skills": [
-    {
-      "name": "nextjs-hydration-debugging",
-      "score": 0.87,
-      "content": "---\nname: nextjs-hydration-debugging\n..."
-    }
-  ]
-}
-```
-
-Skill content is the full SKILL.md body. Response is capped at 64KB total to prevent oversized payloads.
-
----
-
-## `POST /api/v1/discover`
-
-Discover skills by natural language prompt. Similar to match but designed for the discovery/browse use case.
-
-**Request:**
-```json
-{
-  "prompt": "database performance optimization",
-  "limit": 10
-}
-```
-
-**Response:**
-```json
-{
-  "skills": [
-    {
-      "repo": "default",
-      "name": "postgres-query-optimization",
-      "description": "...",
-      "score": 0.82,
-      "clone_url": "ssh://localhost:23231/default.git"
-    }
-  ]
-}
-```
-
-Also available as `GET /api/v1/discover?prompt=...&limit=10`.
-
----
-
 ## `POST /api/v1/ingest`
 
-Submit a session log for extraction processing. The log is enqueued for async pipeline processing (Stage 1 → 2 → 3).
+Submit a session log for extraction processing. This is typically called by the git post-receive hook when skills are pushed to the server.
 
 **Request:**
 ```json
@@ -187,6 +131,48 @@ Submit a session log for extraction processing. The log is enqueued for async pi
 
 **Response:** `200 OK` on successful enqueue.
 
+<Aside type="note">
+Client extraction now uses a local queue instead of pushing directly via this endpoint. The ingest endpoint is primarily used by server-side hooks for processing pushed skills.
+</Aside>
+
+---
+
+## `GET /api/v1/skills/decay`
+
+List skills ordered by decay score. Used by the server scheduler to identify skills that may need attention or removal.
+
+**Response:**
+```json
+{
+  "skills": [
+    {
+      "id": "outdated-react-patterns",
+      "name": "outdated-react-patterns",
+      "repo": "default", 
+      "decay_score": 0.95,
+      "last_used": "2026-01-15T10:30:00Z",
+      "created": "2025-11-20T14:22:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## `PATCH /api/v1/skills/{id}/decay`
+
+Update the decay score for a specific skill. Used by the scheduler to manage skill freshness.
+
+**Request:**
+```json
+{
+  "decay_score": 0.3,
+  "last_used": "2026-02-17T15:45:00Z"
+}
+```
+
+**Response:** `200 OK` on successful update.
+
 ---
 
 ## Rate Limiting
@@ -196,5 +182,5 @@ The discover endpoint uses a semaphore limiting concurrent requests to 10. Other
 ## Security
 
 - All request bodies are capped at 1MB (`http.MaxBytesReader`)
-- The match endpoint rejects file paths containing `..` (path traversal protection)
+- Input validation on discover endpoint (max 2048 embedding dims, max 50 patterns/library_ids)
 - No authentication by default — designed for localhost/private network use
