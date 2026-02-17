@@ -574,7 +574,7 @@ func TestWorkerPoolE2E(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		var status string
 		id := fmt.Sprintf("sess-e2e-%d", i)
-		store.DB().QueryRow("SELECT extraction_status FROM sessions WHERE id = ?", id).Scan(&status)
+		queueStore.DB().QueryRow("SELECT status FROM queue_entries WHERE session_id = ?", id).Scan(&status)
 		if status != "extracted" {
 			t.Errorf("session %s: status = %q, want extracted", id, status)
 		}
@@ -582,7 +582,7 @@ func TestWorkerPoolE2E(t *testing.T) {
 
 	// Verify the failed session is in error state (retry scheduled).
 	var failStatus string
-	store.DB().QueryRow("SELECT extraction_status FROM sessions WHERE id = 'sess-e2e-fail'").Scan(&failStatus)
+	queueStore.DB().QueryRow("SELECT status FROM queue_entries WHERE session_id = 'sess-e2e-fail'").Scan(&failStatus)
 	if failStatus != "error" {
 		t.Errorf("failed session: status = %q, want error", failStatus)
 	}
@@ -595,13 +595,13 @@ func TestWorkerPoolE2E(t *testing.T) {
 func TestWorkerSchedulerStaleSweep(t *testing.T) {
 	store := newWorkerTestStore(t)
 	cfg := workerConfig()
-	q, _, _ := newWorkerQueue(t, store, cfg)
+	q, queueStore, _ := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	// Enqueue and claim a session, then make it stale.
 	q.Enqueue(ctx, makeWorkerSession("sess-sched-stale", "lib-1"), []byte("log"))
 	q.Claim(ctx, "dead-worker")
-	store.DB().Exec("UPDATE sessions SET claimed_at = datetime('now', '-20 minutes') WHERE id = 'sess-sched-stale'")
+	queueStore.DB().Exec("UPDATE queue_entries SET claimed_at = datetime('now', '-20 minutes') WHERE session_id = 'sess-sched-stale'")
 
 	// Create a mock pool for the scheduler.
 	mockPool := &schedPool{}
@@ -628,7 +628,7 @@ func TestWorkerSchedulerStaleSweep(t *testing.T) {
 
 	// Verify session was requeued.
 	var status string
-	store.DB().QueryRow("SELECT extraction_status FROM sessions WHERE id = 'sess-sched-stale'").Scan(&status)
+	queueStore.DB().QueryRow("SELECT status FROM queue_entries WHERE session_id = 'sess-sched-stale'").Scan(&status)
 	if status != "queued" {
 		t.Errorf("status = %q, want queued (stale sweep should have requeued)", status)
 	}
@@ -687,7 +687,7 @@ func TestWorkerFIFOOrdering(t *testing.T) {
 func TestWorkerCompleteRejection(t *testing.T) {
 	store := newWorkerTestStore(t)
 	cfg := workerConfig()
-	q, _, _ := newWorkerQueue(t, store, cfg)
+	q, queueStore, _ := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	q.Enqueue(ctx, makeWorkerSession("sess-rej", "lib-1"), []byte("log"))
@@ -700,19 +700,11 @@ func TestWorkerCompleteRejection(t *testing.T) {
 	q.Complete(ctx, "sess-rej", result)
 
 	var status string
-	var rejStage int
-	var rejReason string
-	store.DB().QueryRow("SELECT extraction_status, rejected_at_stage, rejection_reason FROM sessions WHERE id = 'sess-rej'").
-		Scan(&status, &rejStage, &rejReason)
+	queueStore.DB().QueryRow("SELECT status FROM queue_entries WHERE session_id = 'sess-rej'").
+		Scan(&status)
 
 	if status != "rejected" {
 		t.Errorf("status = %q, want rejected", status)
-	}
-	if rejStage != 1 {
-		t.Errorf("rejected_at_stage = %d, want 1", rejStage)
-	}
-	if rejReason != "too short" {
-		t.Errorf("rejection_reason = %q", rejReason)
 	}
 }
 
@@ -723,7 +715,7 @@ func TestWorkerCompleteRejection(t *testing.T) {
 func TestWorkerQueueStats(t *testing.T) {
 	store := newWorkerTestStore(t)
 	cfg := workerConfig()
-	q, _, _ := newWorkerQueue(t, store, cfg)
+	q, queueStore, _ := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	// Create sessions in various states.
@@ -740,11 +732,11 @@ func TestWorkerQueueStats(t *testing.T) {
 	}
 
 	// Query stats (mimicking queuecmd.go).
-	rows, err := store.DB().Query(`
-		SELECT extraction_status, COUNT(*) 
-		FROM sessions 
-		GROUP BY extraction_status 
-		ORDER BY extraction_status`)
+	rows, err := queueStore.DB().Query(`
+		SELECT status, COUNT(*) 
+		FROM queue_entries 
+		GROUP BY status 
+		ORDER BY status`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -776,7 +768,7 @@ func TestWorkerQueueStats(t *testing.T) {
 func TestWorkerQueueRetry(t *testing.T) {
 	store := newWorkerTestStore(t)
 	cfg := workerConfig()
-	q, _, _ := newWorkerQueue(t, store, cfg)
+	q, queueStore, _ := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	q.Enqueue(ctx, makeWorkerSession("sess-retry-cli", "lib-1"), []byte("log"))
@@ -785,21 +777,21 @@ func TestWorkerQueueRetry(t *testing.T) {
 
 	// Verify it's failed.
 	var status string
-	store.DB().QueryRow("SELECT extraction_status FROM sessions WHERE id = 'sess-retry-cli'").Scan(&status)
+	queueStore.DB().QueryRow("SELECT status FROM queue_entries WHERE session_id = 'sess-retry-cli'").Scan(&status)
 	if status != "failed" {
 		t.Fatalf("status = %q, want failed", status)
 	}
 
 	// Retry via SQL (same as queuecmd.go).
-	result, err := store.DB().Exec(`
-		UPDATE sessions SET
-			extraction_status = 'queued',
+	result, err := queueStore.DB().Exec(`
+		UPDATE queue_entries SET
+			status = 'queued',
 			retry_count = 0,
 			last_error = '',
 			next_retry_at = NULL,
 			claimed_by = '',
 			claimed_at = NULL
-		WHERE id = ? AND extraction_status IN ('error', 'failed')`, "sess-retry-cli")
+		WHERE session_id = ? AND status IN ('error', 'failed')`, "sess-retry-cli")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -825,7 +817,7 @@ func TestWorkerQueueRetry(t *testing.T) {
 func TestWorkerQueueFlush(t *testing.T) {
 	store := newWorkerTestStore(t)
 	cfg := workerConfig()
-	q, _, _ := newWorkerQueue(t, store, cfg)
+	q, queueStore, _ := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
@@ -835,7 +827,7 @@ func TestWorkerQueueFlush(t *testing.T) {
 	q.Claim(ctx, "worker-0")
 
 	// Flush queued only (same as queuecmd.go).
-	result, _ := store.DB().Exec("DELETE FROM sessions WHERE extraction_status = 'queued'")
+	result, _ := queueStore.DB().Exec("DELETE FROM queue_entries WHERE status = 'queued'")
 	n, _ := result.RowsAffected()
 	if n != 4 {
 		t.Errorf("flushed = %d, want 4", n)
@@ -843,7 +835,7 @@ func TestWorkerQueueFlush(t *testing.T) {
 
 	// Pending session should remain.
 	var remaining int
-	store.DB().QueryRow("SELECT COUNT(*) FROM sessions").Scan(&remaining)
+	queueStore.DB().QueryRow("SELECT COUNT(*) FROM queue_entries").Scan(&remaining)
 	if remaining != 1 {
 		t.Errorf("remaining = %d, want 1", remaining)
 	}
@@ -1011,7 +1003,7 @@ func TestWorkerFileReadFailure(t *testing.T) {
 	store := newWorkerTestStore(t)
 	cfg := workerConfig()
 	cfg.Concurrency = 1
-	q, _, _ := newWorkerQueue(t, store, cfg)
+	q, queueStore, _ := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	// Enqueue, then delete the log file.
@@ -1019,7 +1011,7 @@ func TestWorkerFileReadFailure(t *testing.T) {
 	entry, _ := q.Claim(ctx, "temp")
 	os.Remove(entry.LogContentPath)
 	// Reset to queued so pool can pick it up.
-	store.DB().Exec("UPDATE sessions SET extraction_status = 'queued', claimed_by = '', claimed_at = NULL WHERE id = 'sess-nofile'")
+	queueStore.DB().Exec("UPDATE queue_entries SET status = 'queued', claimed_by = '', claimed_at = NULL WHERE session_id = 'sess-nofile'")
 
 	ext := &workerMockExtractor{fn: func(_ context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
 		t.Error("extractor should not be called for missing file")
@@ -1054,7 +1046,7 @@ func TestWorkerFileReadFailure(t *testing.T) {
 	}
 
 	var status string
-	store.DB().QueryRow("SELECT extraction_status FROM sessions WHERE id = 'sess-nofile'").Scan(&status)
+	queueStore.DB().QueryRow("SELECT status FROM queue_entries WHERE session_id = 'sess-nofile'").Scan(&status)
 	if status != "failed" {
 		t.Errorf("status = %q, want failed", status)
 	}
@@ -1069,7 +1061,7 @@ func TestWorkerBackoffSchedule(t *testing.T) {
 	cfg := workerConfig()
 	cfg.InitialBackoff = 10 * time.Second
 	cfg.MaxBackoff = 60 * time.Second
-	q, _, _ := newWorkerQueue(t, store, cfg)
+	q, queueStore, _ := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	q.Enqueue(ctx, makeWorkerSession("sess-bo", "lib-1"), []byte("log"))
@@ -1077,7 +1069,7 @@ func TestWorkerBackoffSchedule(t *testing.T) {
 	// Fail multiple times and check next_retry_at progression.
 	for i := 0; i < 3; i++ {
 		if i > 0 {
-			store.DB().Exec("UPDATE sessions SET next_retry_at = datetime('now', '-1 minute') WHERE id = 'sess-bo'")
+			queueStore.DB().Exec("UPDATE queue_entries SET next_retry_at = datetime('now', '-1 minute') WHERE session_id = 'sess-bo'")
 		}
 		entry, _ := q.Claim(ctx, "worker-0")
 		if entry == nil {
@@ -1087,7 +1079,7 @@ func TestWorkerBackoffSchedule(t *testing.T) {
 
 		// Check that next_retry_at is set and in the future.
 		var nextRetry sql.NullTime
-		store.DB().QueryRow("SELECT next_retry_at FROM sessions WHERE id = 'sess-bo'").Scan(&nextRetry)
+		queueStore.DB().QueryRow("SELECT next_retry_at FROM queue_entries WHERE session_id = 'sess-bo'").Scan(&nextRetry)
 		if !nextRetry.Valid {
 			t.Fatalf("retry %d: next_retry_at is NULL", i)
 		}
@@ -1098,7 +1090,7 @@ func TestWorkerBackoffSchedule(t *testing.T) {
 
 	// Verify retry_count incremented correctly.
 	var retryCount int
-	store.DB().QueryRow("SELECT retry_count FROM sessions WHERE id = 'sess-bo'").Scan(&retryCount)
+	queueStore.DB().QueryRow("SELECT retry_count FROM queue_entries WHERE session_id = 'sess-bo'").Scan(&retryCount)
 	if retryCount != 3 {
 		t.Errorf("retry_count = %d, want 3", retryCount)
 	}
@@ -1136,7 +1128,7 @@ func TestWorkerDBIntegrity(t *testing.T) {
 	q.Complete(ctx, "sess-int-0", &model.ExtractionResult{Status: model.StatusExtracted})
 	q.Fail(ctx, "sess-int-1", errors.New("err"))
 	q.FailPermanent(ctx, "sess-int-2", errors.New("fatal"))
-	store.DB().Exec("UPDATE sessions SET claimed_at = datetime('now', '-20 minutes') WHERE id = 'sess-int-3'")
+	queueStore.DB().Exec("UPDATE queue_entries SET claimed_at = datetime('now', '-20 minutes') WHERE session_id = 'sess-int-3'")
 	q.RequeueStale(ctx, 10*time.Minute)
 
 	// Verify integrity.

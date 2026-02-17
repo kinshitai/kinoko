@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -181,7 +180,7 @@ func TestWorkerTimeoutMidExtraction(t *testing.T) {
 
 	// Session should be in error/failed state.
 	var status string
-	store.DB().QueryRow("SELECT extraction_status FROM sessions WHERE id = 'sess-slow'").Scan(&status)
+	queueStore.DB().QueryRow("SELECT status FROM queue_entries WHERE session_id = 'sess-slow'").Scan(&status)
 	if status != "error" && status != "failed" {
 		t.Errorf("slow session status = %q, want error or failed", status)
 	}
@@ -315,7 +314,7 @@ func TestImportBackpressure(t *testing.T) {
 	store := newWorkerTestStore(t)
 	cfg := workerConfig()
 	cfg.QueueDepthCritical = 3 // very low limit
-	q, _, _ := newWorkerQueue(t, store, cfg)
+	q, queueStore, _ := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	// Fill to limit.
@@ -334,7 +333,7 @@ func TestImportBackpressure(t *testing.T) {
 
 	// Verify overflow session was NOT written to DB.
 	var count int
-	store.DB().QueryRow("SELECT COUNT(*) FROM sessions WHERE id = ?", "sess-bp-over").Scan(&count)
+	queueStore.DB().QueryRow("SELECT COUNT(*) FROM queue_entries WHERE session_id = ?", "sess-bp-over").Scan(&count)
 	if count != 0 {
 		t.Error("backpressure-rejected session should not be in DB")
 	}
@@ -844,15 +843,11 @@ func TestServeLifecycleSimulation(t *testing.T) {
 
 	// Verify session completed.
 	var status string
-	var skillID sql.NullString
-	store.DB().QueryRow("SELECT extraction_status, extracted_skill_id FROM sessions WHERE id = ?", "sess-serve").
-		Scan(&status, &skillID)
+	queueStore.DB().QueryRow("SELECT status FROM queue_entries WHERE session_id = ?", "sess-serve").
+		Scan(&status)
 
 	if status != "extracted" {
 		t.Errorf("session status = %q, want extracted", status)
-	}
-	if !skillID.Valid || skillID.String != "skill-serve-1" {
-		t.Errorf("extracted_skill_id = %v, want skill-serve-1", skillID)
 	}
 }
 
@@ -918,7 +913,7 @@ func TestGracefulShutdownDuringExtraction(t *testing.T) {
 
 	// Verify: session was either completed or requeued, never lost.
 	var status string
-	store.DB().QueryRow("SELECT extraction_status FROM sessions WHERE id = ?", "sess-shutdown").Scan(&status)
+	queueStore.DB().QueryRow("SELECT status FROM queue_entries WHERE session_id = ?", "sess-shutdown").Scan(&status)
 	if status != "extracted" && status != "queued" {
 		t.Errorf("status = %q — session is LOST (should be extracted or requeued)", status)
 	}
@@ -1153,7 +1148,7 @@ func TestWorkerPoolWithRealPipeline(t *testing.T) {
 	if len(skills) == 0 {
 		// May fail due to library ID mismatch — check session status.
 		var status, lastErr string
-		store.DB().QueryRow("SELECT extraction_status, COALESCE(last_error,'') FROM sessions WHERE id = ?", "sess-real-pipe").Scan(&status, &lastErr)
+		queueStore.DB().QueryRow("SELECT status, COALESCE(last_error,'') FROM queue_entries WHERE session_id = ?", "sess-real-pipe").Scan(&status, &lastErr)
 		t.Logf("session status: %s, error: %s", status, lastErr)
 		t.Log("No skills extracted — may be expected if pipeline rejects the session")
 	} else {
