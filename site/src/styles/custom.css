@@ -110,22 +110,249 @@ code:not(pre code) {
   border-radius: 0.5rem;
 }
 
-/* Landing page: hero ASCII art */
-.kinoko-hero-art {
-  text-align: center;
-  margin: -1rem auto 2rem;
-  max-width: 600px;
+/* Landing page: unified hero scene */
+.kinoko-hero-scene {
+  max-width: 640px;
   width: 100%;
+  margin: -0.5rem auto 2.5rem;
+  padding: 0 1rem;
+  box-sizing: border-box;
+  overflow: visible;
+  position: relative;
+}
+
+/* Terminal prompt */
+.hero-prompt {
+  font-family: var(--sl-font-system-mono);
+  font-size: 0.9rem;
+  background: var(--sl-color-gray-5);
+  border: 1px solid var(--sl-color-gray-4);
+  border-radius: 0.5rem;
+  padding: 0.6rem 1rem;
+  margin-bottom: 1.25rem;
+  color: var(--sl-color-accent-high);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.hero-prompt-prefix {
+  color: var(--sl-color-green);
+  font-weight: 700;
+}
+
+.hero-prompt-cursor {
+  animation: hero-blink 0.8s step-end infinite;
+  color: var(--sl-color-accent);
+}
+
+@keyframes hero-blink { 50% { opacity: 0; } }
+
+/* Agent row */
+.hero-agents {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 0;
+  align-items: stretch;
+  position: relative;
+  z-index: 2;
+  overflow: visible;
+  min-height: 8rem;
+}
+
+.hero-agents > .hero-agent {
+  margin-top: 0;
+}
+
+/* Kill Starlight's sibling margin rule inside the hero scene */
+.kinoko-hero-scene > * {
+  margin-top: 0 !important;
+}
+.kinoko-hero-scene > *:first-child {
+  margin-top: 0 !important;
+}
+.hero-agents {
+  margin-bottom: 0 !important;
+}
+.hero-underground {
+  margin-top: 0 !important;
+}
+
+
+.hero-agent {
+  min-width: 0;
+  border: 1px solid var(--sl-color-gray-4);
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  background: var(--sl-color-gray-6);
+  text-align: center;
+  position: relative;
+  transition: border-color 0.4s, box-shadow 0.4s;
+  overflow: visible;
+  /* Force identical inner layout across all agent boxes */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 7rem;
   box-sizing: border-box;
 }
 
-.kinoko-hero-art pre {
-  background: transparent !important;
-  border: none !important;
+.hero-agent-label {
+  font-family: var(--sl-font-system-mono);
   font-size: 0.75rem;
-  line-height: 1.4;
-  color: var(--sl-color-accent);
-  overflow-x: auto;
+  font-weight: 700;
+  color: var(--sl-color-gray-2);
+  margin-bottom: 0.3rem;
+}
+
+.hero-agent-timer {
+  font-family: var(--sl-font-system-mono);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--sl-color-gray-1);
+  font-variant-numeric: tabular-nums;
+  min-height: 1.4em;
+}
+
+/* Thinking dots animation */
+.thinking-dots {
+  display: inline-flex;
+  gap: 0.08em;
+  opacity: 0.5;
+}
+.thinking-dots span {
+  animation: thinking-bounce 1.4s ease-in-out infinite;
+}
+.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes thinking-bounce {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-2px); }
+}
+
+.hero-agent-check {
+  font-size: 1.1rem;
+  color: var(--sl-color-green);
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 0.3s, transform 0.3s;
+  height: 1.3em;
+}
+
+.hero-agent-check.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.hero-agent-tag {
+  font-family: var(--sl-font-system-mono);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sl-color-gray-3);
+  margin-top: auto;
+  padding-top: 0.2rem;
+}
+
+.hero-agent-tag--kinoko {
+  color: var(--sl-color-green);
+}
+
+/* Connected agent glow when check visible */
+.hero-agent--connected:has(.hero-agent-check.visible) {
+  border-color: var(--sl-color-green);
+  box-shadow: 0 0 14px rgba(91, 140, 90, 0.2);
+}
+
+/* Circuit path SVG inside underground */
+.circuit-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+  overflow: visible;
+}
+
+.circuit-path {
+  filter: drop-shadow(0 0 3px rgba(91, 140, 90, 0.5));
+}
+
+/* Source dot highlight */
+.source-dot {
+  transition: opacity 0.4s, r 0.4s;
+}
+.source-dot--active {
+  opacity: 1 !important;
+  fill: var(--sl-color-green-high);
+  filter: drop-shadow(0 0 6px rgba(91, 140, 90, 0.8));
+  animation: dot-glow 0.6s ease-in-out 2;
+}
+@keyframes dot-glow {
+  0%, 100% { r: 2.5; }
+  50% { r: 4; }
+}
+
+/* Underground — extra 30px buffer on top (transparent) overlaps behind agents */
+.hero-underground {
+  position: relative;
+  height: 110px;
+  margin-top: -30px !important;  /* slide up behind agents */
+  padding-top: 30px;             /* buffer zone — transparent, no content */
+  background: none;
+  overflow: visible;
+  z-index: 1;
+}
+
+/* Visible soil area (below the buffer) */
+.hero-underground-soil {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, var(--sl-color-gray-5) 0%, #0d1a0d 100%);
+  border-radius: 0 0 0.75rem 0.75rem;
+  border: 1px solid var(--sl-color-gray-4);
+  border-top: none;
+}
+
+.hero-underground-dots {
+  position: absolute;
+  top: 30px;    /* dots start below the buffer */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  border-radius: 0 0 0.75rem 0.75rem;
+}
+
+.hero-underground-dots svg circle {
+  transition: opacity 0.6s;
+}
+
+.kinoko-hero-scene.flowing .hero-underground-dots svg circle {
+  animation: dot-pulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes dot-pulse {
+  0% { opacity: 0.15; }
+  100% { opacity: 0.6; }
+}
+
+.hero-underground-label {
+  position: absolute;
+  bottom: 6px;
+  width: 100%;
+  text-align: center;
+  font-family: var(--sl-font-system-mono);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--sl-color-green);
+  opacity: 0.5;
 }
 
 /* Landing page: pitch section */
@@ -232,16 +459,11 @@ code:not(pre code) {
   color: var(--sl-color-gray-2);
 }
 
-/* Starlight splash page overflow containment */
+/* Starlight splash page overflow containment — use clip not hidden to allow visible children */
 .main-pane,
 .content-panel,
 .sl-markdown-content {
-  overflow-x: hidden;
-}
-
-/* Also constrain the hero art on narrow viewports */
-.kinoko-hero-art pre {
-  max-width: calc(100vw - 3rem);
+  overflow-x: clip;
 }
 
 /* Mobile responsiveness */
@@ -259,7 +481,23 @@ code:not(pre code) {
     gap: 0.75rem;
   }
 
-  .kinoko-hero-art pre {
-    font-size: 0.55rem;
+  .hero-agents {
+    gap: 0.4rem;
+  }
+
+  .hero-agent {
+    padding: 0.5rem 0.4rem;
+  }
+
+  .hero-agent-timer {
+    font-size: 0.85rem;
+  }
+
+  .hero-prompt {
+    font-size: 0.75rem;
+  }
+
+  .hero-underground {
+    height: 90px;  /* 30px buffer + 60px content */
   }
 }

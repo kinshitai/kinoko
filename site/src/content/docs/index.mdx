@@ -17,26 +17,268 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-<div class="kinoko-hero-art">
-```
-              🍄
-             ╱  ╲
-            ╱    ╲
-  ┌──────────┐ ┌──────────┐ ┌──────────┐
-  │ Agent A  │ │ Agent B  │ │ Agent C  │
-  │  solves  │ │ inherits │ │ inherits │
-  │ problem  │ │ solution │ │ solution │
-  └────┬─────┘ └────┬─────┘ └────┬─────┘
-       │             │             │
-  ─────┴───── mycelium ───────────┴─────
-       ·    ·    ·    ·    ·    ·    ·
-         ·      ·      ·      ·      ·
-           ·       ·       ·       ·
-```
-
-*One agent solves it. Every agent knows it. No repeated work, no lost knowledge.*
-
+<div class="kinoko-hero-scene" id="hero-scene">
+  <div class="hero-prompt">
+    <span class="hero-prompt-prefix">&gt; </span><span class="hero-prompt-text" id="hero-prompt-text"></span><span class="hero-prompt-cursor">▎</span>
+  </div>
+  <div class="hero-agents">
+    <div class="hero-agent hero-agent--disconnected" id="hero-agent-a">
+      <div class="hero-agent-label">Agent A</div>
+      <div class="hero-agent-timer" id="timer-a"><span class="thinking-dots"><span>·</span><span>·</span><span>·</span></span></div>
+      <div class="hero-agent-check" id="check-a">✓</div>
+      <div class="hero-agent-tag">no shared knowledge</div>
+    </div>
+    <div class="hero-agent hero-agent--connected" id="hero-agent-b">
+      <div class="hero-agent-label">Agent B</div>
+      <div class="hero-agent-timer" id="timer-b"><span class="thinking-dots"><span>·</span><span>·</span><span>·</span></span></div>
+      <div class="hero-agent-check" id="check-b">✓</div>
+      <div class="hero-agent-tag hero-agent-tag--kinoko">kinoko</div>
+    </div>
+    <div class="hero-agent hero-agent--connected" id="hero-agent-c">
+      <div class="hero-agent-label">Agent C</div>
+      <div class="hero-agent-timer" id="timer-c"><span class="thinking-dots"><span>·</span><span>·</span><span>·</span></span></div>
+      <div class="hero-agent-check" id="check-c">✓</div>
+      <div class="hero-agent-tag hero-agent-tag--kinoko">kinoko</div>
+    </div>
+  </div>
+  <div class="hero-underground" id="hero-underground">
+    <svg id="circuit-svg" class="circuit-svg"></svg>
+    <div class="hero-underground-soil"></div>
+    <div class="hero-underground-dots" id="underground-dots"></div>
+    <div class="hero-underground-label">mycelium network</div>
+  </div>
 </div>
+
+<script>
+{`
+(function(){
+  const TASKS = [
+    { name: "Debug Redis connection pooling", bTime: 18, cTime: 22, aTime: 205 },
+    { name: "Fix N+1 query in user dashboard", bTime: 12, cTime: 15, aTime: 134 },
+    { name: "CORS middleware error handling", bTime: 24, cTime: 14, aTime: 290 },
+    { name: "Retry logic with exponential backoff", bTime: 10, cTime: 16, aTime: 180 },
+  ];
+
+  function fmt(mins) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h > 0 ? h + "h " + String(m).padStart(2,"0") + "m" : m + "m";
+  }
+
+  /* generate underground dots — 4 source dots get IDs */
+  const dotsEl = document.getElementById("underground-dots");
+  const SOURCE_DOTS = [
+    { pctX: 25, pctY: 40 },
+    { pctX: 45, pctY: 60 },
+    { pctX: 60, pctY: 35 },
+    { pctX: 78, pctY: 55 },
+  ];
+  if (dotsEl) {
+    let svg = '<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">';
+    /* source dots */
+    SOURCE_DOTS.forEach((d, i) => {
+      svg += '<circle id="src-dot-'+i+'" cx="'+d.pctX+'%" cy="'+d.pctY+'%" r="2.5" fill="#5b8c5a" opacity="0.4" class="source-dot"/>';
+    });
+    /* random background dots */
+    for (let i = 0; i < 56; i++) {
+      const x = Math.random() * 100;
+      const y = Math.random() * 100;
+      const r = 1 + Math.random() * 1.5;
+      const op = 0.15 + Math.random() * 0.35;
+      svg += '<circle cx="'+x+'%" cy="'+y+'%" r="'+r+'" fill="#5b8c5a" opacity="'+op+'"/>';
+    }
+    svg += '</svg>';
+    dotsEl.innerHTML = svg;
+  }
+
+  const promptEl = document.getElementById("hero-prompt-text");
+  const timerA = document.getElementById("timer-a");
+  const timerB = document.getElementById("timer-b");
+  const timerC = document.getElementById("timer-c");
+  const checkA = document.getElementById("check-a");
+  const checkB = document.getElementById("check-b");
+  const checkC = document.getElementById("check-c");
+  const scene = document.getElementById("hero-scene");
+  const circuitSvg = document.getElementById("circuit-svg");
+  const underground = document.getElementById("hero-underground");
+  if (!promptEl || !scene) return;
+
+  let taskIdx = 0;
+
+  /* ── Circuit path helpers (split design: SVG inside underground + CSS roots on agents) ── */
+  const AGENT_TARGETS = [
+    { x: 0.5 },    /* Agent B: center of 2nd column */
+    { x: 5/6 },    /* Agent C: center of 3rd column */
+  ];
+
+  let activeDot = null;
+  function drawPaths() {
+    circuitSvg.innerHTML = "";
+    const ugW = underground.offsetWidth;
+    const ugH = underground.offsetHeight;
+
+    /* SVG viewBox matches underground dimensions */
+    circuitSvg.setAttribute("viewBox", "0 0 " + ugW + " " + ugH);
+
+    const dotIdx = Math.floor(Math.random() * SOURCE_DOTS.length);
+    activeDot = document.getElementById("src-dot-" + dotIdx);
+    if (activeDot) activeDot.classList.add("source-dot--active");
+
+    const dot = SOURCE_DOTS[dotIdx];
+    /* 30px buffer at top of underground — dots live in the bottom area */
+    const bufferPx = 30;
+    const dotAreaH = ugH - bufferPx;
+    const dotX = (dot.pctX / 100) * ugW;
+    const dotY = bufferPx + (dot.pctY / 100) * dotAreaH;
+
+    /* All horizontal routing happens inside the soil (below bufferPx).
+       Once a path reaches soil top (y=bufferPx), it only goes straight up. */
+    const soilTop = bufferPx;
+    const junctionY = soilTop + dotAreaH * 0.15;
+    /* Two routing lanes inside the soil, just above junction */
+    const lanes = [soilTop + dotAreaH * 0.05, soilTop + dotAreaH * 0.10];
+
+    const ns = "http://www.w3.org/2000/svg";
+
+    AGENT_TARGETS.forEach((t, i) => {
+      const targetX = t.x * ugW;
+      const laneY = lanes[i];
+      /* midpoint X for zigzag — halfway between dot and target */
+      const midX = dotX + (targetX - dotX) * 0.5;
+
+      /* Path: dot → up to junction → horizontal to midX → up to lane → horizontal to targetX → up through buffer to top */
+      const d = "M"+dotX+","+dotY+
+                " L"+dotX+","+junctionY+
+                " L"+midX+","+junctionY+
+                " L"+midX+","+laneY+
+                " L"+targetX+","+laneY+
+                " L"+targetX+",0";
+      const p = document.createElementNS(ns, "path");
+      p.setAttribute("d", d);
+      p.setAttribute("fill", "none");
+      p.setAttribute("stroke", "var(--sl-color-green)");
+      p.setAttribute("stroke-width", "1.5");
+      p.classList.add("circuit-path");
+      const len = p.getTotalLength ? p.getTotalLength() : 300;
+      p.style.strokeDasharray = len;
+      p.style.strokeDashoffset = len;
+      circuitSvg.appendChild(p);
+      setTimeout(() => {
+        p.style.transition = "stroke-dashoffset 0.7s ease-out";
+        p.style.strokeDashoffset = "0";
+      }, i * 300);
+    });
+
+    /* activate CSS roots on agents */
+  }
+  function clearPaths() {
+    circuitSvg.querySelectorAll(".circuit-path").forEach(p => {
+      p.style.transition = "opacity 0.4s";
+      p.style.opacity = "0";
+    });
+    if (activeDot) { activeDot.classList.remove("source-dot--active"); activeDot = null; }
+    setTimeout(() => { circuitSvg.innerHTML = ""; }, 500);
+  }
+
+  function typeText(el, text, speed) {
+    return new Promise(resolve => {
+      let i = 0; el.textContent = "";
+      const iv = setInterval(() => {
+        el.textContent = text.slice(0, ++i);
+        if (i >= text.length) { clearInterval(iv); resolve(); }
+      }, speed);
+    });
+  }
+
+  function eraseText(el, speed) {
+    return new Promise(resolve => {
+      const iv = setInterval(() => {
+        const t = el.textContent;
+        if (t.length <= 0) { clearInterval(iv); resolve(); return; }
+        el.textContent = t.slice(0, -1);
+      }, speed);
+    });
+  }
+
+  function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  /* animate a timer from 0 to target over durationMs with easing */
+  function animateTimer(el, target, durationMs) {
+    return new Promise(resolve => {
+      const s = performance.now();
+      (function tick() {
+        const p = Math.min(1, (performance.now() - s) / durationMs);
+        const ease = p < 0.5 ? 2*p*p : 1 - Math.pow(-2*p+2,2)/2;
+        el.textContent = fmt(Math.round(ease * target));
+        if (p < 1) requestAnimationFrame(tick);
+        else { el.textContent = fmt(target); resolve(); }
+      })();
+    });
+  }
+
+  /* add random variance so each cycle feels different */
+  function jitter(base, range, min) {
+    return Math.max(min, Math.round(base + (Math.random() * 2 - 1) * range));
+  }
+
+  async function runCycle() {
+    while (true) {
+      const t = TASKS[taskIdx % TASKS.length];
+      taskIdx++;
+
+      /* randomize times: ±3m for connected agents, ±20m for disconnected */
+      const bTime = jitter(t.bTime, 14, 7);
+      const cTime = jitter(t.cTime, 14, 7);
+      const aTime = jitter(t.aTime, 60, 90);
+
+      /* reset */
+      [checkA, checkB, checkC].forEach(c => c.classList.remove("visible"));
+      [timerA, timerB, timerC].forEach(e => { e.innerHTML = '<span class="thinking-dots"><span>·</span><span>·</span><span>·</span></span>'; });
+      scene.classList.remove("flowing");
+
+      /* type task */
+      await typeText(promptEl, t.name, 40);
+      await wait(300);
+
+      /* draw circuit paths from underground to agents B & C */
+      drawPaths();
+      await wait(400);
+
+      /* start flowing */
+      scene.classList.add("flowing");
+
+      /* run all three timers concurrently */
+      /* B and C finish fast (real seconds mapped); A is slow */
+      const bDur = 1200 + bTime * 60;   /* ~1.5-2s */
+      const cDur = 1200 + cTime * 60;
+      const aDur = 4000 + aTime * 8;    /* ~5-6s for drama */
+
+      const pB = animateTimer(timerB, bTime, bDur).then(() => { checkB.classList.add("visible"); });
+      const pC = animateTimer(timerC, cTime, cDur).then(() => { checkC.classList.add("visible"); });
+      const pA = animateTimer(timerA, aTime, aDur).then(() => { checkA.classList.add("visible"); });
+
+      await Promise.all([pB, pC, pA]);
+
+      /* pause to show contrast */
+      await wait(2200);
+
+      /* reset: fade paths, checks, erase prompt */
+      clearPaths();
+      [checkA, checkB, checkC].forEach(c => c.classList.remove("visible"));
+      scene.classList.remove("flowing");
+      await wait(400);
+      await eraseText(promptEl, 25);
+      await wait(600);
+    }
+  }
+
+  const obs = new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting) { obs.disconnect(); setTimeout(runCycle, 400); }
+  }, { threshold: 0.3 });
+  obs.observe(scene);
+})();
+`}
+</script>
 
 ## How It Works
 
