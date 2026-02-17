@@ -14,13 +14,13 @@ When an agent session starts, `kinoko run` captures the session context and quer
 
 ```
   Agent Session        kinoko run          kinoko serve        SQLite + vec
-       │                   │               (Match API)              │
+       │                   │              (Discovery API)           │
        │  session starts   │                    │                   │
        │  (context)        │                    │                   │
        │──────────────────▶│                    │                   │
-       │                   │  POST /api/v1/match│                   │
+       │                   │ POST /api/v1/discover                  │
        │                   │───────────────────▶│                   │
-       │                   │                    │  embed context →  │
+       │                   │                    │  embed prompt →   │
        │                   │                    │  cosine similarity│
        │                   │                    │─────────────────▶│
        │                   │                    │  top-K similar   │
@@ -32,16 +32,16 @@ When an agent session starts, `kinoko run` captures the session context and quer
        │                   │                    │                   │
 ```
 
-### The Match API
+### The Discovery API
 
 The server endpoint that powers injection:
 
 ```
-POST /api/v1/match
+POST /api/v1/discover
 {
-  "context": "session context text",
-  "limit": 5,
-  "min_score": 0.5
+  "prompt": "session context text",
+  "top_k": 5,
+  "min_quality": 0.5
 }
 ```
 
@@ -49,27 +49,33 @@ Returns:
 ```json
 {
   "skills": [
-    {"name": "fix-database-timeout", "score": 0.87, "content": "...SKILL.md..."},
-    {"name": "go-subprocess-management", "score": 0.72, "content": "..."}
+    {
+      "id": "fix-database-timeout", 
+      "name": "fix-database-timeout",
+      "repo": "default",
+      "quality": 0.87, 
+      "similarity": 0.82,
+      "ssh_url": "ssh://localhost:23231/default.git",
+      "patterns": ["database", "timeout", "postgres"]
+    }
   ]
 }
 ```
 
 The server:
-1. Embeds the context using the ONNX engine (`bge-small-en-v1.5`)
+1. Embeds the prompt using the ONNX engine (`bge-small-en-v1.5`)
 2. Runs cosine similarity search against all stored skill vectors (SQLite vec)
-3. Reads matching SKILL.md content from the bare git repos
-4. Returns skill content inline — the client never needs direct git access for injection
+3. Returns skill metadata — the client fetches SKILL.md content via git when needed
 
 ### Thresholds and Limits
 
 | Parameter | Default | Purpose |
 |-----------|---------|---------|
-| `min_score` | 0.5 | Minimum cosine similarity to include a skill |
-| `limit` | 5 | Maximum number of skills returned |
-| Response cap | 64KB | Hard limit on total response size |
+| `min_quality` | 0.5 | Minimum quality threshold to include a skill |
+| `top_k` | 5 | Maximum number of skills returned |
+| Input validation | — | Max 50 patterns, 50 library_ids, 2048 embedding dims |
 
-The `min_score` threshold prevents low-relevance noise. Skills below this score are omitted even if they're the "best" matches available — no match is better than a bad match.
+The `min_quality` threshold prevents low-relevance noise. Skills below this threshold are omitted even if they're the "best" matches available — no match is better than a bad match.
 
 ### What Gets Injected
 
@@ -105,8 +111,8 @@ When embeddings are unavailable (server unreachable), injection degrades to patt
 injection:
   api_url: "http://127.0.0.1:23233"
   max_skills: 5
-  min_score: 0.5
-  max_content_bytes: 65536  # 64KB response cap
+  min_quality: 0.5
+  library_ids: ["default", "team-backend"]  # optional scoping
 ```
 
 ## Future: Automatic Injection via `kinoko run`
