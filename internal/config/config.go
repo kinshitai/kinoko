@@ -97,6 +97,7 @@ type DecayConfig struct {
 	DeprecationThreshold     float64 `yaml:"deprecation_threshold"`
 	RescueBoost              float64 `yaml:"rescue_boost"`
 	RescueWindowDays         int     `yaml:"rescue_window_days"`
+	IntervalHours            int     `yaml:"interval_hours"` // decay cycle interval; default 6
 }
 
 // ServerConfig contains server-related configuration

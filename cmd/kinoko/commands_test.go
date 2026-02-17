@@ -101,7 +101,6 @@ func TestRootCmdHasAllCommands(t *testing.T) {
 		"extract": false,
 		"decay":   false,
 		"stats":   false,
-		"worker":  false,
 		"import":  false,
 		"queue":   false,
 	}
@@ -115,13 +114,6 @@ func TestRootCmdHasAllCommands(t *testing.T) {
 		if !found {
 			t.Errorf("command %q not registered on root", name)
 		}
-	}
-}
-
-func TestWorkerCmdFlags(t *testing.T) {
-	f := workerCmd.Flags()
-	if f.Lookup("config") == nil {
-		t.Error("--config flag not found on worker command")
 	}
 }
 
