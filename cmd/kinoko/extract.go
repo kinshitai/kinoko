@@ -80,7 +80,7 @@ func runExtract(cmd *cobra.Command, args []string) error {
 	serverClient := serverclient.New(serverURL)
 
 	// Embedder via server HTTP API.
-	embedder := serverclient.NewHTTPEmbedder(serverClient, 384)
+	embedder := serverclient.NewHTTPEmbedder(serverClient, cfg.Embedding.GetDims())
 
 	// Skill querier via server HTTP API.
 	querier := serverclient.NewHTTPQuerier(serverClient)

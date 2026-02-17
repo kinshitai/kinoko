@@ -61,7 +61,16 @@ type EmbeddingConfig struct {
 	Model            string  `yaml:"model"`             // e.g. "text-embedding-3-small"
 	BaseURL          string  `yaml:"base_url"`          // e.g. "https://api.openai.com"
 	APIKey           string  `yaml:"api_key"`           // provider API key
+	Dims             int     `yaml:"dims"`              // embedding dimensions (default 384)
 	NoveltyThreshold float64 `yaml:"novelty_threshold"` // cosine similarity above which content is "too similar" (default 0.85)
+}
+
+// GetDims returns the configured embedding dimensions, defaulting to 384.
+func (e EmbeddingConfig) GetDims() int {
+	if e.Dims <= 0 {
+		return 384
+	}
+	return e.Dims
 }
 
 // GetNoveltyThreshold returns the configured novelty threshold, defaulting to 0.85.

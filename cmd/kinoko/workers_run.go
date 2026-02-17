@@ -29,7 +29,7 @@ func buildClientPipeline(cfg *config.Config, serverClient *serverclient.Client, 
 	}
 
 	// Embedder via server HTTP API.
-	embedder := serverclient.NewHTTPEmbedder(serverClient, 384)
+	embedder := serverclient.NewHTTPEmbedder(serverClient, cfg.Embedding.GetDims())
 
 	// Skill querier via server HTTP API.
 	querier := serverclient.NewHTTPQuerier(serverClient)
@@ -61,17 +61,24 @@ func buildClientPipeline(cfg *config.Config, serverClient *serverclient.Client, 
 		tracer = debug.NewTracer(cfg.Debug.Dir)
 	}
 
+	// Novelty checker via server API.
+	threshold := cfg.Embedding.GetNoveltyThreshold()
+	serverURL := cfg.ServerURL()
+	novelty := extraction.NewNoveltyClient(serverURL, threshold, logger)
+
 	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1:    stage1,
-		Stage2:    stage2,
-		Stage3:    stage3,
-		Sessions:  sessions,
-		Reviewer:  reviewer,
-		Committer: committer,
-		Tracer:    tracer,
-		Log:       logger,
-		Extractor: "worker-v1",
-		ExtCfg:    cfg.Extraction,
+		Stage1:     stage1,
+		Stage2:     stage2,
+		Stage3:     stage3,
+		Sessions:   sessions,
+		Reviewer:   reviewer,
+		Novelty:    novelty,
+		Committer:  committer,
+		Tracer:     tracer,
+		Log:        logger,
+		SampleRate: cfg.Extraction.SampleRate,
+		Extractor:  "worker-v1",
+		ExtCfg:     cfg.Extraction,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build extraction pipeline: %w", err)
