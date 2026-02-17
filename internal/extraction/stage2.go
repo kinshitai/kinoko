@@ -7,7 +7,6 @@ import (
 	"math"
 
 	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/embedding"
 	"github.com/kinoko-dev/kinoko/internal/llm"
 	"github.com/kinoko-dev/kinoko/internal/llmutil"
 	"github.com/kinoko-dev/kinoko/internal/model"
@@ -54,7 +53,7 @@ type Stage2Scorer interface {
 }
 
 type stage2Scorer struct {
-	embedder embedding.Embedder
+	embedder model.Embedder
 	querier  model.SkillQuerier
 	llm      llm.LLMClient
 	minDist  float64
@@ -64,7 +63,7 @@ type stage2Scorer struct {
 
 // NewStage2Scorer creates a Stage2Scorer from dependencies and config.
 func NewStage2Scorer(
-	embedder embedding.Embedder,
+	embedder model.Embedder,
 	querier model.SkillQuerier,
 	llmClient llm.LLMClient,
 	cfg config.ExtractionConfig,

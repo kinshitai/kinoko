@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kinoko-dev/kinoko/internal/embedding"
 	"github.com/kinoko-dev/kinoko/internal/extraction"
 	"github.com/kinoko-dev/kinoko/internal/llm"
 	"github.com/kinoko-dev/kinoko/internal/llmutil"
@@ -44,7 +43,7 @@ type Injector interface {
 
 // injector implements Injector.
 type injector struct {
-	embedder    embedding.Embedder
+	embedder    model.Embedder
 	store       storage.SkillStore
 	llm         llm.LLMClient
 	eventWriter InjectionEventWriter
@@ -54,7 +53,7 @@ type injector struct {
 // New creates an Injector. embedder may be nil (fallback mode permanently).
 // eventWriter may be nil (injection events will not be logged — not recommended).
 func New(
-	embedder embedding.Embedder,
+	embedder model.Embedder,
 	store storage.SkillStore,
 	llm llm.LLMClient,
 	eventWriter InjectionEventWriter,
