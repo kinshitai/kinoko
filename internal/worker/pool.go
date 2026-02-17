@@ -1,3 +1,6 @@
+// Package worker provides a concurrent worker pool that polls a session queue
+// and runs the extraction pipeline. It handles claim-based concurrency, retries
+// with exponential backoff, stale claim recovery, and queue depth alerting.
 package worker
 
 import (

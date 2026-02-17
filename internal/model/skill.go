@@ -1,3 +1,8 @@
+// Package model defines the core domain types shared across the Kinoko
+// extraction, injection, and storage subsystems. It contains skill records,
+// session records, quality scores, injection events, and interface contracts
+// (SkillStore, Embedder, Extractor, SkillQuerier, etc.) that decouple the
+// client and server implementations.
 package model
 
 import "time"
