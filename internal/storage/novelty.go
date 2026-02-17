@@ -4,16 +4,12 @@ import (
 	"context"
 	"fmt"
 	"sort"
+
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
-// SimilarSkill is a skill with its cosine similarity score.
-type SimilarSkill struct {
-	SkillID   string
-	Name      string
-	LibraryID string
-	Score     float64
-	FilePath  string
-}
+// SimilarSkill is an alias for model.SimilarSkill.
+type SimilarSkill = model.SimilarSkill
 
 // FindSimilar returns skill embeddings ranked by cosine similarity to the query vector.
 // Returns at most limit results with similarity >= minScore.

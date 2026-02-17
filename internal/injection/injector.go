@@ -16,7 +16,6 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/llm"
 	"github.com/kinoko-dev/kinoko/internal/llmutil"
 	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
 // maxPatterns caps the number of classified patterns forwarded to the query.
@@ -33,7 +32,7 @@ const defaultCandidateLimit = 50
 
 // InjectionEventWriter persists injection events for the feedback loop.
 type InjectionEventWriter interface {
-	WriteInjectionEvent(ctx context.Context, ev storage.InjectionEventRecord) error
+	WriteInjectionEvent(ctx context.Context, ev model.InjectionEventRecord) error
 }
 
 // Injector selects relevant skills to inject into an agent session.
@@ -44,7 +43,7 @@ type Injector interface {
 // injector implements Injector.
 type injector struct {
 	embedder    model.Embedder
-	store       storage.SkillStore
+	store       model.SkillStore
 	llm         llm.LLMClient
 	eventWriter InjectionEventWriter
 	log         *slog.Logger
@@ -54,7 +53,7 @@ type injector struct {
 // eventWriter may be nil (injection events will not be logged — not recommended).
 func New(
 	embedder model.Embedder,
-	store storage.SkillStore,
+	store model.SkillStore,
 	llm llm.LLMClient,
 	eventWriter InjectionEventWriter,
 	log *slog.Logger,
@@ -102,7 +101,7 @@ func (inj *injector) Inject(ctx context.Context, req model.InjectionRequest) (*m
 	}
 
 	// Step 3: Query skill store with bounded candidates and dead-skill filter.
-	query := storage.SkillQuery{
+	query := model.SkillQuery{
 		Patterns:   classification.Patterns,
 		Embedding:  promptEmbedding,
 		LibraryIDs: req.LibraryIDs,
@@ -129,7 +128,7 @@ func (inj *injector) Inject(ctx context.Context, req model.InjectionRequest) (*m
 			c := &candidates[i]
 			c.CompositeScore = 0.7*c.PatternOverlap + 0.3*c.HistoricalRate
 		}
-		slices.SortFunc(candidates, func(a, b storage.ScoredSkill) int {
+		slices.SortFunc(candidates, func(a, b model.ScoredSkill) int {
 			if a.CompositeScore > b.CompositeScore {
 				return -1
 			}
@@ -161,7 +160,7 @@ func (inj *injector) Inject(ctx context.Context, req model.InjectionRequest) (*m
 
 		// Write injection event for the feedback loop (C3).
 		if inj.eventWriter != nil && req.SessionID != "" {
-			ev := storage.InjectionEventRecord{
+			ev := model.InjectionEventRecord{
 				ID:             fmt.Sprintf("%s-%s-%d", req.SessionID, c.Skill.ID, i),
 				SessionID:      req.SessionID,
 				SkillID:        c.Skill.ID,

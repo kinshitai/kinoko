@@ -4,22 +4,12 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
-// InjectionEventRecord maps to the injection_events table.
-type InjectionEventRecord struct {
-	ID             string
-	SessionID      string
-	SkillID        string
-	RankPosition   int
-	MatchScore     float64
-	PatternOverlap float64
-	CosineSim      float64
-	HistoricalRate float64
-	InjectedAt     time.Time
-	ABGroup        string // "treatment", "control", or "" (no A/B test)
-	Delivered      bool   // false for control group sessions
-}
+// InjectionEventRecord is an alias for model.InjectionEventRecord.
+type InjectionEventRecord = model.InjectionEventRecord
 
 // WriteInjectionEvent inserts a row into injection_events.
 func (s *SQLiteStore) WriteInjectionEvent(ctx context.Context, ev InjectionEventRecord) error {

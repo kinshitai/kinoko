@@ -7,7 +7,6 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -20,10 +19,10 @@ import (
 //go:embed schema.sql
 var schemaDDL string
 
-// Sentinel errors for callers to check with errors.Is.
+// Sentinel errors — re-exported from model for backward compatibility.
 var (
-	ErrNotFound  = errors.New("skill not found")
-	ErrDuplicate = errors.New("duplicate skill")
+	ErrNotFound  = model.ErrNotFound
+	ErrDuplicate = model.ErrDuplicate
 )
 
 // skillColumns is the canonical column list for the skills table.
@@ -40,35 +39,14 @@ type SessionStore interface {
 	UpdateSessionResult(ctx context.Context, session *model.SessionRecord) error
 }
 
-// SkillStore persists and retrieves skills.
-type SkillStore interface {
-	Put(ctx context.Context, skill *model.SkillRecord, body []byte) error
-	Get(ctx context.Context, id string) (*model.SkillRecord, error)
-	GetLatestByName(ctx context.Context, name string, libraryID string) (*model.SkillRecord, error)
-	Query(ctx context.Context, q SkillQuery) ([]ScoredSkill, error)
-	UpdateUsage(ctx context.Context, id string, outcome string) error
-	UpdateDecay(ctx context.Context, id string, decayScore float64) error
-	ListByDecay(ctx context.Context, libraryID string, limit int) ([]model.SkillRecord, error)
-}
+// SkillStore is an alias for model.SkillStore.
+type SkillStore = model.SkillStore
 
-// SkillQuery defines query parameters for skill search.
-type SkillQuery struct {
-	Patterns   []string
-	Embedding  []float32
-	LibraryIDs []string
-	MinQuality float64
-	MinDecay   float64
-	Limit      int
-}
+// SkillQuery is an alias for model.SkillQuery.
+type SkillQuery = model.SkillQuery
 
-// ScoredSkill is a skill with match scores.
-type ScoredSkill struct {
-	Skill          model.SkillRecord
-	PatternOverlap float64
-	CosineSim      float64
-	HistoricalRate float64
-	CompositeScore float64
-}
+// ScoredSkill is an alias for model.ScoredSkill.
+type ScoredSkill = model.ScoredSkill
 
 // SQLiteStore implements SkillStore with SQLite.
 type SQLiteStore struct {
