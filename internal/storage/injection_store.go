@@ -26,11 +26,18 @@ func (s *SQLiteStore) WriteInjectionEvent(ctx context.Context, ev InjectionEvent
 
 // UpdateInjectionOutcome sets session_outcome on injection events for a given session.
 func (s *SQLiteStore) UpdateInjectionOutcome(ctx context.Context, sessionID string, outcome string) error {
-	_, err := s.db.ExecContext(ctx,
+	res, err := s.db.ExecContext(ctx,
 		`UPDATE injection_events SET session_outcome = ? WHERE session_id = ?`,
 		outcome, sessionID)
 	if err != nil {
 		return fmt.Errorf("update injection outcome for session %s: %w", sessionID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update injection outcome rows affected: %w", err)
+	}
+	if n == 0 {
+		return model.ErrNotFound
 	}
 	return nil
 }

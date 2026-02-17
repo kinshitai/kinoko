@@ -283,7 +283,7 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	session := model.SessionRecord{ID: req.SessionID}
 	if err := s.enqueue(r.Context(), session, []byte(req.Log)); err != nil {
 		s.logger.Error("ingest enqueue failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
 

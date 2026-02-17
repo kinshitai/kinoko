@@ -82,3 +82,20 @@ func TestUpdateSession(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestUpdateSession_NotFound(t *testing.T) {
+	store := newTestStore(t)
+	srv := New(Config{Port: 0, Store: store})
+
+	body, _ := json.Marshal(UpdateSessionBody{
+		ExtractionStatus: "rejected",
+		RejectionReason:  "low quality",
+	})
+	req := httptest.NewRequest("PUT", "/api/v1/sessions/nonexistent-id", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.httpServer.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}

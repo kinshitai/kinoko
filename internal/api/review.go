@@ -24,7 +24,7 @@ func (s *Server) handleCreateReviewSample(w http.ResponseWriter, r *http.Request
 
 	if err := s.store.InsertReviewSample(r.Context(), req.SessionID, req.ResultJSON); err != nil {
 		s.logger.Error("insert review sample failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"session_id": req.SessionID})

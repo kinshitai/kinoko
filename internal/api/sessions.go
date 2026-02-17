@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
@@ -45,7 +46,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.store.InsertSession(r.Context(), sess); err != nil {
 		s.logger.Error("insert session failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"id": sess.ID})
@@ -73,8 +74,12 @@ func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.UpdateSessionResult(r.Context(), sess); err != nil {
+		if errors.Is(err, model.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+			return
+		}
 		s.logger.Error("update session failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"updated": id})

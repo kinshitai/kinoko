@@ -68,7 +68,7 @@ func (s *SQLiteStore) InsertSession(ctx context.Context, session *model.SessionR
 
 // UpdateSessionResult updates extraction results on an existing session row.
 func (s *SQLiteStore) UpdateSessionResult(ctx context.Context, session *model.SessionRecord) error {
-	_, err := s.db.ExecContext(ctx, `
+	res, err := s.db.ExecContext(ctx, `
 		UPDATE sessions SET
 			extraction_status = ?,
 			rejected_at_stage = ?,
@@ -83,6 +83,13 @@ func (s *SQLiteStore) UpdateSessionResult(ctx context.Context, session *model.Se
 	)
 	if err != nil {
 		return fmt.Errorf("update session %s result: %w", session.ID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update session %s rows affected: %w", session.ID, err)
+	}
+	if n == 0 {
+		return model.ErrNotFound
 	}
 	return nil
 }

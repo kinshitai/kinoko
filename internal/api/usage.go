@@ -25,7 +25,7 @@ func (s *Server) handleUpdateUsage(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.store.UpdateUsage(r.Context(), id, req.Outcome); err != nil {
 		s.logger.Error("update usage failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"updated": id})

@@ -102,6 +102,18 @@ func TestUpdateInjectionOutcome(t *testing.T) {
 	}
 }
 
+func TestUpdateInjectionOutcome_InvalidOutcome(t *testing.T) {
+	srv := New(Config{Port: 0})
+	body, _ := json.Marshal(UpdateInjectionOutcomeRequest{Outcome: "banana"})
+	req := httptest.NewRequest("PUT", "/api/v1/injection-events/sess-1/outcome", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.httpServer.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestUpdateInjectionOutcome_MissingOutcome(t *testing.T) {
 	srv := New(Config{Port: 0})
 	body, _ := json.Marshal(UpdateInjectionOutcomeRequest{})

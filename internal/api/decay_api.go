@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -30,7 +31,7 @@ func (s *Server) handleListByDecay(w http.ResponseWriter, r *http.Request) {
 	skills, err := s.store.ListByDecay(r.Context(), libraryID, limit)
 	if err != nil {
 		s.logger.Error("list by decay failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
 	if skills == nil {
@@ -52,9 +53,18 @@ func (s *Server) handleUpdateDecay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.DecayScore < 0.0 || req.DecayScore > 1.0 {
+		http.Error(w, `{"error":"decay_score must be between 0.0 and 1.0"}`, http.StatusBadRequest)
+		return
+	}
+
 	if err := s.store.UpdateDecay(r.Context(), id, req.DecayScore); err != nil {
+		if errors.Is(err, model.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "skill not found"})
+			return
+		}
 		s.logger.Error("update decay failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"updated": id})

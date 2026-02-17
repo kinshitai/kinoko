@@ -44,7 +44,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		s.logger.Error("search query failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
 
