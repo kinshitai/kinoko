@@ -2,6 +2,7 @@ package serverclient
 
 import (
 	"github.com/kinoko-dev/kinoko/internal/decay"
+	"github.com/kinoko-dev/kinoko/internal/extraction"
 	"github.com/kinoko-dev/kinoko/internal/injection"
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
@@ -14,4 +15,6 @@ var (
 	_ decay.SkillWriter              = (*HTTPDecayClient)(nil)
 	_ injection.InjectionEventWriter = (*HTTPInjectionEventWriter)(nil)
 	_ model.SkillCommitter           = (*GitPushCommitter)(nil)
+	_ extraction.SessionWriter       = (*HTTPSessionWriter)(nil)
+	_ extraction.HumanReviewWriter   = (*HTTPReviewer)(nil)
 )

@@ -36,20 +36,15 @@ func (w *HTTPSessionWriter) InsertSession(ctx context.Context, session *model.Se
 }
 
 // UpdateSessionResult updates the extraction result for a session.
-func (w *HTTPSessionWriter) UpdateSessionResult(ctx context.Context, id string, result *model.ExtractionResult) error {
-	var skillID string
-	if result.Skill != nil {
-		skillID = result.Skill.ID
-	}
+func (w *HTTPSessionWriter) UpdateSessionResult(ctx context.Context, session *model.SessionRecord) error {
 	body := updateSessionBody{
-		ExtractionStatus: string(result.Status),
-		ExtractedSkillID: skillID,
-	}
-	if result.Error != "" {
-		body.RejectionReason = result.Error
+		ExtractionStatus: string(session.ExtractionStatus),
+		RejectedAtStage:  session.RejectedAtStage,
+		RejectionReason:  session.RejectionReason,
+		ExtractedSkillID: session.ExtractedSkillID,
 	}
 	var resp map[string]string
-	return w.client.doJSON(ctx, "PUT", fmt.Sprintf("/api/v1/sessions/%s", id), body, &resp)
+	return w.client.doJSON(ctx, "PUT", fmt.Sprintf("/api/v1/sessions/%s", session.ID), body, &resp)
 }
 
 // GetSession retrieves a session by ID.

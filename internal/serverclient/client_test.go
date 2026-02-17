@@ -3,8 +3,10 @@ package serverclient
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,9 +127,10 @@ func TestHTTPSessionWriter_UpdateSessionResult(t *testing.T) {
 	defer srv.Close()
 
 	sw := NewHTTPSessionWriter(New(srv.URL))
-	err := sw.UpdateSessionResult(context.Background(), "sess-1", &model.ExtractionResult{
-		Status: model.StatusExtracted,
-		Skill:  &model.SkillRecord{ID: "skill-1"},
+	err := sw.UpdateSessionResult(context.Background(), &model.SessionRecord{
+		ID:               "sess-1",
+		ExtractionStatus: model.StatusExtracted,
+		ExtractedSkillID: "skill-1",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -153,7 +156,7 @@ func TestHTTPSessionWriter_GetSession(t *testing.T) {
 	}
 }
 
-func TestHTTPReviewer_WriteReviewSample(t *testing.T) {
+func TestHTTPReviewer_InsertReviewSample(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" || r.URL.Path != "/api/v1/review-samples" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -169,7 +172,7 @@ func TestHTTPReviewer_WriteReviewSample(t *testing.T) {
 	defer srv.Close()
 
 	rv := NewHTTPReviewer(New(srv.URL))
-	err := rv.WriteReviewSample(context.Background(), "sess-1", json.RawMessage(`{"test":true}`))
+	err := rv.InsertReviewSample(context.Background(), "sess-1", []byte(`{"test":true}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,5 +240,66 @@ func TestHTTPQuerier_QueryNearest_NoResults(t *testing.T) {
 	}
 	if result.SkillName != "" {
 		t.Errorf("expected empty skill name, got %q", result.SkillName)
+	}
+}
+
+func TestGitPushCommitter_PathTraversal(t *testing.T) {
+	log := slog.Default()
+	g := NewGitPushCommitter("git@example.com:repo.git", t.TempDir(), log)
+
+	cases := []struct {
+		name      string
+		library   string
+		skillID   string
+		wantErr   string
+	}{
+		{"dotdot library", "../etc", "skill-1", "invalid libraryID"},
+		{"slash library", "foo/bar", "skill-1", "invalid libraryID"},
+		{"dotdot skill", "lib-1", "../../root", "invalid skill.ID"},
+		{"slash skill", "lib-1", "a/b", "invalid skill.ID"},
+		{"dot library", ".hidden", "skill-1", "invalid libraryID"},
+		{"empty library", "", "skill-1", "invalid libraryID"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := g.CommitSkill(context.Background(), tc.library, &model.SkillRecord{
+				ID: tc.skillID, Name: "test", Version: 1,
+			}, []byte("# Test"))
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("expected error containing %q, got %q", tc.wantErr, err.Error())
+			}
+		})
+	}
+}
+
+func TestHTTPClient_Timeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL)
+	// Override to a short timeout for test.
+	c.httpClient.Timeout = 100 * time.Millisecond
+
+	err := c.doJSON(context.Background(), "GET", "/slow", nil, nil)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	// Should be a timeout-related error.
+	if !strings.Contains(err.Error(), "Client.Timeout") && !strings.Contains(err.Error(), "context deadline") {
+		t.Errorf("expected timeout error, got: %v", err)
+	}
+}
+
+func TestNew_HasTimeout(t *testing.T) {
+	c := New("http://localhost")
+	if c.httpClient.Timeout != defaultTimeout {
+		t.Errorf("expected timeout %v, got %v", defaultTimeout, c.httpClient.Timeout)
 	}
 }

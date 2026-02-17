@@ -7,10 +7,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
+
+// safeIDPattern matches simple identifiers: alphanumeric, hyphens, underscores.
+var safeIDPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 
 // GitPushCommitter implements model.SkillCommitter by writing SKILL.md files
 // into a local git clone and pushing over SSH.
@@ -18,18 +23,59 @@ type GitPushCommitter struct {
 	sshURL  string
 	dataDir string
 	log     *slog.Logger
+
+	mu    sync.Mutex            // protects repoMu map
+	repoMu map[string]*sync.Mutex // per-repo locks
 }
 
 // NewGitPushCommitter creates a new GitPushCommitter.
 // sshURL is the SSH clone URL for the skill library repo.
 // dataDir is the local directory for git workdirs.
 func NewGitPushCommitter(sshURL, dataDir string, log *slog.Logger) *GitPushCommitter {
-	return &GitPushCommitter{sshURL: sshURL, dataDir: dataDir, log: log}
+	return &GitPushCommitter{
+		sshURL:  sshURL,
+		dataDir: dataDir,
+		log:     log,
+		repoMu:  make(map[string]*sync.Mutex),
+	}
+}
+
+// repoLock returns a per-repo mutex for the given repo path.
+func (g *GitPushCommitter) repoLock(repoDir string) *sync.Mutex {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	m, ok := g.repoMu[repoDir]
+	if !ok {
+		m = &sync.Mutex{}
+		g.repoMu[repoDir] = m
+	}
+	return m
+}
+
+// validateID checks that an ID is a safe path component (no traversal).
+func validateID(name, value string) error {
+	if !safeIDPattern.MatchString(value) {
+		return fmt.Errorf("invalid %s: %q (must be alphanumeric with hyphens/underscores)", name, value)
+	}
+	return nil
 }
 
 // CommitSkill writes a SKILL.md file into the library repo and pushes it.
 func (g *GitPushCommitter) CommitSkill(ctx context.Context, libraryID string, skill *model.SkillRecord, body []byte) (string, error) {
+	// Sanitize inputs to prevent path traversal.
+	if err := validateID("libraryID", libraryID); err != nil {
+		return "", err
+	}
+	if err := validateID("skill.ID", skill.ID); err != nil {
+		return "", err
+	}
+
 	repoDir := filepath.Join(g.dataDir, libraryID)
+
+	// Lock per repo to prevent concurrent git operations.
+	lock := g.repoLock(repoDir)
+	lock.Lock()
+	defer lock.Unlock()
 
 	if err := g.ensureRepo(ctx, repoDir); err != nil {
 		return "", fmt.Errorf("ensure repo: %w", err)
@@ -63,6 +109,9 @@ func (g *GitPushCommitter) CommitSkill(ctx context.Context, libraryID string, sk
 	}
 
 	if err := g.gitCmd(ctx, repoDir, "push"); err != nil {
+		// Reset to remote state so the repo isn't permanently broken.
+		g.log.Error("git push failed, resetting to remote state", "error", err)
+		_ = g.gitCmd(ctx, repoDir, "reset", "--hard", "origin/main")
 		return "", fmt.Errorf("git push: %w", err)
 	}
 

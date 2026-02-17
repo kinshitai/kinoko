@@ -9,6 +9,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
+)
+
+const (
+	// defaultTimeout is the default HTTP client timeout.
+	defaultTimeout = 30 * time.Second
+	// maxResponseBytes is the maximum response body size (1 MB).
+	maxResponseBytes = 1 << 20
 )
 
 // Client is the base HTTP client for communicating with kinoko serve.
@@ -31,7 +39,7 @@ func (e *APIError) Error() string {
 func New(baseURL string) *Client {
 	return &Client{
 		baseURL:    baseURL,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: defaultTimeout},
 	}
 }
 
@@ -63,7 +71,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, response
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 		msg := string(respBody)
 		// Try to extract error field from JSON.
 		var errResp struct {
@@ -76,7 +84,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, response
 	}
 
 	if response != nil {
-		if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
+		if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(response); err != nil {
 			return fmt.Errorf("decode response: %w", err)
 		}
 	}

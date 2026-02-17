@@ -20,11 +20,11 @@ type createReviewSampleRequest struct {
 	ResultJSON json.RawMessage `json:"result_json"`
 }
 
-// WriteReviewSample submits a review sample to the server.
-func (r *HTTPReviewer) WriteReviewSample(ctx context.Context, sessionID string, resultJSON json.RawMessage) error {
+// InsertReviewSample submits a review sample to the server.
+func (r *HTTPReviewer) InsertReviewSample(ctx context.Context, sessionID string, resultJSON []byte) error {
 	var resp map[string]string
 	return r.client.doJSON(ctx, "POST", "/api/v1/review-samples", createReviewSampleRequest{
 		SessionID:  sessionID,
-		ResultJSON: resultJSON,
+		ResultJSON: json.RawMessage(resultJSON),
 	}, &resp)
 }
