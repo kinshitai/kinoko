@@ -80,8 +80,8 @@ func bootstrapServer(dataDir string, logger *slog.Logger) error {
 	return nil
 }
 
-// SessionHooks, buildSessionHooks, buildPipeline, libraryIDs, startWorkerSystem
-// are defined in workers.go (shared between serve and run commands).
+// libraryIDs is defined in workers_run.go.
+// decayConfigFromYAML is defined in decay.go.
 
 func runServe(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load(configPath)
@@ -199,6 +199,15 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logger.Info("API server ready", "port", apiPort)
 	}
 
+	// Start decay scheduler (server-side concern: reads/writes skill scores in index DB).
+	decaySched, err := newDecayScheduler(store, cfg, logger)
+	if err != nil {
+		logger.Error("failed to create decay scheduler", "error", err)
+	} else {
+		decaySched.Start(cmd.Context())
+		logger.Info("Decay scheduler started", "interval", decaySched.interval)
+	}
+
 	// Wait for shutdown signal.
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
@@ -233,6 +242,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 		if err := apiSrv.Stop(shutdownCtx); err != nil {
 			logger.Error("error stopping API server", "error", err)
 		}
+	}
+
+	if decaySched != nil {
+		logger.Info("Stopping decay scheduler...")
+		decaySched.Stop()
 	}
 
 	logger.Info("Stopping git server...")

@@ -16,6 +16,15 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/worker"
 )
 
+// libraryIDs extracts library IDs from config.
+func libraryIDs(cfg *config.Config) []string {
+	ids := make([]string, len(cfg.Libraries))
+	for i, lib := range cfg.Libraries {
+		ids[i] = lib.Name
+	}
+	return ids
+}
+
 // buildClientPipeline creates an extraction pipeline for kinoko run (client mode).
 // Uses serverclient for embedding, skill querying, session writing, review, and git commit.
 // Returns nil if no LLM key is configured.
