@@ -1,0 +1,21 @@
+#!/bin/bash
+set -e
+
+echo "🔍 Running pre-commit checks..."
+
+echo "→ go build"
+go build ./...
+
+echo "→ go vet"
+go vet ./...
+
+echo "→ golangci-lint"
+golangci-lint run
+
+echo "→ unit tests (race)"
+go test -race -count=1 ./...
+
+echo "→ integration tests (race)"
+go test -tags integration -race -count=1 ./tests/integration/ -timeout 120s
+
+echo "✅ All checks passed"
