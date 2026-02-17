@@ -15,12 +15,37 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
+
+// ---------------------------------------------------------------------------
+// thread-safe buffer for race-free testing
+// ---------------------------------------------------------------------------
+
+// SafeBuffer wraps bytes.Buffer with a mutex for concurrent access
+type SafeBuffer struct {
+	mu  sync.RWMutex
+	buf bytes.Buffer
+}
+
+// Write implements io.Writer interface thread-safely
+func (sb *SafeBuffer) Write(p []byte) (n int, err error) {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	return sb.buf.Write(p)
+}
+
+// String returns the buffer contents thread-safely
+func (sb *SafeBuffer) String() string {
+	sb.mu.RLock()
+	defer sb.mu.RUnlock()
+	return sb.buf.String()
+}
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -372,7 +397,7 @@ func TestRun_WorkerStartsAndProcesses(t *testing.T) {
 
 	t.Run("degraded_mode_without_api_key", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		var stderr bytes.Buffer
+		var stderr SafeBuffer
 		cmd := exec.CommandContext(ctx, bin, "run", "--config", cfgPath)
 		cmd.Cancel = func() error {
 			return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
@@ -656,7 +681,7 @@ func TestRun_ServerUnreachable(t *testing.T) {
 
 	// kinoko run uses local SQLite — start as daemon, verify it runs, stop.
 	ctx, cancel := context.WithCancel(context.Background())
-	var stderr bytes.Buffer
+	var stderr SafeBuffer
 	cmd := exec.CommandContext(ctx, bin, "run", "--config", cfgPath)
 	cmd.Cancel = func() error {
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
