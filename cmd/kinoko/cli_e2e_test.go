@@ -21,8 +21,8 @@ import (
 
 // ── mock API server ──
 
-// newMockAPI spins up an httptest server that handles /api/v1/embed,
-// /api/v1/novelty, and /api/v1/match with canned responses.
+// newMockAPI spins up an httptest server that handles /api/v1/embed and
+// /api/v1/discover with canned responses.
 func newMockAPI(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -65,31 +65,37 @@ func newMockAPI(t *testing.T) *httptest.Server {
 		})
 	})
 
-	// /api/v1/novelty — always novel
-	mux.HandleFunc("POST /api/v1/novelty", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"novel":   true,
-			"score":   0.1,
-			"similar": []any{},
-		})
-	})
-
-	// /api/v1/match — returns one canned skill
-	mux.HandleFunc("POST /api/v1/match", func(w http.ResponseWriter, r *http.Request) {
+	// /api/v1/discover — unified endpoint for all discovery needs
+	mux.HandleFunc("POST /api/v1/discover", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Context  string  `json:"context"`
-			Limit    int     `json:"limit"`
-			MinScore float64 `json:"min_score"`
+			Prompt     string    `json:"prompt,omitempty"`
+			Embedding  []float64 `json:"embedding,omitempty"`
+			Patterns   []string  `json:"patterns,omitempty"`
+			LibraryIDs []string  `json:"library_ids,omitempty"`
+			MinQuality float64   `json:"min_quality,omitempty"`
+			TopK       int       `json:"top_k,omitempty"`
 		}
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
+			return
+		}
+
+		// Return mock skill results with different scores based on request type
+		score := 0.95
+		if req.TopK > 5 {
+			// For novelty checking (high TopK), return lower similarity score
+			score = 0.1
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"skills": []map[string]any{
 				{
-					"name":    "test-skill",
-					"score":   0.95,
-					"content": "# Test Skill\nSome content.",
+					"repo":        "local/test-skill",
+					"name":        "test-skill",
+					"description": "# Test Skill\nSome content.",
+					"score":       score,
+					"clone_url":   "https://example.com/test-skill.git",
 				},
 			},
 		})

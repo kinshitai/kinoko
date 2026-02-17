@@ -10,15 +10,22 @@ import (
 
 func TestClient_Match_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/match" {
+		if r.URL.Path != "/api/v1/discover" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		if r.Method != http.MethodPost {
 			t.Errorf("unexpected method: %s", r.Method)
 		}
-		json.NewEncoder(w).Encode(MatchResult{
-			Skills: []MatchedSkill{
-				{Name: "fix-db", Score: 0.9, Content: "# Fix DB\nDo this."},
+		// Return discover response format
+		json.NewEncoder(w).Encode(discoverResponse{
+			Skills: []struct {
+				Repo        string  `json:"repo"`
+				Name        string  `json:"name"`
+				Description string  `json:"description"`
+				Score       float64 `json:"score"`
+				CloneURL    string  `json:"clone_url"`
+			}{
+				{Name: "fix-db", Score: 0.9, Description: "# Fix DB\nDo this."},
 			},
 		})
 	}))
@@ -42,7 +49,16 @@ func TestClient_Match_Success(t *testing.T) {
 
 func TestClient_Match_EmptyResults(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(MatchResult{Skills: []MatchedSkill{}})
+		// Return empty discover response
+		json.NewEncoder(w).Encode(discoverResponse{
+			Skills: []struct {
+				Repo        string  `json:"repo"`
+				Name        string  `json:"name"`
+				Description string  `json:"description"`
+				Score       float64 `json:"score"`
+				CloneURL    string  `json:"clone_url"`
+			}{},
+		})
 	}))
 	defer srv.Close()
 

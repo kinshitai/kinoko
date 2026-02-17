@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/kinoko-dev/kinoko/internal/embedding"
@@ -26,7 +25,6 @@ type Server struct {
 	enqueue     func(ctx context.Context, session model.SessionRecord, log []byte) error
 	discoverSem chan struct{} // P1-7: semaphore to limit concurrent discover requests
 	embedEngine embedding.Engine
-	noveltyMux  *http.ServeMux
 }
 
 // Config configures the API server.
@@ -42,8 +40,13 @@ type Config struct {
 
 // DiscoverRequest is the JSON body for POST /api/v1/discover.
 type DiscoverRequest struct {
-	Prompt string `json:"prompt"`
-	Limit  int    `json:"limit"`
+	Prompt     string    `json:"prompt"`
+	Embedding  []float64 `json:"embedding"` // Note: API accepts float64, we convert to float32 internally
+	Patterns   []string  `json:"patterns"`
+	LibraryIDs []string  `json:"library_ids"`
+	MinQuality float64   `json:"min_quality"`
+	TopK       int       `json:"top_k"`
+	Limit      int       `json:"limit"` // Keep for backward compatibility
 }
 
 // SkillMatch is a single discovery result.
@@ -92,22 +95,12 @@ func New(cfg Config) *Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", s.handleHealth)
 	mux.HandleFunc("POST /api/v1/discover", s.handleDiscover)
-	mux.HandleFunc("GET /api/v1/discover", s.handleDiscoverGET)
+	mux.HandleFunc("POST /api/v1/embed", s.handleEmbed)
 	mux.HandleFunc("POST /api/v1/ingest", s.handleIngest)
-
-	// T4: New write-path endpoints
-	mux.HandleFunc("POST /api/v1/sessions", s.handleCreateSession)
-	mux.HandleFunc("PUT /api/v1/sessions/{id}", s.handleUpdateSession)
-	mux.HandleFunc("POST /api/v1/review-samples", s.handleCreateReviewSample)
-	mux.HandleFunc("POST /api/v1/injection-events", s.handleCreateInjectionEvent)
-	mux.HandleFunc("PUT /api/v1/injection-events/{session_id}/outcome", s.handleUpdateInjectionOutcome)
-	mux.HandleFunc("POST /api/v1/search", s.handleSearch)
 	mux.HandleFunc("GET /api/v1/skills/decay", s.handleListByDecay)
 	mux.HandleFunc("PATCH /api/v1/skills/{id}/decay", s.handleUpdateDecay)
-	mux.HandleFunc("POST /api/v1/skills/{id}/usage", s.handleUpdateUsage)
 
-	// Novelty endpoint (registered via SetNoveltyChecker after construction)
-	s.noveltyMux = mux
+	// Novelty endpoint removed in API consolidation
 
 	s.httpServer = &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
@@ -118,13 +111,7 @@ func New(cfg Config) *Server {
 	return s
 }
 
-// SetNoveltyChecker registers the novelty endpoint.
-func (s *Server) SetNoveltyChecker(nc *NoveltyChecker) {
-	if s.noveltyMux != nil && nc != nil {
-		s.noveltyMux.HandleFunc("POST /api/v1/novelty", nc.HandleNovelty)
-		s.logger.Info("novelty endpoint registered")
-	}
-}
+// SetNoveltyChecker removed - novelty endpoint consolidated into discover
 
 // Start starts the HTTP server in a goroutine.
 func (s *Server) Start() error {
@@ -162,24 +149,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *Server) handleDiscoverGET(w http.ResponseWriter, r *http.Request) {
-	prompt := r.URL.Query().Get("q")
-	if prompt == "" {
-		prompt = r.URL.Query().Get("prompt")
-	}
-	if prompt == "" {
-		http.Error(w, `{"error":"missing q or prompt parameter"}`, http.StatusBadRequest)
-		return
-	}
-	limit := 5
-	// P2-7: Accept ?limit=N query parameter.
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 {
-			limit = n
-		}
-	}
-	s.discover(w, r, prompt, limit)
-}
+// handleDiscoverGET removed - use POST /api/v1/discover instead
 
 func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 	var req DiscoverRequest
@@ -187,18 +157,62 @@ func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 		return
 	}
-	if req.Prompt == "" {
-		http.Error(w, `{"error":"prompt required"}`, http.StatusBadRequest)
+
+	// Security bounds validation
+	if len(req.Embedding) > 2048 {
+		http.Error(w, `{"error":"embedding dimensions cannot exceed 2048"}`, http.StatusBadRequest)
 		return
 	}
-	limit := req.Limit
-	if limit <= 0 {
-		limit = 5
+	if len(req.Patterns) > 50 {
+		http.Error(w, `{"error":"patterns cannot exceed 50"}`, http.StatusBadRequest)
+		return
 	}
-	s.discover(w, r, req.Prompt, limit)
+	if len(req.LibraryIDs) > 50 {
+		http.Error(w, `{"error":"library_ids cannot exceed 50"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Validate: at least one of prompt, embedding, or patterns must be provided
+	if req.Prompt == "" && len(req.Embedding) == 0 && len(req.Patterns) == 0 {
+		http.Error(w, `{"error":"at least one of prompt, embedding, or patterns must be provided"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Handle TopK vs Limit for backward compatibility
+	limit := req.TopK
+	if limit <= 0 {
+		limit = req.Limit
+	}
+	if limit <= 0 {
+		limit = 10 // default from spec
+	}
+
+	// If prompt is provided without embedding, embed it
+	var embedding []float32
+	if req.Prompt != "" && len(req.Embedding) == 0 {
+		if s.embedder == nil {
+			http.Error(w, `{"error":"embedding not configured — set KINOKO_EMBEDDING_API_KEY or OPENAI_API_KEY"}`, http.StatusServiceUnavailable)
+			return
+		}
+		vec, err := s.embedder.Embed(r.Context(), req.Prompt)
+		if err != nil {
+			s.logger.Error("embed prompt failed", "error", err)
+			http.Error(w, `{"error":"embedding failed"}`, http.StatusInternalServerError)
+			return
+		}
+		embedding = vec
+	} else if len(req.Embedding) > 0 {
+		// Convert float64 to float32 for internal use
+		embedding = make([]float32, len(req.Embedding))
+		for i, v := range req.Embedding {
+			embedding[i] = float32(v)
+		}
+	}
+
+	s.discoverWithQuery(w, r, req, embedding, limit)
 }
 
-func (s *Server) discover(w http.ResponseWriter, r *http.Request, prompt string, limit int) {
+func (s *Server) discoverWithQuery(w http.ResponseWriter, r *http.Request, req DiscoverRequest, embedding []float32, limit int) {
 	// P1-7: Rate limit concurrent discover requests.
 	select {
 	case s.discoverSem <- struct{}{}:
@@ -207,26 +221,18 @@ func (s *Server) discover(w http.ResponseWriter, r *http.Request, prompt string,
 		http.Error(w, `{"error":"too many requests"}`, http.StatusTooManyRequests)
 		return
 	}
-	ctx := r.Context()
 
-	if s.embedder == nil {
-		http.Error(w, `{"error":"embedding not configured — set KINOKO_EMBEDDING_API_KEY or OPENAI_API_KEY"}`, http.StatusServiceUnavailable)
-		return
-	}
-
-	// Embed the prompt
-	vec, err := s.embedder.Embed(ctx, prompt)
-	if err != nil {
-		s.logger.Error("embed prompt failed", "error", err)
-		http.Error(w, `{"error":"embedding failed"}`, http.StatusInternalServerError)
-		return
+	// Build SkillQuery from all provided params
+	query := storage.SkillQuery{
+		Patterns:   req.Patterns,
+		Embedding:  embedding,
+		LibraryIDs: req.LibraryIDs,
+		MinQuality: req.MinQuality,
+		Limit:      limit,
 	}
 
 	// Query store
-	results, err := s.store.Query(ctx, storage.SkillQuery{
-		Embedding: vec,
-		Limit:     limit,
-	})
+	results, err := s.store.Query(r.Context(), query)
 	if err != nil {
 		s.logger.Error("query failed", "error", err)
 		http.Error(w, `{"error":"query failed"}`, http.StatusInternalServerError)
@@ -234,22 +240,24 @@ func (s *Server) discover(w http.ResponseWriter, r *http.Request, prompt string,
 	}
 
 	skills := make([]SkillMatch, 0, len(results))
-	for _, r := range results {
+	for _, result := range results {
 		cloneURL := ""
 		if s.sshURL != "" {
-			cloneURL = s.sshURL + "/" + r.Skill.LibraryID + "/" + r.Skill.Name
+			cloneURL = s.sshURL + "/" + result.Skill.LibraryID + "/" + result.Skill.Name
 		}
 		skills = append(skills, SkillMatch{
-			Repo:        r.Skill.LibraryID + "/" + r.Skill.Name,
-			Name:        r.Skill.Name,
+			Repo:        result.Skill.LibraryID + "/" + result.Skill.Name,
+			Name:        result.Skill.Name,
 			Description: "", // P2-6: Don't leak FilePath; use empty until proper description field exists
-			Score:       r.CompositeScore,
+			Score:       result.CompositeScore,
 			CloneURL:    cloneURL,
 		})
 	}
 
 	writeJSON(w, http.StatusOK, DiscoverResponse{Skills: skills})
 }
+
+// Removed unused discover() method - replaced by unified handleDiscover
 
 func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	// P1-6: Limit request body to 10 MB to prevent memory exhaustion.

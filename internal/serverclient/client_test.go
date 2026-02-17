@@ -87,105 +87,20 @@ func TestHTTPEmbedder_EmbedBatch(t *testing.T) {
 	}
 }
 
-func TestHTTPSessionWriter_InsertSession(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/api/v1/sessions" {
-			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
-		var req createSessionRequest
-		json.NewDecoder(r.Body).Decode(&req)
-		if req.Session.ID != "sess-1" {
-			t.Errorf("expected session id 'sess-1', got %q", req.Session.ID)
-		}
-		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]string{"id": "sess-1"})
-	}))
-	defer srv.Close()
-
-	sw := NewHTTPSessionWriter(New(srv.URL))
-	err := sw.InsertSession(context.Background(), &model.SessionRecord{
-		ID:        "sess-1",
-		StartedAt: time.Now(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestHTTPSessionWriter_UpdateSessionResult(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "PUT" || r.URL.Path != "/api/v1/sessions/sess-1" {
-			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
-		var body updateSessionBody
-		json.NewDecoder(r.Body).Decode(&body)
-		if body.ExtractionStatus != "extracted" {
-			t.Errorf("expected status 'extracted', got %q", body.ExtractionStatus)
-		}
-		json.NewEncoder(w).Encode(map[string]string{"updated": "sess-1"})
-	}))
-	defer srv.Close()
-
-	sw := NewHTTPSessionWriter(New(srv.URL))
-	err := sw.UpdateSessionResult(context.Background(), &model.SessionRecord{
-		ID:               "sess-1",
-		ExtractionStatus: model.StatusExtracted,
-		ExtractedSkillID: "skill-1",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestHTTPSessionWriter_GetSession(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" || r.URL.Path != "/api/v1/sessions/sess-1" {
-			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
-		json.NewEncoder(w).Encode(model.SessionRecord{ID: "sess-1"})
-	}))
-	defer srv.Close()
-
-	sw := NewHTTPSessionWriter(New(srv.URL))
-	sess, err := sw.GetSession(context.Background(), "sess-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sess.ID != "sess-1" {
-		t.Errorf("expected id 'sess-1', got %q", sess.ID)
-	}
-}
-
-func TestHTTPReviewer_InsertReviewSample(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/api/v1/review-samples" {
-			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
-		var req createReviewSampleRequest
-		json.NewDecoder(r.Body).Decode(&req)
-		if req.SessionID != "sess-1" {
-			t.Errorf("expected session_id 'sess-1', got %q", req.SessionID)
-		}
-		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]string{"session_id": "sess-1"})
-	}))
-	defer srv.Close()
-
-	rv := NewHTTPReviewer(New(srv.URL))
-	err := rv.InsertReviewSample(context.Background(), "sess-1", []byte(`{"test":true}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestHTTPSkillStore_Query(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/api/v1/search" {
+		if r.Method != "POST" || r.URL.Path != "/api/v1/discover" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(searchResponse{
-			Results: []model.ScoredSkill{
-				{Skill: model.SkillRecord{ID: "s1", Name: "test-skill"}, CosineSim: 0.95},
+		json.NewEncoder(w).Encode(discoverResponse{
+			Skills: []struct {
+				Repo        string  `json:"repo"`
+				Name        string  `json:"name"`
+				Description string  `json:"description"`
+				Score       float64 `json:"score"`
+				CloneURL    string  `json:"clone_url"`
+			}{
+				{Repo: "lib/test-skill", Name: "test-skill", Score: 0.95},
 			},
 		})
 	}))
@@ -206,9 +121,15 @@ func TestHTTPSkillStore_Query(t *testing.T) {
 
 func TestHTTPQuerier_QueryNearest(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(searchResponse{
-			Results: []model.ScoredSkill{
-				{Skill: model.SkillRecord{Name: "nearest-skill"}, CosineSim: 0.92},
+		json.NewEncoder(w).Encode(discoverResponse{
+			Skills: []struct {
+				Repo        string  `json:"repo"`
+				Name        string  `json:"name"`
+				Description string  `json:"description"`
+				Score       float64 `json:"score"`
+				CloneURL    string  `json:"clone_url"`
+			}{
+				{Name: "nearest-skill", Score: 0.92},
 			},
 		})
 	}))
@@ -229,7 +150,13 @@ func TestHTTPQuerier_QueryNearest(t *testing.T) {
 
 func TestHTTPQuerier_QueryNearest_NoResults(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(searchResponse{Results: []model.ScoredSkill{}})
+		json.NewEncoder(w).Encode(discoverResponse{Skills: []struct {
+			Repo        string  `json:"repo"`
+			Name        string  `json:"name"`
+			Description string  `json:"description"`
+			Score       float64 `json:"score"`
+			CloneURL    string  `json:"clone_url"`
+		}{}})
 	}))
 	defer srv.Close()
 
@@ -301,5 +228,193 @@ func TestNew_HasTimeout(t *testing.T) {
 	c := New("http://localhost")
 	if c.httpClient.Timeout != defaultTimeout {
 		t.Errorf("expected timeout %v, got %v", defaultTimeout, c.httpClient.Timeout)
+	}
+}
+
+// ── DiscoverClient tests for unified endpoint ──
+
+func TestDiscoverClient_PromptOnly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" || r.URL.Path != "/api/v1/discover" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var req discoverRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		if req.Prompt != "test prompt" {
+			t.Errorf("expected prompt 'test prompt', got %q", req.Prompt)
+		}
+		if len(req.Embedding) > 0 {
+			t.Errorf("expected no embedding, got %v", req.Embedding)
+		}
+		if len(req.Patterns) > 0 {
+			t.Errorf("expected no patterns, got %v", req.Patterns)
+		}
+		json.NewEncoder(w).Encode(discoverResponse{
+			Skills: []struct {
+				Repo        string  `json:"repo"`
+				Name        string  `json:"name"`
+				Description string  `json:"description"`
+				Score       float64 `json:"score"`
+				CloneURL    string  `json:"clone_url"`
+			}{
+				{Name: "prompt-skill", Score: 0.88, Description: "Found via prompt"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewDiscoverClient(New(srv.URL))
+	resp, err := client.Discover(context.Background(), discoverRequest{
+		Prompt: "test prompt",
+		TopK:   5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Skills) != 1 {
+		t.Fatalf("expected 1 skill, got %d", len(resp.Skills))
+	}
+	if resp.Skills[0].Name != "prompt-skill" {
+		t.Errorf("expected 'prompt-skill', got %q", resp.Skills[0].Name)
+	}
+}
+
+func TestDiscoverClient_EmbeddingOnly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" || r.URL.Path != "/api/v1/discover" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var req discoverRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		if req.Prompt != "" {
+			t.Errorf("expected no prompt, got %q", req.Prompt)
+		}
+		if len(req.Embedding) != 3 {
+			t.Errorf("expected 3-dim embedding, got %v", req.Embedding)
+		}
+		if len(req.Patterns) > 0 {
+			t.Errorf("expected no patterns, got %v", req.Patterns)
+		}
+		json.NewEncoder(w).Encode(discoverResponse{
+			Skills: []struct {
+				Repo        string  `json:"repo"`
+				Name        string  `json:"name"`
+				Description string  `json:"description"`
+				Score       float64 `json:"score"`
+				CloneURL    string  `json:"clone_url"`
+			}{
+				{Name: "embedding-skill", Score: 0.92, Description: "Found via embedding"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewDiscoverClient(New(srv.URL))
+	resp, err := client.Discover(context.Background(), discoverRequest{
+		Embedding: []float64{0.1, 0.2, 0.3},
+		TopK:      10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Skills) != 1 {
+		t.Fatalf("expected 1 skill, got %d", len(resp.Skills))
+	}
+	if resp.Skills[0].Name != "embedding-skill" {
+		t.Errorf("expected 'embedding-skill', got %q", resp.Skills[0].Name)
+	}
+}
+
+func TestDiscoverClient_PatternsOnly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" || r.URL.Path != "/api/v1/discover" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var req discoverRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		if req.Prompt != "" {
+			t.Errorf("expected no prompt, got %q", req.Prompt)
+		}
+		if len(req.Embedding) > 0 {
+			t.Errorf("expected no embedding, got %v", req.Embedding)
+		}
+		if len(req.Patterns) != 2 || req.Patterns[0] != "go" || req.Patterns[1] != "testing" {
+			t.Errorf("expected patterns [go, testing], got %v", req.Patterns)
+		}
+		json.NewEncoder(w).Encode(discoverResponse{
+			Skills: []struct {
+				Repo        string  `json:"repo"`
+				Name        string  `json:"name"`
+				Description string  `json:"description"`
+				Score       float64 `json:"score"`
+				CloneURL    string  `json:"clone_url"`
+			}{
+				{Name: "pattern-skill", Score: 0.85, Description: "Found via patterns"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewDiscoverClient(New(srv.URL))
+	resp, err := client.Discover(context.Background(), discoverRequest{
+		Patterns: []string{"go", "testing"},
+		TopK:     3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Skills) != 1 {
+		t.Fatalf("expected 1 skill, got %d", len(resp.Skills))
+	}
+	if resp.Skills[0].Name != "pattern-skill" {
+		t.Errorf("expected 'pattern-skill', got %q", resp.Skills[0].Name)
+	}
+}
+
+func TestDiscoverClient_AllEmpty_Returns400(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" || r.URL.Path != "/api/v1/discover" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var req discoverRequest
+		json.NewDecoder(r.Body).Decode(&req)
+
+		// Validate that all discovery parameters are empty
+		if req.Prompt == "" && len(req.Embedding) == 0 && len(req.Patterns) == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "at least one of prompt, embedding, or patterns is required",
+			})
+			return
+		}
+
+		// Should not reach here in this test
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(discoverResponse{Skills: []struct {
+			Repo        string  `json:"repo"`
+			Name        string  `json:"name"`
+			Description string  `json:"description"`
+			Score       float64 `json:"score"`
+			CloneURL    string  `json:"clone_url"`
+		}{}})
+	}))
+	defer srv.Close()
+
+	client := NewDiscoverClient(New(srv.URL))
+	_, err := client.Discover(context.Background(), discoverRequest{
+		// All parameters are empty - this should return 400
+		TopK: 5,
+	})
+
+	// Should get an API error with status 400
+	if err == nil {
+		t.Fatal("expected error for empty request")
+	}
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		t.Fatalf("expected *APIError, got %T: %v", err, err)
+	}
+	if apiErr.StatusCode != 400 {
+		t.Errorf("expected status 400, got %d", apiErr.StatusCode)
 	}
 }

@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -19,6 +18,7 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/extraction"
 	"github.com/kinoko-dev/kinoko/internal/injection"
 	"github.com/kinoko-dev/kinoko/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/queue"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 	"github.com/kinoko-dev/kinoko/internal/worker"
 )
@@ -125,7 +125,12 @@ func TestWorkerTimeoutMidExtraction(t *testing.T) {
 	cfg := workerConfig()
 	cfg.Concurrency = 1
 	cfg.ProcessTimeout = 3 * time.Second // short timeout for test
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 
 	q.Enqueue(ctx, makeWorkerSession("sess-slow", "lib-1"), []byte("slow log content"))
 
@@ -175,7 +180,7 @@ func TestWorkerTimeoutMidExtraction(t *testing.T) {
 
 	// Session should be in error/failed state.
 	var status string
-	store.DB().QueryRow("SELECT extraction_status FROM sessions WHERE id = 'sess-slow'").Scan(&status)
+	queueStore.DB().QueryRow("SELECT status FROM queue_entries WHERE session_id = 'sess-slow'").Scan(&status)
 	if status != "error" && status != "failed" {
 		t.Errorf("slow session status = %q, want error or failed", status)
 	}
@@ -196,7 +201,12 @@ func TestNoDoubleExtraction(t *testing.T) {
 	ctx := context.Background()
 
 	cfg := workerConfig()
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 
 	q.Enqueue(ctx, makeWorkerSession("sess-dedup", "lib-1"), []byte("log"))
 
@@ -234,7 +244,7 @@ func TestNoDoubleExtraction(t *testing.T) {
 func TestImportDuplicateSession(t *testing.T) {
 	store := newWorkerTestStore(t)
 	cfg := workerConfig()
-	q, _ := newWorkerQueue(t, store, cfg)
+	q, queueStore, _ := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	session := makeWorkerSession("sess-dup-import", "lib-1")
@@ -254,9 +264,9 @@ func TestImportDuplicateSession(t *testing.T) {
 		t.Logf("duplicate import error (expected): %v", err)
 	}
 
-	// Verify only one session in DB.
+	// Verify only one session in queue DB.
 	var count int
-	store.DB().QueryRow("SELECT COUNT(*) FROM sessions WHERE id = ?", "sess-dup-import").Scan(&count)
+	queueStore.DB().QueryRow("SELECT COUNT(*) FROM queue_entries WHERE session_id = ?", "sess-dup-import").Scan(&count)
 	if count != 1 {
 		t.Errorf("session count = %d, want 1", count)
 	}
@@ -304,7 +314,7 @@ func TestImportBackpressure(t *testing.T) {
 	store := newWorkerTestStore(t)
 	cfg := workerConfig()
 	cfg.QueueDepthCritical = 3 // very low limit
-	q, _ := newWorkerQueue(t, store, cfg)
+	q, queueStore, _ := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	// Fill to limit.
@@ -323,7 +333,7 @@ func TestImportBackpressure(t *testing.T) {
 
 	// Verify overflow session was NOT written to DB.
 	var count int
-	store.DB().QueryRow("SELECT COUNT(*) FROM sessions WHERE id = ?", "sess-bp-over").Scan(&count)
+	queueStore.DB().QueryRow("SELECT COUNT(*) FROM queue_entries WHERE session_id = ?", "sess-bp-over").Scan(&count)
 	if count != 0 {
 		t.Error("backpressure-rejected session should not be in DB")
 	}
@@ -338,7 +348,7 @@ func TestBug_NoLargeFileGuard(t *testing.T) {
 	// This test proves there's NO size guard on enqueue.
 	store := newWorkerTestStore(t)
 	cfg := workerConfig()
-	q, dataDir := newWorkerQueue(t, store, cfg)
+	q, _, dataDir := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	// Create a 1MB payload (not 50MB to keep tests fast, but proves no guard).
@@ -784,7 +794,12 @@ func TestServeLifecycleSimulation(t *testing.T) {
 
 	cfg := workerConfig()
 	cfg.Concurrency = 1
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 
 	// Simulate serve: enqueue a session.
 	session := makeWorkerSession("sess-serve", "lib-1")
@@ -828,15 +843,11 @@ func TestServeLifecycleSimulation(t *testing.T) {
 
 	// Verify session completed.
 	var status string
-	var skillID sql.NullString
-	store.DB().QueryRow("SELECT extraction_status, extracted_skill_id FROM sessions WHERE id = ?", "sess-serve").
-		Scan(&status, &skillID)
+	queueStore.DB().QueryRow("SELECT status FROM queue_entries WHERE session_id = ?", "sess-serve").
+		Scan(&status)
 
 	if status != "extracted" {
 		t.Errorf("session status = %q, want extracted", status)
-	}
-	if !skillID.Valid || skillID.String != "skill-serve-1" {
-		t.Errorf("extracted_skill_id = %v, want skill-serve-1", skillID)
 	}
 }
 
@@ -856,7 +867,12 @@ func TestGracefulShutdownDuringExtraction(t *testing.T) {
 
 	cfg := workerConfig()
 	cfg.Concurrency = 1
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 
 	q.Enqueue(ctx, makeWorkerSession("sess-shutdown", "lib-1"), []byte("log"))
 
@@ -897,7 +913,7 @@ func TestGracefulShutdownDuringExtraction(t *testing.T) {
 
 	// Verify: session was either completed or requeued, never lost.
 	var status string
-	store.DB().QueryRow("SELECT extraction_status FROM sessions WHERE id = ?", "sess-shutdown").Scan(&status)
+	queueStore.DB().QueryRow("SELECT status FROM queue_entries WHERE session_id = ?", "sess-shutdown").Scan(&status)
 	if status != "extracted" && status != "queued" {
 		t.Errorf("status = %q — session is LOST (should be extracted or requeued)", status)
 	}
@@ -1063,7 +1079,12 @@ func TestWorkerPoolWithRealPipeline(t *testing.T) {
 
 	cfg := workerConfig()
 	cfg.Concurrency = 1
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 
 	embedder := newPredictableEmbedder(3)
 	llm := &predictableLLM{
@@ -1127,7 +1148,7 @@ func TestWorkerPoolWithRealPipeline(t *testing.T) {
 	if len(skills) == 0 {
 		// May fail due to library ID mismatch — check session status.
 		var status, lastErr string
-		store.DB().QueryRow("SELECT extraction_status, COALESCE(last_error,'') FROM sessions WHERE id = ?", "sess-real-pipe").Scan(&status, &lastErr)
+		queueStore.DB().QueryRow("SELECT status, COALESCE(last_error,'') FROM queue_entries WHERE session_id = ?", "sess-real-pipe").Scan(&status, &lastErr)
 		t.Logf("session status: %s, error: %s", status, lastErr)
 		t.Log("No skills extracted — may be expected if pipeline rejects the session")
 	} else {
@@ -1269,7 +1290,12 @@ func TestContextCancellationPropagation(t *testing.T) {
 
 	cfg := workerConfig()
 	cfg.Concurrency = 1
-	q := worker.NewSQLiteQueue(store, tmpDir, cfg, testLogger())
+	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queueStore.Close()
+	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 
 	ctx := context.Background()
 	q.Enqueue(ctx, makeWorkerSession("sess-cancel", "lib-1"), []byte("log"))
@@ -1378,7 +1404,7 @@ func TestInjectionMatchScoreOrdering(t *testing.T) {
 func TestBug_DuplicateEnqueueLeaksFile(t *testing.T) {
 	store := newWorkerTestStore(t)
 	cfg := workerConfig()
-	q, dataDir := newWorkerQueue(t, store, cfg)
+	q, _, dataDir := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	session := makeWorkerSession("sess-dupe-file", "lib-1")

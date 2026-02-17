@@ -18,6 +18,49 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/serverclient"
 )
 
+// noOpSessionWriter implements extraction.SessionWriter by doing nothing.
+// Sessions are now tracked via git commits, not separate records.
+type noOpSessionWriter struct{}
+
+func (w *noOpSessionWriter) InsertSession(ctx context.Context, session *model.SessionRecord) error {
+	// No-op: sessions are tracked via git, not separate HTTP records
+	return nil
+}
+
+func (w *noOpSessionWriter) UpdateSessionResult(ctx context.Context, session *model.SessionRecord) error {
+	// No-op: sessions are tracked via git, not separate HTTP records
+	return nil
+}
+
+// localFileReviewWriter implements extraction.HumanReviewWriter by writing to local files.
+// This keeps review samples local to the client, not sent to server.
+type localFileReviewWriter struct {
+	logger *slog.Logger
+}
+
+func (w *localFileReviewWriter) InsertReviewSample(ctx context.Context, sessionID string, resultJSON []byte) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		w.logger.Warn("failed to get home directory for reviews", "error", err)
+		return nil // non-critical, don't fail the pipeline
+	}
+
+	reviewDir := homeDir + "/.kinoko/reviews"
+	if err := os.MkdirAll(reviewDir, 0755); err != nil {
+		w.logger.Warn("failed to create review directory", "dir", reviewDir, "error", err)
+		return nil // non-critical, don't fail the pipeline
+	}
+
+	filePath := fmt.Sprintf("%s/%s.json", reviewDir, sessionID)
+	if err := os.WriteFile(filePath, resultJSON, 0644); err != nil {
+		w.logger.Warn("failed to write review sample", "file", filePath, "error", err)
+		return nil // non-critical, don't fail the pipeline
+	}
+
+	w.logger.Info("wrote human review sample", "session_id", sessionID, "file", filePath)
+	return nil
+}
+
 var extractCmd = &cobra.Command{
 	Use:   "extract <session-log>",
 	Short: "Run extraction pipeline on a session log file",
@@ -118,9 +161,10 @@ func runExtract(cmd *cobra.Command, args []string) error {
 	sshURL := fmt.Sprintf("ssh://%s:%d", cfg.Server.Host, cfg.Server.Port)
 	committer := serverclient.NewGitPushCommitter(sshURL, cfg.Server.DataDir, logger)
 
-	// Session writer and reviewer via server HTTP API.
-	sessions := serverclient.NewHTTPSessionWriter(serverClient)
-	reviewer := serverclient.NewHTTPReviewer(serverClient)
+	// Session writer and reviewer are client-local concerns (not server endpoints)
+	// Sessions are now tracked via git commits; reviews stay local
+	var sessions extraction.SessionWriter = &noOpSessionWriter{}
+	var reviewer extraction.HumanReviewWriter = &localFileReviewWriter{logger: logger}
 
 	// Debug tracer from config (nil if debug is disabled).
 	var tracer *debug.Tracer

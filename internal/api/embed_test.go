@@ -16,7 +16,6 @@ import (
 func TestHandleEmbed_Success(t *testing.T) {
 	s := &Server{
 		embedEngine: embedding.NewMockEngine(8),
-		noveltyMux:  http.NewServeMux(),
 	}
 
 	body := `{"text":"hello world"}`
@@ -146,7 +145,6 @@ func TestHandleEmbed_ResponseStructure(t *testing.T) {
 	dims := 16
 	s := &Server{
 		embedEngine: embedding.NewMockEngine(dims),
-		noveltyMux:  http.NewServeMux(),
 	}
 
 	body := `{"text":"structure validation"}`

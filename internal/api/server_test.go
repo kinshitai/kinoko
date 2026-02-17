@@ -31,16 +31,7 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
-func TestDiscoverGET_MissingPrompt(t *testing.T) {
-	srv := New(Config{Port: 0})
-	req := httptest.NewRequest("GET", "/api/v1/discover", nil)
-	w := httptest.NewRecorder()
-	srv.httpServer.Handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
-	}
-}
+// TestDiscoverGET_MissingPrompt removed - GET /api/v1/discover endpoint removed in API consolidation
 
 func TestDiscoverPOST_MissingPrompt(t *testing.T) {
 	srv := New(Config{Port: 0})
@@ -66,26 +57,7 @@ func TestIngest_MissingFields(t *testing.T) {
 	}
 }
 
-// P1-11/P2-7: Discover GET with limit parameter — verifies route and param parsing.
-func TestDiscoverGET_WithLimit(t *testing.T) {
-	// Create a real store backed by in-memory SQLite for the happy path.
-	store := newTestStore(t)
-	srv := New(Config{Port: 0, Embedder: &mockEmbedder{}, Store: store})
-	req := httptest.NewRequest("GET", "/api/v1/discover?q=test&limit=3", nil)
-	w := httptest.NewRecorder()
-	srv.httpServer.Handler.ServeHTTP(w, req)
-	// With empty store, should return 200 with empty skills array.
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-	var resp DiscoverResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatal(err)
-	}
-	if resp.Skills == nil {
-		t.Fatal("skills should be non-nil (empty array)")
-	}
-}
+// TestDiscoverGET_WithLimit removed - GET /api/v1/discover endpoint removed in API consolidation
 
 func newTestStore(t *testing.T) *storage.SQLiteStore {
 	t.Helper()

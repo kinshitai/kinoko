@@ -60,9 +60,10 @@ func buildClientPipeline(cfg *config.Config, serverClient *serverclient.Client, 
 	sshURL := fmt.Sprintf("ssh://%s:%d", cfg.Server.Host, cfg.Server.Port)
 	committer := serverclient.NewGitPushCommitter(sshURL, cfg.Server.DataDir, logger)
 
-	// Session writer and reviewer via server HTTP API.
-	sessions := serverclient.NewHTTPSessionWriter(serverClient)
-	reviewer := serverclient.NewHTTPReviewer(serverClient)
+	// Session writer and reviewer are client-local concerns (not server endpoints)
+	// Sessions are now tracked via git commits; reviews stay local
+	var sessions extraction.SessionWriter = &noOpSessionWriter{}
+	var reviewer extraction.HumanReviewWriter = &localFileReviewWriter{logger: logger}
 
 	// Debug tracer from config (nil if debug is disabled).
 	var tracer *debug.Tracer

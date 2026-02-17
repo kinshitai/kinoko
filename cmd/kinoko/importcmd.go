@@ -11,7 +11,7 @@ import (
 
 	"github.com/kinoko-dev/kinoko/internal/config"
 	"github.com/kinoko-dev/kinoko/internal/extraction"
-	"github.com/kinoko-dev/kinoko/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/queue"
 	"github.com/kinoko-dev/kinoko/internal/worker"
 )
 
@@ -63,14 +63,14 @@ func runImport(cmd *cobra.Command, args []string) error {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	store, err := storage.NewSQLiteStore(cfg.Storage.DSN, "")
+	queueStore, err := queue.New(cfg.Client.GetQueueDSN())
 	if err != nil {
-		return fmt.Errorf("open store: %w", err)
+		return fmt.Errorf("open queue: %w", err)
 	}
-	defer store.Close()
+	defer queueStore.Close()
 
 	workerCfg := worker.DefaultConfig()
-	queue := worker.NewSQLiteQueue(store, cfg.Server.DataDir, workerCfg, logger)
+	queueImpl := queue.NewQueue(queueStore, cfg.Server.DataDir, workerCfg, logger)
 
 	// Collect file paths.
 	var paths []string
@@ -114,7 +114,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 		}
 
 		session := extraction.ParseSessionFromLog(content, libraryID)
-		if err := queue.Enqueue(cmd.Context(), session, content); err != nil {
+		if err := queueImpl.Enqueue(cmd.Context(), session, content); err != nil {
 			fmt.Fprintf(os.Stderr, "enqueue %s: %v\n", p, err)
 			errCount++
 			continue
