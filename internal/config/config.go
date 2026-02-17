@@ -16,6 +16,7 @@ import (
 type Config struct {
 	Server     ServerConfig     `yaml:"server"`
 	Storage    StorageConfig    `yaml:"storage"`
+	Client     ClientConfig     `yaml:"client,omitempty"`
 	Libraries  []LibraryConfig  `yaml:"libraries"`
 	Extraction ExtractionConfig `yaml:"extraction,omitempty"`
 	Decay      DecayConfig      `yaml:"decay,omitempty"`
@@ -24,6 +25,28 @@ type Config struct {
 	Hooks      HooksConfig      `yaml:"hooks,omitempty"`
 	Defaults   DefaultsConfig   `yaml:"defaults,omitempty"`
 	Debug      DebugConfig      `yaml:"debug,omitempty"`
+}
+
+// ClientConfig holds settings for kinoko run (client mode).
+type ClientConfig struct {
+	QueueDSN string `yaml:"queue_dsn"` // Path to local queue SQLite DB (default: ~/.kinoko/queue.db)
+}
+
+// GetQueueDSN returns the queue DSN, defaulting to ~/.kinoko/queue.db.
+func (c *ClientConfig) GetQueueDSN() string {
+	if c.QueueDSN != "" {
+		return c.QueueDSN
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "queue.db"
+	}
+	return filepath.Join(home, ".kinoko", "queue.db")
+}
+
+// ServerURL returns the HTTP base URL for the kinoko serve API.
+func (c *Config) ServerURL() string {
+	return fmt.Sprintf("http://%s:%d", c.Server.Host, c.Server.GetAPIPort())
 }
 
 // DebugConfig configures pipeline debug tracing.
@@ -261,6 +284,11 @@ func (c *Config) expandPaths() {
 	// Expand storage DSN if it looks like a file path
 	if !strings.Contains(c.Storage.DSN, "://") {
 		c.Storage.DSN = expandPath(c.Storage.DSN)
+	}
+
+	// Expand client queue DSN
+	if c.Client.QueueDSN != "" && !strings.Contains(c.Client.QueueDSN, "://") {
+		c.Client.QueueDSN = expandPath(c.Client.QueueDSN)
 	}
 
 	// Expand library paths

@@ -15,7 +15,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/queue"
+	"github.com/kinoko-dev/kinoko/internal/serverclient"
 )
 
 var runCmd = &cobra.Command{
@@ -83,26 +84,23 @@ func runRun(cmd *cobra.Command, args []string) error {
 	}
 
 	logger := slog.Default()
-	logger.Info("Kinoko agent daemon starting",
-		"server", fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port))
 
-	embeddingModel := cfg.Embedding.Model
-	if embeddingModel == "" {
-		embeddingModel = os.Getenv("KINOKO_EMBEDDING_MODEL")
-	}
-	if embeddingModel == "" {
-		embeddingModel = "text-embedding-3-small"
-	}
+	serverURL := cfg.ServerURL()
+	logger.Info("Kinoko agent daemon starting", "server", serverURL)
 
-	store, err := storage.NewSQLiteStore(cfg.Storage.DSN, embeddingModel)
+	// Open local queue DB.
+	queueDSN := cfg.Client.GetQueueDSN()
+	queueStore, err := queue.New(queueDSN)
 	if err != nil {
-		return fmt.Errorf("open store: %w", err)
+		return fmt.Errorf("open queue store: %w", err)
 	}
-	defer store.Close()
+	defer queueStore.Close()
+
+	// Create server client for HTTP communication.
+	serverClient := serverclient.New(serverURL)
 
 	// Start worker system (queue + pool + scheduler).
-	// Pass nil for gitSrv — the run command doesn't own the git server.
-	_, pool, sched, err := startWorkerSystem(cmd.Context(), cfg, store, nil, logger)
+	_, pool, sched, err := startClientWorkerSystem(cmd.Context(), cfg, queueStore, serverClient, logger)
 	if err != nil {
 		return fmt.Errorf("start worker system: %w", err)
 	}

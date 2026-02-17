@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/queue"
 )
 
 var queueCmd = &cobra.Command{
@@ -39,7 +39,7 @@ var queueRetryCmd = &cobra.Command{
 var queueFlushCmd = &cobra.Command{
 	Use:   "flush",
 	Short: "Delete all queued sessions from the queue",
-	Long:  `Removes all sessions with extraction_status = 'queued'. Use --force to skip confirmation.`,
+	Long:  `Removes all sessions with status = 'queued'. Use --force to skip confirmation.`,
 	RunE:  runQueueFlush,
 }
 
@@ -57,20 +57,21 @@ func init() {
 	queueCmd.AddCommand(queueFlushCmd)
 }
 
-func openStoreForQueue() (*storage.SQLiteStore, error) {
+func openQueueStore() (*queue.Store, error) {
 	cfg, err := config.Load(queueConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
-	store, err := storage.NewSQLiteStore(cfg.Storage.DSN, "")
+	queueDSN := cfg.Client.GetQueueDSN()
+	store, err := queue.New(queueDSN)
 	if err != nil {
-		return nil, fmt.Errorf("open store: %w", err)
+		return nil, fmt.Errorf("open queue store: %w", err)
 	}
 	return store, nil
 }
 
 func runQueueStats(cmd *cobra.Command, args []string) error {
-	store, err := openStoreForQueue()
+	store, err := openQueueStore()
 	if err != nil {
 		return err
 	}
@@ -78,10 +79,10 @@ func runQueueStats(cmd *cobra.Command, args []string) error {
 
 	db := store.DB()
 	rows, err := db.QueryContext(cmd.Context(), `
-		SELECT extraction_status, COUNT(*) 
-		FROM sessions 
-		GROUP BY extraction_status 
-		ORDER BY extraction_status`)
+		SELECT status, COUNT(*) 
+		FROM queue_entries 
+		GROUP BY status 
+		ORDER BY status`)
 	if err != nil {
 		return fmt.Errorf("query: %w", err)
 	}
@@ -103,7 +104,7 @@ func runQueueStats(cmd *cobra.Command, args []string) error {
 }
 
 func runQueueList(cmd *cobra.Command, args []string) error {
-	store, err := openStoreForQueue()
+	store, err := openQueueStore()
 	if err != nil {
 		return err
 	}
@@ -111,9 +112,9 @@ func runQueueList(cmd *cobra.Command, args []string) error {
 
 	db := store.DB()
 	rows, err := db.QueryContext(cmd.Context(), `
-		SELECT id, extraction_status, retry_count, COALESCE(last_error, ''), COALESCE(claimed_by, '')
-		FROM sessions
-		WHERE extraction_status IN ('queued', 'pending', 'error')
+		SELECT session_id, status, retry_count, COALESCE(last_error, ''), COALESCE(claimed_by, '')
+		FROM queue_entries
+		WHERE status IN ('queued', 'pending', 'error')
 		ORDER BY created_at ASC
 		LIMIT 20`)
 	if err != nil {
@@ -139,7 +140,7 @@ func runQueueList(cmd *cobra.Command, args []string) error {
 func runQueueRetry(cmd *cobra.Command, args []string) error {
 	sessionID := args[0]
 
-	store, err := openStoreForQueue()
+	store, err := openQueueStore()
 	if err != nil {
 		return err
 	}
@@ -147,14 +148,14 @@ func runQueueRetry(cmd *cobra.Command, args []string) error {
 
 	db := store.DB()
 	result, err := db.ExecContext(cmd.Context(), `
-		UPDATE sessions SET
-			extraction_status = 'queued',
+		UPDATE queue_entries SET
+			status = 'queued',
 			retry_count = 0,
 			last_error = NULL,
 			next_retry_at = NULL,
 			claimed_by = '',
 			claimed_at = NULL
-		WHERE id = ? AND extraction_status IN ('error', 'failed')`, sessionID)
+		WHERE session_id = ? AND status IN ('error', 'failed')`, sessionID)
 	if err != nil {
 		return fmt.Errorf("requeue: %w", err)
 	}
@@ -168,7 +169,7 @@ func runQueueRetry(cmd *cobra.Command, args []string) error {
 }
 
 func runQueueFlush(cmd *cobra.Command, args []string) error {
-	store, err := openStoreForQueue()
+	store, err := openQueueStore()
 	if err != nil {
 		return err
 	}
@@ -176,9 +177,9 @@ func runQueueFlush(cmd *cobra.Command, args []string) error {
 
 	db := store.DB()
 
-	// Count queued sessions first.
+	// Count queued entries first.
 	var count int
-	if err := db.QueryRowContext(cmd.Context(), `SELECT COUNT(*) FROM sessions WHERE extraction_status = 'queued'`).Scan(&count); err != nil {
+	if err := db.QueryRowContext(cmd.Context(), `SELECT COUNT(*) FROM queue_entries WHERE status = 'queued'`).Scan(&count); err != nil {
 		return fmt.Errorf("count queued: %w", err)
 	}
 	if count == 0 {
@@ -197,7 +198,7 @@ func runQueueFlush(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	result, err := db.ExecContext(cmd.Context(), `DELETE FROM sessions WHERE extraction_status = 'queued'`)
+	result, err := db.ExecContext(cmd.Context(), `DELETE FROM queue_entries WHERE status = 'queued'`)
 	if err != nil {
 		return fmt.Errorf("flush: %w", err)
 	}
