@@ -538,7 +538,7 @@ func TestCLI_InitRunServeIntegration(t *testing.T) {
 
 	// Step 3: run as daemon (enters degraded mode without API key)
 	runCtx, runCancel := context.WithCancel(context.Background())
-	var runStderr bytes.Buffer
+	var runStderr SafeBuffer
 	runCmd := exec.CommandContext(runCtx, bin, "run", "--config", cfgPath)
 	runCmd.Cancel = func() error {
 		return syscall.Kill(-runCmd.Process.Pid, syscall.SIGTERM)
