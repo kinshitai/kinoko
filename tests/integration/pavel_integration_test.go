@@ -245,7 +245,7 @@ func TestNoDoubleExtraction(t *testing.T) {
 func TestImportDuplicateSession(t *testing.T) {
 	store := newWorkerTestStore(t)
 	cfg := workerConfig()
-	q, _ := newWorkerQueue(t, store, cfg)
+	q, queueStore, _ := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	session := makeWorkerSession("sess-dup-import", "lib-1")
@@ -265,9 +265,9 @@ func TestImportDuplicateSession(t *testing.T) {
 		t.Logf("duplicate import error (expected): %v", err)
 	}
 
-	// Verify only one session in DB.
+	// Verify only one session in queue DB.
 	var count int
-	store.DB().QueryRow("SELECT COUNT(*) FROM sessions WHERE id = ?", "sess-dup-import").Scan(&count)
+	queueStore.DB().QueryRow("SELECT COUNT(*) FROM queue_entries WHERE session_id = ?", "sess-dup-import").Scan(&count)
 	if count != 1 {
 		t.Errorf("session count = %d, want 1", count)
 	}
@@ -315,7 +315,7 @@ func TestImportBackpressure(t *testing.T) {
 	store := newWorkerTestStore(t)
 	cfg := workerConfig()
 	cfg.QueueDepthCritical = 3 // very low limit
-	q, _ := newWorkerQueue(t, store, cfg)
+	q, _, _ := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	// Fill to limit.
@@ -349,7 +349,7 @@ func TestBug_NoLargeFileGuard(t *testing.T) {
 	// This test proves there's NO size guard on enqueue.
 	store := newWorkerTestStore(t)
 	cfg := workerConfig()
-	q, dataDir := newWorkerQueue(t, store, cfg)
+	q, _, dataDir := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	// Create a 1MB payload (not 50MB to keep tests fast, but proves no guard).
@@ -1409,7 +1409,7 @@ func TestInjectionMatchScoreOrdering(t *testing.T) {
 func TestBug_DuplicateEnqueueLeaksFile(t *testing.T) {
 	store := newWorkerTestStore(t)
 	cfg := workerConfig()
-	q, dataDir := newWorkerQueue(t, store, cfg)
+	q, _, dataDir := newWorkerQueue(t, store, cfg)
 	ctx := context.Background()
 
 	session := makeWorkerSession("sess-dupe-file", "lib-1")
