@@ -1,3 +1,6 @@
+// serve_scheduler.go contains the server-side decay scheduler that runs
+// periodic half-life decay cycles inside "kinoko serve".
+
 package main
 
 import (

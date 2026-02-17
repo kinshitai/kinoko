@@ -1,3 +1,7 @@
+// workers_run.go wires up the client-side extraction pipeline for "kinoko run".
+// It constructs the LLM client, embedding client, worker pool, and queue,
+// then connects them to the server via serverclient HTTP adapters.
+
 package main
 
 import (

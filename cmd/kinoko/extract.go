@@ -1,3 +1,6 @@
+// extract.go implements the "kinoko extract" CLI command — a client-side
+// one-shot tool that runs the extraction pipeline on a single session log.
+
 package main
 
 import (

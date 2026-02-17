@@ -1,3 +1,7 @@
+// run.go implements the "kinoko run" command — the client-side daemon.
+// It watches for new coding sessions, queues them for extraction, and
+// communicates results to the Kinoko server via HTTP.
+
 package main
 
 import (

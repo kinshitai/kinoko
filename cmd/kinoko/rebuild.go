@@ -1,3 +1,6 @@
+// rebuild.go implements the "kinoko rebuild" command — a server-side tool that
+// rebuilds the SQLite index database from skill markdown files on disk.
+
 package main
 
 import (

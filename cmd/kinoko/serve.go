@@ -1,3 +1,7 @@
+// serve.go implements the "kinoko serve" command — the server-side daemon.
+// It starts the HTTP API, git server, embedding engine, decay scheduler,
+// and exposes all skill discovery and ingestion endpoints.
+
 package main
 
 import (

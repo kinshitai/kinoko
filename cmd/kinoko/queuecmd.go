@@ -1,3 +1,6 @@
+// queuecmd.go implements the "kinoko queue" command — a client-side CLI tool
+// for inspecting and managing the local extraction work queue.
+
 package main
 
 import (

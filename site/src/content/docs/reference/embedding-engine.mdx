@@ -1,16 +1,18 @@
 ---
 title: "Embedding Engine"
-description: "Local vector embedding via ONNX Runtime — no API calls, no latency, no cost."
+description: "Server-side vector embedding via ONNX Runtime — no external API calls, no per-token cost."
 slug: reference/embedding-engine
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-Kinoko embeds text locally using [ONNX Runtime](https://onnxruntime.ai/) and the [bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) model. No external API calls. No per-token costs. Embeddings in ~4ms.
+Kinoko embeds text using [ONNX Runtime](https://onnxruntime.ai/) and the [bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) model. No external API calls. No per-token costs. Embeddings in ~4ms.
 
-## Why Local Embeddings?
+The embedding engine runs **inside `kinoko serve`** (the infrastructure server). Client daemons (`kinoko run`) access it via the HTTP API (`POST /api/v1/embed`) through the `serverclient` package — they never load ONNX models or native libraries.
 
-Every novelty check and skill match requires vector similarity. Sending text to OpenAI's embedding API adds latency, cost, and a network dependency. Kinoko runs embeddings on your machine — the same way it runs everything else.
+## Why Server-Side Embeddings?
+
+Every novelty check and skill match requires vector similarity. Sending text to OpenAI's embedding API adds latency, cost, and a network dependency. Running embeddings on-premises avoids all three. Centralizing them in `kinoko serve` keeps `kinoko run` as a pure Go binary with zero native dependencies.
 
 | Property | Value |
 |---|---|

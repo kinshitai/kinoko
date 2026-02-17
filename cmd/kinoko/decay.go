@@ -1,3 +1,6 @@
+// decay.go implements the "kinoko decay" command — a server-side tool that
+// runs a single decay cycle applying half-life scoring to all indexed skills.
+
 package main
 
 import (

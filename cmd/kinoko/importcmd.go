@@ -1,3 +1,6 @@
+// importcmd.go implements the "kinoko import" command — a server-side tool
+// that bulk-imports session log files into the extraction pipeline queue.
+
 package main
 
 import (

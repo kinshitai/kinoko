@@ -1,3 +1,6 @@
+// index.go implements the "kinoko index" command — a server-side tool that
+// scans skill repositories and upserts metadata and embeddings into the index.
+
 package main
 
 import (
