@@ -272,6 +272,145 @@ func TestSessionMetadataWriteRead(t *testing.T) {
 	}
 }
 
+func TestFailPermanent(t *testing.T) {
+	_, q, _ := setup(t)
+	ctx := context.Background()
+
+	if err := q.Enqueue(ctx, makeSession("fp1"), []byte("log")); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	entry, err := q.Claim(ctx, "w1")
+	if err != nil || entry == nil {
+		t.Fatalf("Claim: %v / %v", err, entry)
+	}
+
+	if err := q.FailPermanent(ctx, "fp1", fmt.Errorf("bad data")); err != nil {
+		t.Fatalf("FailPermanent: %v", err)
+	}
+
+	// Should NOT be claimable — it's dead, not retried.
+	entry, err = q.Claim(ctx, "w1")
+	if err != nil {
+		t.Fatalf("Claim after FailPermanent: %v", err)
+	}
+	if entry != nil {
+		t.Fatal("expected nil — permanently failed entry should not be claimable")
+	}
+
+	// Verify status is 'failed' in DB.
+	var status string
+	err = q.store.DB().QueryRowContext(ctx, `SELECT status FROM queue_entries WHERE session_id = 'fp1'`).Scan(&status)
+	if err != nil {
+		t.Fatalf("query status: %v", err)
+	}
+	if status != "failed" {
+		t.Fatalf("expected status 'failed', got %q", status)
+	}
+}
+
+func TestDoubleComplete(t *testing.T) {
+	_, q, _ := setup(t)
+	ctx := context.Background()
+
+	if err := q.Enqueue(ctx, makeSession("dc1"), []byte("log")); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	entry, err := q.Claim(ctx, "w1")
+	if err != nil || entry == nil {
+		t.Fatalf("Claim: %v / %v", err, entry)
+	}
+
+	result := &model.ExtractionResult{Status: model.StatusExtracted}
+	if err := q.Complete(ctx, "dc1", result); err != nil {
+		t.Fatalf("Complete (1st): %v", err)
+	}
+
+	// Second complete — should not error (idempotent, just updates same row again).
+	if err := q.Complete(ctx, "dc1", result); err != nil {
+		t.Fatalf("Complete (2nd): %v", err)
+	}
+
+	// Entry should still not be claimable.
+	entry, err = q.Claim(ctx, "w1")
+	if err != nil {
+		t.Fatalf("Claim after double complete: %v", err)
+	}
+	if entry != nil {
+		t.Fatal("expected nil after double complete")
+	}
+}
+
+func TestDuplicateEnqueue(t *testing.T) {
+	_, q, _ := setup(t)
+	ctx := context.Background()
+
+	if err := q.Enqueue(ctx, makeSession("dup1"), []byte("log")); err != nil {
+		t.Fatalf("Enqueue (1st): %v", err)
+	}
+
+	// Second enqueue with same session ID should fail (PK violation).
+	err := q.Enqueue(ctx, makeSession("dup1"), []byte("log2"))
+	if err == nil {
+		t.Fatal("expected error on duplicate enqueue, got nil")
+	}
+
+	// Depth should still be 1.
+	depth, err := q.Depth(ctx)
+	if err != nil {
+		t.Fatalf("Depth: %v", err)
+	}
+	if depth != 1 {
+		t.Fatalf("expected depth 1, got %d", depth)
+	}
+}
+
+func TestFailAfterComplete(t *testing.T) {
+	_, q, _ := setup(t)
+	ctx := context.Background()
+
+	if err := q.Enqueue(ctx, makeSession("fac1"), []byte("log")); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	entry, err := q.Claim(ctx, "w1")
+	if err != nil || entry == nil {
+		t.Fatalf("Claim: %v / %v", err, entry)
+	}
+
+	result := &model.ExtractionResult{Status: model.StatusExtracted}
+	if err := q.Complete(ctx, "fac1", result); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+
+	// Fail after complete — should not error (UPDATE hits the row but status changes).
+	// The key invariant: it should NOT become claimable again.
+	if err := q.Fail(ctx, "fac1", fmt.Errorf("late failure")); err != nil {
+		t.Fatalf("Fail after Complete: %v", err)
+	}
+
+	// Fail should be a no-op on completed entries (WHERE status='pending' guard).
+	var status string
+	err = q.store.DB().QueryRowContext(ctx, `SELECT status FROM queue_entries WHERE session_id = 'fac1'`).Scan(&status)
+	if err != nil {
+		t.Fatalf("query status: %v", err)
+	}
+	if status != "extracted" {
+		t.Fatalf("expected status 'extracted' after fail-on-complete, got %q", status)
+	}
+}
+
+func TestClaimFromEmptyQueue(t *testing.T) {
+	_, q, _ := setup(t)
+	ctx := context.Background()
+
+	entry, err := q.Claim(ctx, "w1")
+	if err != nil {
+		t.Fatalf("Claim from empty queue: %v", err)
+	}
+	if entry != nil {
+		t.Fatal("expected nil from empty queue")
+	}
+}
+
 func TestSessionMetadataNotFound(t *testing.T) {
 	store, _, _ := setup(t)
 	ctx := context.Background()

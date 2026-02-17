@@ -168,7 +168,8 @@ func (q *Queue) Fail(ctx context.Context, sessionID string, failErr error) error
 			next_retry_at = datetime('now', '+' || CAST(MIN(? * (1 << retry_count), ?) AS TEXT) || ' seconds'),
 			claimed_by = '',
 			claimed_at = NULL
-		WHERE session_id = ?`,
+		WHERE session_id = ?
+		  AND status = 'pending'`,
 		errMsg, initialSec, maxSec, sessionID)
 	if err != nil {
 		return fmt.Errorf("fail session %s: %w", sessionID, err)
@@ -189,7 +190,8 @@ func (q *Queue) FailPermanent(ctx context.Context, sessionID string, failErr err
 			last_error = ?,
 			claimed_by = '',
 			claimed_at = NULL
-		WHERE session_id = ?`,
+		WHERE session_id = ?
+		  AND status = 'pending'`,
 		errMsg, sessionID)
 	if err != nil {
 		return fmt.Errorf("fail permanent session %s: %w", sessionID, err)
