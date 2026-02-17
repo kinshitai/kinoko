@@ -117,15 +117,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	defer store.Close()
 
-	// P1-4: Serve is pure infrastructure — no injection hooks.
-	// Injection is a run-side concern; serve uses nil/stub hooks.
-	noopOnStart := func(_ context.Context, _ model.InjectionRequest) (*model.InjectionResponse, error) {
-		return &model.InjectionResponse{}, nil
-	}
-	noopOnEnd := func(_ context.Context, _ model.SessionRecord, _ []byte) (*model.ExtractionResult, error) {
-		return &model.ExtractionResult{Status: model.StatusRejected}, nil
-	}
-
 	// Create and start the git server.
 	server, err := gitserver.NewServer(cfg)
 	if err != nil {
@@ -143,8 +134,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logger.Info("git hooks installed", "data_dir", cfg.Server.DataDir)
 	}
 
-	// Register stub hooks with the git server.
-	server.SetSessionHooks(noopOnStart, noopOnEnd)
 
 	if err := server.Start(); err != nil {
 		return fmt.Errorf("failed to start git server: %w", err)

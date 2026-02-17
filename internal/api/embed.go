@@ -22,9 +22,9 @@ type EmbedResponse struct {
 // SetEmbedEngine sets the embedding engine used by the /api/v1/embed endpoint.
 func (s *Server) SetEmbedEngine(engine embedding.Engine) {
 	s.embedEngine = engine
-	if engine != nil && s.noveltyMux != nil {
-		s.noveltyMux.HandleFunc("POST /api/v1/embed", s.handleEmbed)
-		s.logger.Info("embed endpoint registered")
+	// Note: embed endpoint registration moved to server.go in API consolidation
+	if engine != nil {
+		s.logger.Info("embed engine configured")
 	}
 }
 

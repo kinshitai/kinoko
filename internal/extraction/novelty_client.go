@@ -44,21 +44,39 @@ func NewNoveltyClient(apiURL string, threshold float64, log *slog.Logger) *Novel
 	}
 }
 
-// noveltyRequest is the POST body for the novelty endpoint.
-type noveltyRequest struct {
-	Content   string  `json:"content"`
-	Threshold float64 `json:"threshold"`
+// discoverRequest is the POST body for the discover endpoint (used for novelty checking).
+type discoverRequest struct {
+	Prompt     string    `json:"prompt,omitempty"`
+	Embedding  []float64 `json:"embedding,omitempty"`
+	Patterns   []string  `json:"patterns,omitempty"`
+	LibraryIDs []string  `json:"library_ids,omitempty"`
+	MinQuality float64   `json:"min_quality,omitempty"`
+	TopK       int       `json:"top_k,omitempty"`
 }
 
-// Check posts content to the novelty API and returns the result.
+type discoverResponse struct {
+	Skills []struct {
+		Repo        string  `json:"repo"`
+		Name        string  `json:"name"`
+		Description string  `json:"description"`
+		Score       float64 `json:"score"`
+		CloneURL    string  `json:"clone_url"`
+	} `json:"skills"`
+}
+
+// Check uses the discover API to check content novelty and performs the novelty check locally.
 // If the server is unreachable, it returns novel=true (fail-open) and logs a warning.
 func (c *NoveltyClient) Check(ctx context.Context, content string) (*NoveltyResult, error) {
-	body, err := json.Marshal(noveltyRequest{Content: content, Threshold: c.threshold})
+	// Use discover endpoint to find similar skills
+	body, err := json.Marshal(discoverRequest{
+		Prompt: content, // Search for skills similar to this content
+		TopK:   10,      // Get top 10 similar skills for comparison
+	})
 	if err != nil {
 		return nil, fmt.Errorf("novelty: marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL+"/api/v1/novelty", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL+"/api/v1/discover", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("novelty: create request: %w", err)
 	}
@@ -83,10 +101,31 @@ func (c *NoveltyClient) Check(ctx context.Context, content string) (*NoveltyResu
 		return nil, fmt.Errorf("novelty: read response: %w", err)
 	}
 
-	var result NoveltyResult
-	if err := json.Unmarshal(respBody, &result); err != nil {
+	var discoverResp discoverResponse
+	if err := json.Unmarshal(respBody, &discoverResp); err != nil {
 		return nil, fmt.Errorf("novelty: unmarshal response: %w", err)
 	}
 
-	return &result, nil
+	// Perform novelty check locally: if any skill has score > threshold, it's not novel
+	var maxScore float64 = 0
+	var similar []SimilarSkill
+	
+	for _, skill := range discoverResp.Skills {
+		if skill.Score > maxScore {
+			maxScore = skill.Score
+		}
+		similar = append(similar, SimilarSkill{
+			Name:  skill.Name,
+			Score: skill.Score,
+		})
+	}
+
+	// Content is novel if highest similarity score is below threshold
+	novel := maxScore < c.threshold
+
+	return &NoveltyResult{
+		Novel:   novel,
+		Score:   maxScore,
+		Similar: similar,
+	}, nil
 }
