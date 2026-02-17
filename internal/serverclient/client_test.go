@@ -248,10 +248,10 @@ func TestGitPushCommitter_PathTraversal(t *testing.T) {
 	g := NewGitPushCommitter("git@example.com:repo.git", t.TempDir(), log)
 
 	cases := []struct {
-		name      string
-		library   string
-		skillID   string
-		wantErr   string
+		name    string
+		library string
+		skillID string
+		wantErr string
 	}{
 		{"dotdot library", "../etc", "skill-1", "invalid libraryID"},
 		{"slash library", "foo/bar", "skill-1", "invalid libraryID"},

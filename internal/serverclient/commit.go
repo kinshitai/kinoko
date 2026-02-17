@@ -24,7 +24,7 @@ type GitPushCommitter struct {
 	dataDir string
 	log     *slog.Logger
 
-	mu    sync.Mutex            // protects repoMu map
+	mu     sync.Mutex             // protects repoMu map
 	repoMu map[string]*sync.Mutex // per-repo locks
 }
 
@@ -128,7 +128,7 @@ func (g *GitPushCommitter) ensureRepo(ctx context.Context, repoDir string) error
 	if err := os.MkdirAll(filepath.Dir(repoDir), 0o755); err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, "git", "clone", g.sshURL, repoDir)
+	cmd := exec.CommandContext(ctx, "git", "clone", g.sshURL, repoDir) //nolint:gosec // sshURL is set at construction, not user input
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
