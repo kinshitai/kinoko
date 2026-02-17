@@ -109,7 +109,7 @@ func (c *NoveltyClient) Check(ctx context.Context, content string) (*NoveltyResu
 	// Perform novelty check locally: if any skill has score > threshold, it's not novel
 	var maxScore float64 = 0
 	var similar []SimilarSkill
-	
+
 	for _, skill := range discoverResp.Skills {
 		if skill.Score > maxScore {
 			maxScore = skill.Score

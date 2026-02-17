@@ -378,7 +378,7 @@ func TestDiscoverClient_AllEmpty_Returns400(t *testing.T) {
 		}
 		var req discoverRequest
 		json.NewDecoder(r.Body).Decode(&req)
-		
+
 		// Validate that all discovery parameters are empty
 		if req.Prompt == "" && len(req.Embedding) == 0 && len(req.Patterns) == 0 {
 			w.WriteHeader(http.StatusBadRequest)
@@ -387,7 +387,7 @@ func TestDiscoverClient_AllEmpty_Returns400(t *testing.T) {
 			})
 			return
 		}
-		
+
 		// Should not reach here in this test
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(discoverResponse{Skills: []struct {
@@ -405,7 +405,7 @@ func TestDiscoverClient_AllEmpty_Returns400(t *testing.T) {
 		// All parameters are empty - this should return 400
 		TopK: 5,
 	})
-	
+
 	// Should get an API error with status 400
 	if err == nil {
 		t.Fatal("expected error for empty request")
