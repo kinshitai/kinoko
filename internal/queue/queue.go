@@ -142,7 +142,7 @@ func (q *Queue) Complete(ctx context.Context, sessionID string, result *model.Ex
 			status = ?,
 			claimed_by = '',
 			claimed_at = NULL
-		WHERE session_id = ?`,
+		WHERE session_id = ? AND status = 'pending'`,
 		status, sessionID)
 	if err != nil {
 		return fmt.Errorf("complete session %s: %w", sessionID, err)
