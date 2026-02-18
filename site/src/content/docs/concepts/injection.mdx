@@ -50,13 +50,11 @@ Returns:
 {
   "skills": [
     {
-      "id": "fix-database-timeout", 
+      "repo": "default/fix-database-timeout",
       "name": "fix-database-timeout",
-      "repo": "default",
-      "quality": 0.87, 
-      "similarity": 0.82,
-      "ssh_url": "ssh://localhost:23231/default.git",
-      "patterns": ["database", "timeout", "postgres"]
+      "description": "",
+      "score": 0.82,
+      "clone_url": "ssh://localhost:23231/default/fix-database-timeout"
     }
   ]
 }
@@ -107,17 +105,13 @@ When embeddings are unavailable (server unreachable), injection degrades to patt
 
 ## Configuration
 
-```yaml
-injection:
-  api_url: "http://127.0.0.1:23233"
-  max_skills: 5
-  min_quality: 0.5
-  library_ids: ["default", "team-backend"]  # optional scoping
-```
+Injection is configured through the main `kinoko.yaml` config — there is no separate `injection:` section. The relevant settings are:
 
-## Future: Automatic Injection via `kinoko run`
+- **`server.host` / `server.port`** — where the discover API lives (default `127.0.0.1:23233`)
+- **`libraries`** — which skill libraries to search
+- **`extraction.ab_test`** — A/B testing for injection effectiveness
 
-Currently, injection requires integration hooks in your agent framework. The roadmap includes a session watcher in `kinoko run` that automatically detects new agent sessions and injects relevant skills — zero configuration, zero framework coupling.
+The injection client in `kinoko run` automatically connects to the server's discover API using the configured server address.
 
 ## The Key Insight
 

@@ -4,7 +4,7 @@
 
 ### What Exists
 - Go project at /home/claw/.openclaw/workspace/mycelium/
-- CLI: `mycelium init` (workspace setup), `mycelium serve` (Soft Serve subprocess)
+- CLI: `kinoko init` (workspace setup), `kinoko serve` (Soft Serve subprocess)
 - SKILL.md parser: pkg/skill/ — YAML front matter + markdown, case-insensitive sections, 1MB buffer
 - Git server: internal/gitserver/ — Soft Serve as managed subprocess, SSH admin key, repo CRUD
 - Config: internal/config/ — YAML, tilde expansion, storage abstraction ready

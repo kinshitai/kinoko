@@ -61,9 +61,19 @@ embedding:
   provider: openai
   model: text-embedding-3-small
   base_url: https://api.openai.com
+  dims: 384
+  novelty_threshold: 0.85
 
 llm:
+  provider: openai
   model: gpt-4o-mini
+
+client:
+  queue_dsn: ~/.kinoko/queue.db
+
+debug:
+  enabled: false
+  dir: ""
 
 hooks:
   credential_scan: true
@@ -142,6 +152,13 @@ Controls the 3-stage extraction pipeline.
 | `deprecation_threshold` | float | `0.05` | Score below which skills are deprecated |
 | `rescue_boost` | float | `0.3` | Boost for recently-used successful skills |
 | `rescue_window_days` | int | `30` | Window for rescue eligibility (days) |
+| `interval_hours` | int | `6` | Decay cycle interval in hours |
+
+### `client`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `queue_dsn` | string | `~/.kinoko/queue.db` | Path to local queue SQLite DB |
 
 ### `embedding`
 
@@ -150,12 +167,25 @@ Controls the 3-stage extraction pipeline.
 | `provider` | string | `"openai"` | Embedding provider |
 | `model` | string | `"text-embedding-3-small"` | Embedding model name |
 | `base_url` | string | `"https://api.openai.com"` | Base URL for API calls |
+| `api_key` | string | `""` | Provider API key (or use env var) |
+| `dims` | int | `384` | Embedding dimensions |
+| `novelty_threshold` | float | `0.85` | Cosine similarity above which content is "too similar" |
 
 ### `llm`
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| `provider` | string | `"openai"` | `"openai"` or `"anthropic"` |
 | `model` | string | `"gpt-4o-mini"` | LLM model name |
+| `api_key` | string | `""` | Provider API key (or use env var) |
+| `base_url` | string | `""` | Optional custom endpoint |
+
+### `debug`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable pipeline debug tracing |
+| `dir` | string | `""` | Directory for trace output |
 
 ### `hooks`
 

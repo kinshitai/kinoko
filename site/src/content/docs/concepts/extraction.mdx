@@ -60,7 +60,7 @@ This stage rejects the bulk of sessions instantly. A session that lasted 3 secon
 
 Two checks run in parallel:
 
-1. **Embedding novelty** — the session content is embedded and compared against existing skills via the server's novelty API (`POST /api/v1/novelty`). If the session is too similar to something already known (above the `novelty_threshold`, default 0.85), it's rejected as a duplicate.
+1. **Embedding novelty** — the session content is embedded and compared against existing skills via the server's discover API (`POST /api/v1/discover`). If the session is too similar to something already known (above the `novelty_threshold`, default 0.85), it's rejected as a duplicate.
 
 2. **LLM rubric scoring** — a lightweight LLM call scores the session across 7 quality dimensions (problem specificity, solution completeness, context portability, reasoning transparency, technical accuracy, verification evidence, innovation level). Sessions below threshold are rejected.
 

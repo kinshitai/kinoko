@@ -12,7 +12,7 @@
 - Reconciled Jazz's review: trimmed all speculative/planned content from docs
 - Fixed Go version: 1.24+ (was incorrectly 1.21+ in all docs)
 - Fixed install instructions: from-source only (go install @latest won't work yet)
-- Clarified skill storage: subdirectories of ~/.mycelium/skills/, not separate repos
+- Clarified skill storage: subdirectories of ~/.kinoko/skills/, not separate repos
 - Added CONTRIBUTING.md at repo root
 - Removed "Coming Soon" sections from CLI reference — document what exists
 - Shortened all docs significantly — accuracy over ambition

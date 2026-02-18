@@ -67,13 +67,11 @@ Health check. Returns server status and skill count.
 {
   "skills": [
     {
-      "id": "postgres-query-optimization",
-      "name": "postgres-query-optimization", 
-      "repo": "default",
-      "quality": 0.85,
-      "similarity": 0.72,
-      "ssh_url": "ssh://localhost:23231/default.git",
-      "patterns": ["postgres", "performance", "indexing"]
+      "repo": "default/postgres-query-optimization",
+      "name": "postgres-query-optimization",
+      "description": "",
+      "score": 0.72,
+      "clone_url": "ssh://localhost:23231/default/postgres-query-optimization"
     }
   ]
 }
@@ -129,10 +127,15 @@ Submit a session log for extraction processing. This is typically called by the 
 }
 ```
 
-**Response:** `200 OK` on successful enqueue.
+**Response:**
+```json
+{"queued": true}
+```
+
+Returns `501 Not Implemented` if no enqueue function is configured (use `kinoko run` to process sessions instead).
 
 <Aside type="note">
-Client extraction now uses a local queue instead of pushing directly via this endpoint. The ingest endpoint is primarily used by server-side hooks for processing pushed skills.
+Client extraction now uses a local queue instead of pushing directly via this endpoint. The ingest endpoint is primarily used for server-side processing when an enqueue handler is configured.
 </Aside>
 
 ---
@@ -181,6 +184,6 @@ The discover endpoint uses a semaphore limiting concurrent requests to 10. Other
 
 ## Security
 
-- All request bodies are capped at 1MB (`http.MaxBytesReader`)
+- Ingest request bodies are capped at 10 MB; embed bodies at 1 MB (`http.MaxBytesReader`)
 - Input validation on discover endpoint (max 2048 embedding dims, max 50 patterns/library_ids)
 - No authentication by default — designed for localhost/private network use

@@ -35,7 +35,7 @@ The evaluation method for skill quality. Seven independent dimensions, each scor
 The time period over which a skill's decay score drops by half. Varies by category: 365 days for foundational, 180 for contextual, 90 for tactical.
 
 **Embedding**
-A vector representation of content, used for similarity-based retrieval. Default model: `text-embedding-3-small`.
+A vector representation of content, used for similarity-based retrieval. Local ONNX model: `bge-small-en-v1.5` (384 dims). HTTP fallback: configurable (default `text-embedding-3-small`).
 
 **Extraction**
 The process of identifying reusable knowledge in an agent session and distilling it into a skill. A three-stage pipeline: metadata pre-filters → embedding novelty + rubric scoring → LLM critic.
@@ -44,7 +44,7 @@ The process of identifying reusable knowledge in an agent session and distilling
 The output of the full pipeline for a single session. Contains stage results, final status, optional skill record, timing, and error info.
 
 **ExtractionStatus**
-The pipeline state of a session: `pending`, `extracted`, `rejected`, or `error`.
+The pipeline state of a session: `queued`, `pending`, `extracted`, `rejected`, `error`, or `failed`.
 
 **Human Review Sampling**
 Stratified sampling of pipeline results for manual calibration. Maintains ~50/50 balance between extracted and rejected samples.
