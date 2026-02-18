@@ -20,11 +20,9 @@ Agent solves problem → Extracted to SKILL.md → Pushed to git → Injected in
 
 Active development. Core infrastructure is complete and reviewed.
 
-117 Go files · 456 tests · ~30K lines · 16 internal packages · 73.6% test coverage
-
 ## Quick Start
 
-**Requirements:** Go 1.22+, Git, SSH
+**Requirements:** Go 1.24+, Git, SSH
 
 ```bash
 # Install
@@ -40,7 +38,7 @@ kinoko serve
 
 # In another terminal — start the local daemon (workers + scheduler + injection)
 export OPENAI_API_KEY=sk-...
-kinoko run --server localhost:23231
+kinoko run
 ```
 
 That's it. `serve` manages git repos and the discovery API. `run` extracts knowledge from sessions, pushes skills to git, and injects them into future sessions.
@@ -63,7 +61,8 @@ That's it. `serve` manages git repos and the discovery API. `run` extracts knowl
 │  │                                              │   │
 │  │  Soft Serve (git) ← pre-receive (cred scan) │   │
 │  │                   ← post-receive (indexing)  │   │
-│  │  Discovery API (/discover, /health, /ingest) │   │
+│  │  HTTP API (/discover, /embed, /ingest,       │   │
+│  │           /health, /skills/decay)            │   │
 │  └──────────────────────────────────────────────┘   │
 │                                  ↓                  │
 │  Injection → classify prompt → query skills → inject│
@@ -75,14 +74,22 @@ That's it. `serve` manages git repos and the discovery API. `run` extracts knowl
 Sessions pass through a 3-stage filter. Each stage is more expensive; most sessions are rejected early.
 
 1. **Stage 1 — Metadata pre-filters.** Duration, tool calls, error rate, successful execution. No I/O.
-2. **Stage 2 — Embedding novelty + rubric scoring.** Embedding distance from existing skills, then 7 quality dimensions via LLM.
-3. **Stage 3 — LLM critic.** Independent extract/reject verdict with retry, circuit breaker, and contradiction detection.
+2. **Stage 2 — Embedding novelty + rubric scoring.** Embedding distance from existing skills, 7-dimension quality scoring via LLM, pattern taxonomy classification.
+3. **Stage 3 — LLM critic.** Independent extract/reject verdict with substitution test, hard-reject triggers, SKILL.md generation, retry with circuit breaker.
 
 Extracted skills are written as `SKILL.md` files with YAML front matter and pushed to git. Post-receive hooks index them into SQLite with embeddings.
 
 ### Injection
 
-When a session starts, Kinoko classifies the prompt, queries the skill index, and injects top-ranked skills. Ranking combines pattern overlap, embedding similarity, and historical success rate. Works in degraded mode (pattern-only) without an LLM key.
+When a session starts, Kinoko classifies the prompt, queries the skill index via `POST /api/v1/discover`, and injects top-ranked skills. Ranking combines pattern overlap, embedding similarity, and historical success rate. Degrades to pattern-only ranking without embeddings.
+
+### Ports
+
+| Port | Service |
+|------|---------|
+| 23231 | Soft Serve SSH (git) |
+| 23232 | Soft Serve HTTP |
+| 23233 | Kinoko HTTP API |
 
 ### Credential Scanning
 
@@ -94,7 +101,7 @@ SQLite-backed job queue with atomic claim, backpressure, and retry scheduling. C
 
 ### Decay
 
-Category-specific half-lives (foundational: 365d, tactical: 90d, contextual: 180d). Recently-used skills are rescued. Below-threshold skills are retired.
+Category-specific half-lives (foundational: 365d, tactical: 90d, contextual: 180d). Recently-used skills with positive outcomes are rescued. Below-threshold skills are retired.
 
 ## CLI Reference
 
@@ -102,23 +109,40 @@ Category-specific half-lives (foundational: 365d, tactical: 90d, contextual: 180
 |---|---|
 | `kinoko init` | Initialize workspace (`~/.kinoko/`), generate SSH key |
 | `kinoko init --connect <url>` | Connect to a remote Kinoko server |
-| `kinoko serve` | Start git server + discovery API + hooks |
+| `kinoko serve` | Start git server + HTTP API + hooks |
 | `kinoko run` | Start local daemon (workers, scheduler, injection) |
 | `kinoko run --server host:port` | Connect daemon to a specific server |
-| `kinoko extract <file>` | Manually extract from a session log |
+| `kinoko extract <file>` | Run extraction pipeline on a session log |
+| `kinoko ingest <file.md>` | Import markdown as a skill through the LLM critic |
+| `kinoko import <file...>` | Enqueue session logs for extraction |
+| `kinoko match <query>` | Find skills matching a text query |
 | `kinoko pull <repo>` | Clone/sync a skill from the server |
 | `kinoko pull --all` | Sync all cached skills |
+| `kinoko index` | Index a skill repo into SQLite (hook use) |
+| `kinoko rebuild` | Rebuild SQLite cache from all git repos |
 | `kinoko scan <file>` | Scan for credentials |
 | `kinoko scan --dir <path>` | Scan a directory recursively |
-| `kinoko index <repo-path>` | Re-index a git repo into SQLite |
 | `kinoko decay` | Run a decay cycle |
 | `kinoko stats` | View pipeline metrics and A/B results |
+| `kinoko queue stats\|list\|retry\|flush` | Manage the extraction queue |
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/health` | Health check with skill count |
+| `POST` | `/api/v1/discover` | Unified skill discovery (prompt/embedding/patterns) |
+| `POST` | `/api/v1/embed` | Text → embedding vector |
+| `POST` | `/api/v1/ingest` | Submit session log for extraction |
+| `GET` | `/api/v1/skills/decay` | List skills by decay score |
+| `PATCH` | `/api/v1/skills/{id}/decay` | Update skill decay score |
 
 ## Documentation
 
 Full docs at [kinoko.tech](https://kinoko.tech) (WIP).
 
-Source in [`site/`](site/) — built with Astro Starlight.
+- [Architecture](docs/architecture.md) — detailed package map and data flow
+- Source in [`site/`](site/) — built with Astro Starlight
 
 ## Contributing
 
