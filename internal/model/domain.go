@@ -1,3 +1,6 @@
+// Package model defines the core domain types and interfaces for the Kinoko
+// extraction and injection pipelines: skills, sessions, embeddings, queries,
+// and storage contracts.
 package model
 
 // ValidDomains is the set of recognised domains per spec §2.1.

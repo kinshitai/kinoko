@@ -19,6 +19,8 @@ type UpdateDecayRequest struct {
 	DecayScore float64 `json:"decay_score"`
 }
 
+// handleListByDecay handles GET /api/v1/skills/decay.
+// Returns skills ordered by decay score, optionally filtered by library_id.
 func (s *Server) handleListByDecay(w http.ResponseWriter, r *http.Request) {
 	libraryID := r.URL.Query().Get("library_id")
 	limit := 100
@@ -40,6 +42,8 @@ func (s *Server) handleListByDecay(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, DecayListResponse{Skills: skills})
 }
 
+// handleUpdateDecay handles PATCH /api/v1/skills/{id}/decay.
+// Sets the decay score for a skill; score must be in [0.0, 1.0].
 func (s *Server) handleUpdateDecay(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {

@@ -138,6 +138,8 @@ func (s *Server) Addr() string {
 	return s.httpServer.Addr
 }
 
+// handleHealth handles GET /api/v1/health.
+// Returns {"status":"ok"} and, when available, a skill count from the store.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	resp := HealthResponse{Status: "ok"}
 	// P1-8: Include skill count if store is available.
@@ -151,6 +153,11 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // handleDiscoverGET removed - use POST /api/v1/discover instead
 
+// handleDiscover handles POST /api/v1/discover.
+// Accepts a DiscoverRequest with prompt, embedding, and/or patterns, queries
+// the skill store, and returns ranked SkillMatch results. If a prompt is
+// provided without an embedding, the server computes one via the configured
+// embedder. Concurrency is bounded by discoverSem.
 func (s *Server) handleDiscover(w http.ResponseWriter, r *http.Request) {
 	var req DiscoverRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -259,6 +266,10 @@ func (s *Server) discoverWithQuery(w http.ResponseWriter, r *http.Request, req D
 
 // Removed unused discover() method - replaced by unified handleDiscover
 
+// handleIngest handles POST /api/v1/ingest.
+// Accepts an IngestRequest containing a session ID and log content, creates a
+// session record in the store, and enqueues the log for extraction. Request
+// bodies are limited to 10 MB.
 func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	// P1-6: Limit request body to 10 MB to prevent memory exhaustion.
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)

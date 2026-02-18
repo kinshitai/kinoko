@@ -28,6 +28,9 @@ func (s *Server) SetEmbedEngine(engine embedding.Engine) {
 	}
 }
 
+// handleEmbed handles POST /api/v1/embed.
+// Computes a vector embedding for the given text using the local ONNX engine.
+// Returns 503 if no engine is configured. Request bodies are limited to 1 MB.
 func (s *Server) handleEmbed(w http.ResponseWriter, r *http.Request) {
 	if s.embedEngine == nil {
 		http.Error(w, `{"error":"embedding engine not available"}`, http.StatusServiceUnavailable)

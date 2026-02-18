@@ -1,3 +1,7 @@
+// Package worker provides a concurrent worker pool and cron scheduler for
+// processing queued extraction sessions. The pool claims sessions from a
+// queue, runs the extraction pipeline, and records results. The scheduler
+// orchestrates periodic decay cycles and stale-session sweeps.
 package worker
 
 import "time"
