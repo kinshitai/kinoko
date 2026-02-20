@@ -21,6 +21,7 @@ import (
 type Skill struct {
 	// Front matter fields
 	Name         string    `yaml:"name"`
+	Description  string    `yaml:"description"`
 	Version      int       `yaml:"version"`
 	Tags         []string  `yaml:"tags,omitempty"`
 	Author       string    `yaml:"author"`
@@ -53,6 +54,7 @@ type QualityFrontmatter struct {
 // skillYAML is used for YAML marshaling/unmarshaling with string dates
 type skillYAML struct {
 	Name         string              `yaml:"name"`
+	Description  string              `yaml:"description"`
 	Version      int                 `yaml:"version"`
 	Tags         []string            `yaml:"tags,omitempty"`
 	Author       string              `yaml:"author"`
@@ -131,6 +133,7 @@ func parseContent(content []byte) (*Skill, error) {
 	// Convert to Skill struct with proper time parsing
 	skill := Skill{
 		Name:         skillYAMLData.Name,
+		Description:  skillYAMLData.Description,
 		Version:      skillYAMLData.Version,
 		Tags:         skillYAMLData.Tags,
 		Author:       skillYAMLData.Author,
@@ -179,6 +182,12 @@ func (s *Skill) Validate() error {
 	// Check required fields
 	if s.Name == "" {
 		return fmt.Errorf("name is required")
+	}
+	if s.Description == "" {
+		return fmt.Errorf("description is required")
+	}
+	if len(s.Description) > 200 {
+		return fmt.Errorf("description exceeds 200 characters (%d)", len(s.Description))
 	}
 	if s.Author == "" {
 		return fmt.Errorf("author is required")
@@ -273,6 +282,7 @@ func Render(skill *Skill) ([]byte, error) {
 	// Prepare front matter with string dates
 	skillYAMLData := skillYAML{
 		Name:         skill.Name,
+		Description:  skill.Description,
 		Version:      skill.Version,
 		Tags:         skill.Tags,
 		Author:       skill.Author,

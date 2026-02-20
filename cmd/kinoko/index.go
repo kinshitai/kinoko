@@ -147,6 +147,7 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	skill := &model.SkillRecord{
 		ID:          fmt.Sprintf("%s/%s/v%d", libraryID, skillName, parsed.Version),
 		Name:        skillName,
+		Description: parsed.Description,
 		Version:     parsed.Version,
 		LibraryID:   libraryID,
 		Category:    category,

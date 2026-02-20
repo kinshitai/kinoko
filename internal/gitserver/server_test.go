@@ -1,3 +1,5 @@
+//go:build integration
+
 package gitserver
 
 import (
@@ -240,7 +242,7 @@ func TestRepoManagement(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := config.DefaultConfig()
 	cfg.Server.DataDir = tmpDir
-	cfg.Server.Port = 23234 // Use different port to avoid conflicts
+	cfg.Server.Port = 0 // Let OS pick a free port
 
 	server, err := NewServer(cfg)
 	if err != nil {

@@ -97,7 +97,7 @@ func extractVerdictJSON() string {
 		"reusable_pattern": true,
 		"explicit_reasoning": true,
 		"contradicts_best_practices": false,
-		"skill_md": "---\nname: fix-db-timeout\nversion: 1\ncategory: FIX\ntags:\n  - databases/timeouts\n---\n\n# Fix DB Timeout\n\n## Problem\nConnection pool exhaustion.\n\n## Solution\nIncrease pool size and add retry logic.\n\n## Why It Works\nMore connections handle burst traffic.\n\n## Pitfalls\nToo many connections can overwhelm the DB.\n\n## References\nNone."
+		"skill_md": "---\nname: fix-db-timeout\ndescription: Fix database connection pool timeout issues\nversion: 1\ncategory: FIX\ntags:\n  - databases/timeouts\n---\n\n# Fix DB Timeout\n\n## Problem\nConnection pool exhaustion.\n\n## Solution\nIncrease pool size and add retry logic.\n\n## Why It Works\nMore connections handle burst traffic.\n\n## Pitfalls\nToo many connections can overwhelm the DB.\n\n## References\nNone."
 	}`
 }
 

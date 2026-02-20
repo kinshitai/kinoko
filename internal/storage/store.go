@@ -26,7 +26,7 @@ var (
 )
 
 // skillColumns is the canonical column list for the skills table.
-const skillColumns = `id, name, version, parent_id, library_id, category,
+const skillColumns = `id, name, description, version, parent_id, library_id, category,
 	q_problem_specificity, q_solution_completeness, q_context_portability,
 	q_reasoning_transparency, q_technical_accuracy, q_verification_evidence,
 	q_innovation_level, q_composite_score, q_critic_confidence,
@@ -100,6 +100,7 @@ func NewSQLiteStore(dsn string, embeddingModel string) (*SQLiteStore, error) {
 		{"next_retry_at", "ALTER TABLE sessions ADD COLUMN next_retry_at TIMESTAMP"},
 		{"claimed_by", "ALTER TABLE sessions ADD COLUMN claimed_by TEXT NOT NULL DEFAULT ''"},
 		{"claimed_at", "ALTER TABLE sessions ADD COLUMN claimed_at TIMESTAMP"},
+		{"skill_description", "ALTER TABLE skills ADD COLUMN description TEXT NOT NULL DEFAULT ''"},
 	} {
 		if _, err := db.Exec(col.ddl); err != nil {
 			if !strings.Contains(err.Error(), "duplicate column") {

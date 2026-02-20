@@ -98,7 +98,7 @@ func runIngest(cmd *cobra.Command, args []string) error {
 	apiURL := firstNonEmpty(ingestAPIURL, os.Getenv("KINOKO_API_URL"), "http://127.0.0.1:23233")
 
 	var skillBody []byte
-	var skillName, skillCategory string
+	var skillName, skillCategory, skillDescription string
 	var skillTags []string
 	var skillVersion int
 	var verdict string
@@ -124,17 +124,22 @@ func runIngest(cmd *cobra.Command, args []string) error {
 		if !strings.HasPrefix(strings.TrimSpace(string(body)), "---") {
 			return fmt.Errorf("--force requires valid YAML front matter (file must start with ---)")
 		}
-		parsedName, parsedVersion, parsedCategory, parsedTags, parseErr := extraction.ParseGeneratedSkillMD(string(body))
+		// Validate frontmatter before proceeding.
+		if valErrs := extraction.ValidateSkillMD(string(body)); len(valErrs) > 0 {
+			for _, ve := range valErrs {
+				slog.Warn("frontmatter validation", "error", ve)
+			}
+			return fmt.Errorf("--force requires valid front matter: %v", valErrs[0])
+		}
+		parsedName, parsedVersion, parsedCategory, parsedTags, parsedDescription, parseErr := extraction.ParseSkillMDFrontMatter(string(body))
 		if parseErr != nil {
 			return fmt.Errorf("--force requires valid front matter: %w", parseErr)
-		}
-		if parsedName == "" {
-			return fmt.Errorf("--force requires 'name' field in front matter")
 		}
 		skillName = parsedName
 		skillVersion = parsedVersion
 		skillCategory = parsedCategory
 		skillTags = parsedTags
+		skillDescription = parsedDescription
 	} else {
 		// Run through Stage 3 critic.
 		llmAPIKey := cfg.LLM.APIKey
@@ -191,12 +196,13 @@ func runIngest(cmd *cobra.Command, args []string) error {
 		if result.SkillMD != "" {
 			skillBody = []byte(result.SkillMD)
 			// Parse the generated SKILL.md for metadata.
-			parsedName, parsedVersion, parsedCategory, parsedTags, parseErr := extraction.ParseGeneratedSkillMD(result.SkillMD)
+			parsedName, parsedVersion, parsedCategory, parsedTags, parsedDesc, parseErr := extraction.ParseGeneratedSkillMD(result.SkillMD)
 			if parseErr == nil {
 				skillName = parsedName
 				skillVersion = parsedVersion
 				skillCategory = parsedCategory
 				skillTags = parsedTags
+				skillDescription = parsedDesc
 			}
 		} else {
 			// Critic approved but didn't generate SKILL.md — use original body.
@@ -241,6 +247,7 @@ func runIngest(cmd *cobra.Command, args []string) error {
 	skill := &model.SkillRecord{
 		ID:              uuid.Must(uuid.NewV7()).String(),
 		Name:            skillName,
+		Description:     skillDescription,
 		Version:         skillVersion,
 		LibraryID:       ingestLibrary,
 		Category:        model.SkillCategory(skillCategory),

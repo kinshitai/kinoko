@@ -9,6 +9,7 @@ import (
 func TestParseValidSkill(t *testing.T) {
 	validSkill := `---
 name: test-skill
+description: A test skill for unit testing
 version: 1
 tags: [debugging, golang]
 author: test-author
@@ -83,6 +84,7 @@ Follow these steps:
 func TestParseMinimalSkill(t *testing.T) {
 	minimalSkill := `---
 name: minimal-skill
+description: A minimal test skill
 version: 1
 author: test-author
 confidence: 0.7
@@ -141,9 +143,27 @@ Test`,
 			errorMsg: "name is required",
 		},
 		{
+			name: "missing description",
+			content: `---
+name: test-skill
+version: 1
+author: test-author
+confidence: 0.7
+created: 2026-02-14
+---
+
+# Test
+## When to Use
+Test
+## Solution
+Test`,
+			errorMsg: "description is required",
+		},
+		{
 			name: "missing author",
 			content: `---
 name: test-skill
+description: A test skill for unit testing
 version: 1
 confidence: 0.7
 created: 2026-02-14
@@ -160,6 +180,7 @@ Test`,
 			name: "missing created",
 			content: `---
 name: test-skill
+description: A test skill for unit testing
 version: 1
 author: test-author
 confidence: 0.7
@@ -198,6 +219,7 @@ func TestParseInvalidValues(t *testing.T) {
 			name: "invalid name format",
 			content: `---
 name: InvalidName
+description: Invalid name test
 version: 1
 author: test-author
 confidence: 0.7
@@ -215,6 +237,7 @@ Test`,
 			name: "invalid version",
 			content: `---
 name: test-skill
+description: A test skill for unit testing
 version: 2
 author: test-author
 confidence: 0.7
@@ -232,6 +255,7 @@ Test`,
 			name: "confidence too high",
 			content: `---
 name: test-skill
+description: A test skill for unit testing
 version: 1
 author: test-author
 confidence: 1.5
@@ -249,6 +273,7 @@ Test`,
 			name: "confidence too low",
 			content: `---
 name: test-skill
+description: A test skill for unit testing
 version: 1
 author: test-author
 confidence: -0.1
@@ -281,6 +306,7 @@ Test`,
 func TestParseEmptyBody(t *testing.T) {
 	emptyBodySkill := `---
 name: empty-body
+description: An empty body test
 version: 1
 author: test-author
 confidence: 0.7
@@ -308,6 +334,7 @@ func TestParseMissingRequiredSections(t *testing.T) {
 			name: "missing title",
 			content: `---
 name: test-skill
+description: A test skill for unit testing
 version: 1
 author: test-author
 confidence: 0.7
@@ -324,6 +351,7 @@ Test`,
 			name: "missing when to use",
 			content: `---
 name: test-skill
+description: A test skill for unit testing
 version: 1
 author: test-author
 confidence: 0.7
@@ -340,6 +368,7 @@ Test`,
 			name: "missing solution",
 			content: `---
 name: test-skill
+description: A test skill for unit testing
 version: 1
 author: test-author
 confidence: 0.7
@@ -379,6 +408,7 @@ func TestCaseInsensitiveSections(t *testing.T) {
 			name: "standard case",
 			content: `---
 name: test-skill
+description: A test skill for unit testing
 version: 1
 author: test-author
 confidence: 0.7
@@ -396,6 +426,7 @@ Test`,
 			name: "different case - when to use",
 			content: `---
 name: test-skill
+description: A test skill for unit testing
 version: 1
 author: test-author
 confidence: 0.7
@@ -413,6 +444,7 @@ Test`,
 			name: "lowercase sections",
 			content: `---
 name: test-skill
+description: A test skill for unit testing
 version: 1
 author: test-author
 confidence: 0.7
@@ -430,6 +462,7 @@ Test`,
 			name: "mixed case sections",
 			content: `---
 name: test-skill
+description: A test skill for unit testing
 version: 1
 author: test-author
 confidence: 0.7
@@ -461,6 +494,7 @@ Test`,
 func TestParseMalformedFrontMatter(t *testing.T) {
 	malformedSkill := `---
 name: test-skill
+description: A test skill for unit testing
 version: 1
 author: test-author
 confidence: 0.7
@@ -486,6 +520,7 @@ Test`
 func TestRoundTrip(t *testing.T) {
 	originalSkill := `---
 name: round-trip-test
+description: Round trip testing skill
 version: 1
 tags: [test, golang]
 author: test-author
@@ -596,6 +631,7 @@ func TestLargeSkillParsing(t *testing.T) {
 
 	largeSkill := `---
 name: large-skill
+description: Large skill for buffer testing
 version: 1
 author: test-author
 confidence: 0.8
@@ -776,6 +812,7 @@ func TestDateParsingEdgeCases(t *testing.T) {
 			// Build skill content
 			skillContent := `---
 name: date-test
+description: Date parsing test
 version: 1
 author: test-author
 confidence: 0.7

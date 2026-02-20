@@ -4,13 +4,14 @@ import "time"
 
 // SkillRecord is the database representation of an extracted skill.
 type SkillRecord struct {
-	ID        string        `db:"id"`
-	Name      string        `db:"name"`
-	Version   int           `db:"version"`
-	ParentID  string        `db:"parent_id"`
-	LibraryID string        `db:"library_id"`
-	Category  SkillCategory `db:"category"`
-	Patterns  []string      `db:"-"`
+	ID          string        `db:"id"`
+	Name        string        `db:"name"`
+	Description string        `db:"description"`
+	Version     int           `db:"version"`
+	ParentID    string        `db:"parent_id"`
+	LibraryID   string        `db:"library_id"`
+	Category    SkillCategory `db:"category"`
+	Patterns    []string      `db:"-"`
 
 	Quality QualityScores `db:"-"`
 

@@ -56,15 +56,16 @@ func (idx *SQLiteIndexer) IndexSkill(ctx context.Context, skill *model.SkillReco
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO skills (
-			id, name, version, parent_id, library_id, category,
+			id, name, description, version, parent_id, library_id, category,
 			q_problem_specificity, q_solution_completeness, q_context_portability,
 			q_reasoning_transparency, q_technical_accuracy, q_verification_evidence,
 			q_innovation_level, q_composite_score, q_critic_confidence,
 			injection_count, last_injected_at, success_correlation, decay_score,
 			source_session_id, extracted_by, file_path, created_at, updated_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(name, library_id) DO UPDATE SET
 			id = excluded.id,
+			description = excluded.description,
 			version = excluded.version,
 			parent_id = excluded.parent_id,
 			library_id = excluded.library_id,
@@ -86,7 +87,7 @@ func (idx *SQLiteIndexer) IndexSkill(ctx context.Context, skill *model.SkillReco
 			extracted_by = excluded.extracted_by,
 			file_path = excluded.file_path,
 			updated_at = excluded.updated_at`,
-		skill.ID, skill.Name, skill.Version, nullString(skill.ParentID), skill.LibraryID, string(skill.Category),
+		skill.ID, skill.Name, skill.Description, skill.Version, nullString(skill.ParentID), skill.LibraryID, string(skill.Category),
 		skill.Quality.ProblemSpecificity, skill.Quality.SolutionCompleteness, skill.Quality.ContextPortability,
 		skill.Quality.ReasoningTransparency, skill.Quality.TechnicalAccuracy, skill.Quality.VerificationEvidence,
 		skill.Quality.InnovationLevel, skill.Quality.CompositeScore, skill.Quality.CriticConfidence,

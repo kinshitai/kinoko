@@ -9,13 +9,12 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
-// ParseGeneratedSkillMD extracts name, version, category, and tags from the
-// YAML front matter of an LLM-generated SKILL.md. Returns an error if the
-// front matter is missing or the name field is absent.
-func ParseGeneratedSkillMD(raw string) (name string, version int, category string, tags []string, err error) {
+// ParseSkillMDFrontMatter extracts metadata from YAML front matter.
+// Returns an error if required fields (name, description) are missing.
+func ParseSkillMDFrontMatter(raw string) (name string, version int, category string, tags []string, description string, err error) {
 	raw = strings.TrimSpace(raw)
 	if !strings.HasPrefix(raw, "---") {
-		return "", 0, "", nil, fmt.Errorf("missing YAML front matter delimiter")
+		return "", 0, "", nil, "", fmt.Errorf("missing YAML front matter delimiter")
 	}
 	// Find closing delimiter.
 	rest := raw[3:] // skip opening "---"
@@ -28,7 +27,7 @@ func ParseGeneratedSkillMD(raw string) (name string, version int, category strin
 
 	endIdx := strings.Index(rest, "\n---")
 	if endIdx < 0 {
-		return "", 0, "", nil, fmt.Errorf("missing closing YAML front matter delimiter")
+		return "", 0, "", nil, "", fmt.Errorf("missing closing YAML front matter delimiter")
 	}
 	frontMatter := rest[:endIdx]
 
@@ -58,6 +57,8 @@ func ParseGeneratedSkillMD(raw string) (name string, version int, category strin
 		switch key {
 		case "name":
 			name = val
+		case "description":
+			description = val
 		case "version":
 			if v, e := strconv.Atoi(val); e == nil {
 				version = v
@@ -70,9 +71,48 @@ func ParseGeneratedSkillMD(raw string) (name string, version int, category strin
 	}
 
 	if name == "" {
-		return "", 0, "", nil, fmt.Errorf("missing name in front matter")
+		return "", 0, "", nil, "", fmt.Errorf("missing name in front matter")
 	}
-	return name, version, category, tags, nil
+	if description == "" {
+		return "", 0, "", nil, "", fmt.Errorf("missing description in front matter")
+	}
+	if len(description) > 200 {
+		return "", 0, "", nil, "", fmt.Errorf("description exceeds 200 characters (%d)", len(description))
+	}
+	return name, version, category, tags, description, nil
+}
+
+// ParseGeneratedSkillMD extracts name, description, version, category, and tags from the
+// YAML front matter of an LLM-generated SKILL.md. Returns an error if the
+// front matter is missing, the name field is absent, or description is empty/too long.
+func ParseGeneratedSkillMD(raw string) (name string, version int, category string, tags []string, description string, err error) {
+	return ParseSkillMDFrontMatter(raw)
+}
+
+// ValidateSkillMD checks required fields and constraints on a raw SKILL.md string.
+// Returns a list of validation errors (empty if valid).
+func ValidateSkillMD(raw string) []error {
+	name, _, category, _, _, err := ParseSkillMDFrontMatter(raw)
+	if err != nil {
+		return []error{err}
+	}
+
+	var errs []error
+
+	if name == "" {
+		errs = append(errs, fmt.Errorf("required field 'name' is missing or empty"))
+	}
+
+	validCategories := map[string]bool{
+		"BUILD": true, "FIX": true, "OPTIMIZE": true,
+		"DEBUG": true, "DESIGN": true, "LEARN": true,
+		"foundational": true, "tactical": true, "contextual": true,
+	}
+	if category != "" && !validCategories[category] {
+		errs = append(errs, fmt.Errorf("invalid category %q", category))
+	}
+
+	return errs
 }
 
 // skillNameFromClassification derives a kebab-case skill name from classified
@@ -154,6 +194,7 @@ func buildSkillMD(skill *model.SkillRecord, stage3 *model.Stage3Result, content 
 	// YAML front matter
 	fmt.Fprintf(&b, "---\n")
 	fmt.Fprintf(&b, "name: %s\n", skill.Name)
+	fmt.Fprintf(&b, "description: %s\n", skill.Description)
 	fmt.Fprintf(&b, "id: %s\n", skill.ID)
 	fmt.Fprintf(&b, "version: %d\n", skill.Version)
 	fmt.Fprintf(&b, "category: %s\n", skill.Category)
