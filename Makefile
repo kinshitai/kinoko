@@ -1,4 +1,7 @@
-.PHONY: check install-hooks setup
+.PHONY: build check install-hooks setup
+
+build: install-hooks
+	go build ./cmd/kinoko
 
 setup: install-hooks
 	@echo "Setup complete"

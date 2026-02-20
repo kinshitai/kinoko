@@ -80,9 +80,8 @@ func New(cfg Config) *Server {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	if cfg.Port == 0 {
-		cfg.Port = 23233
-	}
+	// Port 0 means "let the OS pick a free port" (useful for tests).
+	// The default 23233 is applied at the CLI layer (serve.go).
 	s := &Server{
 		store:       cfg.Store,
 		embedder:    cfg.Embedder,
