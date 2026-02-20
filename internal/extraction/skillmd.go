@@ -115,6 +115,120 @@ func ValidateSkillMD(raw string) []error {
 	return errs
 }
 
+// ExportSkillMD takes a raw SKILL.md string and returns a cleaned version
+// suitable for external consumption (e.g. skills.sh / npx skills add).
+// It strips internal metadata fields from frontmatter, keeping only:
+// name, description, version, category, tags.
+// The body content is preserved unchanged.
+func ExportSkillMD(raw string) (string, error) {
+	raw = strings.TrimLeft(raw, " \t\r\n")
+	if !strings.HasPrefix(raw, "---") {
+		return "", fmt.Errorf("missing YAML front matter delimiter")
+	}
+
+	// Find the end of the opening delimiter line.
+	rest := raw[3:]
+	rest = strings.TrimLeft(rest, " \t")
+	if len(rest) > 0 && rest[0] == '\n' {
+		rest = rest[1:]
+	} else if len(rest) > 1 && rest[0] == '\r' && rest[1] == '\n' {
+		rest = rest[2:]
+	}
+
+	endIdx := strings.Index(rest, "\n---")
+	if endIdx < 0 {
+		return "", fmt.Errorf("missing closing YAML front matter delimiter")
+	}
+	frontMatter := rest[:endIdx]
+	// Body is everything after the closing "---" line.
+	afterClose := rest[endIdx+4:] // skip "\n---"
+	// Skip the newline after closing delimiter.
+	if len(afterClose) > 0 && afterClose[0] == '\n' {
+		afterClose = afterClose[1:]
+	} else if len(afterClose) > 1 && afterClose[0] == '\r' && afterClose[1] == '\n' {
+		afterClose = afterClose[2:]
+	}
+
+	// Parse frontmatter, keeping only allowed fields.
+	allowedScalar := map[string]bool{
+		"name": true, "description": true, "version": true, "category": true,
+	}
+
+	var name, description, version, category string
+	var tags []string
+	var inList bool
+	var currentListKey string
+
+	for _, line := range strings.Split(frontMatter, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if inList {
+			if strings.HasPrefix(trimmed, "- ") {
+				if currentListKey == "tags" {
+					tags = append(tags, strings.TrimSpace(trimmed[2:]))
+				}
+				continue
+			}
+			inList = false
+		}
+		parts := strings.SplitN(trimmed, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		val := strings.TrimSpace(parts[1])
+
+		if key == "tags" || key == "patterns" {
+			// Both map to tags in export.
+			inList = true
+			currentListKey = "tags"
+			continue
+		}
+		if allowedScalar[key] {
+			switch key {
+			case "name":
+				name = val
+			case "description":
+				description = val
+			case "version":
+				version = val
+			case "category":
+				category = val
+			}
+		}
+	}
+
+	// Rebuild clean frontmatter.
+	var b strings.Builder
+	b.WriteString("---\n")
+	if name != "" {
+		fmt.Fprintf(&b, "name: %s\n", name)
+	}
+	if description != "" {
+		fmt.Fprintf(&b, "description: %s\n", description)
+	}
+	if version != "" {
+		fmt.Fprintf(&b, "version: %s\n", version)
+	}
+	if category != "" {
+		fmt.Fprintf(&b, "category: %s\n", category)
+	}
+	if len(tags) > 0 {
+		b.WriteString("tags:\n")
+		for _, tag := range tags {
+			fmt.Fprintf(&b, "  - %s\n", tag)
+		}
+	}
+	b.WriteString("---\n")
+	if len(afterClose) > 0 {
+		b.WriteString(afterClose)
+	}
+
+	return b.String(), nil
+}
+
 // skillNameFromClassification derives a kebab-case skill name from classified
 // patterns and category. E.g. "FIX/Backend/DatabaseConnection" → "fix-backend-database-connection".
 func skillNameFromClassification(patterns []string, category model.SkillCategory) string {
