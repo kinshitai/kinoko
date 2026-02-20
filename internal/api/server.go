@@ -248,7 +248,7 @@ func (s *Server) discoverWithQuery(w http.ResponseWriter, r *http.Request, req D
 		skills = append(skills, SkillMatch{
 			Repo:        result.Skill.LibraryID + "/" + result.Skill.Name,
 			Name:        result.Skill.Name,
-			Description: "", // P2-6: Don't leak FilePath; use empty until proper description field exists
+			Description: result.Skill.Description,
 			Score:       result.CompositeScore,
 			CloneURL:    cloneURL,
 		})

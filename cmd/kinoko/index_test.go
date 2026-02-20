@@ -35,7 +35,7 @@ func skillMD(name, category string, withQuality bool) string {
 	if category != "" {
 		cat = "category: " + category + "\n"
 	}
-	return "---\nname: " + name + "\nversion: 1\nauthor: test\nconfidence: 0.9\ncreated: 2025-01-01\ntags:\n  - testing\n" + cat + quality + "---\n\n# " + name + "\n\n## When to Use\n\nAlways.\n\n## Solution\n\nDo the thing.\n"
+	return "---\nname: " + name + "\ndescription: A test skill for " + name + "\nversion: 1\nauthor: test\nconfidence: 0.9\ncreated: 2025-01-01\ntags:\n  - testing\n" + cat + quality + "---\n\n# " + name + "\n\n## When to Use\n\nAlways.\n\n## Solution\n\nDo the thing.\n"
 }
 
 // setupBareRepo creates a bare git repo with SKILL.md committed, under dataDir/repos/<repoName>.git.
@@ -287,7 +287,7 @@ func TestIndexQualityScoreOutOfBounds(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "kinoko.db")
 
 	// Create a SKILL.md with an out-of-bounds quality score
-	badQuality := "---\nname: bad-quality\nversion: 1\nauthor: test\nconfidence: 0.9\ncreated: 2025-01-01\ntags:\n  - testing\nquality:\n  problem_specificity: 99\n  solution_completeness: 3\n  context_portability: 3\n  reasoning_transparency: 3\n  technical_accuracy: 3\n  verification_evidence: 3\n  innovation_level: 3\n  composite_score: 3.0\n  critic_confidence: 0.8\n---\n\n# bad-quality\n\n## When to Use\n\nAlways.\n\n## Solution\n\nDo the thing.\n"
+	badQuality := "---\nname: bad-quality\ndescription: A skill with bad quality scores\nversion: 1\nauthor: test\nconfidence: 0.9\ncreated: 2025-01-01\ntags:\n  - testing\nquality:\n  problem_specificity: 99\n  solution_completeness: 3\n  context_portability: 3\n  reasoning_transparency: 3\n  technical_accuracy: 3\n  verification_evidence: 3\n  innovation_level: 3\n  composite_score: 3.0\n  critic_confidence: 0.8\n---\n\n# bad-quality\n\n## When to Use\n\nAlways.\n\n## Solution\n\nDo the thing.\n"
 	setupBareRepo(t, dataDir, "local/bad-quality", badQuality)
 
 	cmd := makeCmd("--repo", "local/bad-quality", "--dsn", dbPath, "--data-dir", dataDir, "--api-url", "http://127.0.0.1:1")
