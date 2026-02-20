@@ -24,6 +24,7 @@ func TestSkillParsingEdgeCases(t *testing.T) {
 		// Test skills with various unicode characters
 		unicodeSkill := `---
 name: unicode-test-skill
+description: Test skill for unicode content handling
 version: 1
 author: тест-автор
 confidence: 0.8
@@ -84,6 +85,7 @@ cat файл.txt | grep "世界"
 
 		largeSkill := `---
 name: large-skill-test
+description: Test skill for large file parsing
 version: 1
 author: test-author
 confidence: 0.7
@@ -137,6 +139,7 @@ Large files can cause memory issues during parsing.`
 		// Test skills with code blocks that contain YAML-like syntax
 		yamlishSkill := `---
 name: yaml-confusion-test
+description: Test skill for YAML-like code block content
 version: 1
 author: test-author
 confidence: 0.85
@@ -205,6 +208,7 @@ services:
 		// Test edge cases in front matter
 		edgeFrontMatterSkill := `---
 name: front-matter-edge-cases
+description: Test skill for front matter edge cases
 version: 1
 author: "author with spaces and special chars: @#$%"
 confidence: 1.0
@@ -246,6 +250,7 @@ Handle various characters in front matter fields properly.`
 		// Test various whitespace scenarios
 		whitespaceSkill := `---
 name: whitespace-test
+description: Test skill for whitespace handling
 version: 1
 author: test-author
 confidence: 0.75
@@ -310,6 +315,7 @@ Empty lines with different whitespace:
 		// Test wikilink parsing and validation
 		wikilinkSkill := `---
 name: wikilink-test
+description: Test skill for wikilink parsing
 version: 1
 author: test-author
 confidence: 0.8
@@ -404,6 +410,7 @@ Invalid wikilinks:
 
 				skillContent := `---
 name: date-test-skill
+description: Test skill for date parsing
 version: 1
 author: test-author
 confidence: 0.8
@@ -435,6 +442,7 @@ Handle dates properly.`
 		// Test that parse → render → parse produces consistent results
 		originalSkill := `---
 name: round-trip-consistency-test
+description: Test skill for round-trip consistency
 version: 1
 tags: [test, consistency, edge-case]
 author: test-author
@@ -542,6 +550,7 @@ func TestSkillFileOperations(t *testing.T) {
 		skillPath := filepath.Join(tempDir, "test-skill.md")
 		skillContent := `---
 name: file-test-skill
+description: Test skill for file-based parsing
 version: 1
 author: test-author
 confidence: 0.8
@@ -615,6 +624,7 @@ Parse skills directly from files.`
 		// Test parsing file with Byte Order Mark (UTF-8 BOM)
 		bomSkill := "\xef\xbb\xbf" + `---
 name: bom-test-skill
+description: Test skill for UTF-8 BOM handling
 version: 1
 author: test-author
 confidence: 0.8

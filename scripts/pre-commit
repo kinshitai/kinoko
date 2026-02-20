@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+export PATH="$PATH:$HOME/go/bin"
+
 echo "🔍 Running pre-commit checks..."
 
 echo "→ go build"
@@ -17,5 +19,8 @@ go test -race -count=1 ./...
 
 echo "→ integration tests (race)"
 go test -tags integration -race -count=1 ./tests/integration/ -timeout 120s
+
+echo "→ e2e tests (race)"
+go test -tags integration -race -count=1 ./tests/e2e/ -timeout 120s
 
 echo "✅ All checks passed"
