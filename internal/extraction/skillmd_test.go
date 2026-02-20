@@ -323,3 +323,49 @@ func TestBuildSkillMD_IncludesDescription(t *testing.T) {
 		t.Error("buildSkillMD output missing description field")
 	}
 }
+
+func TestParseSkillMDFrontMatter_AcceptsMissingDescription(t *testing.T) {
+	raw := `---
+name: legacy-skill
+version: 1
+category: BUILD
+---
+
+# Legacy skill without description
+`
+	name, version, _, _, description, err := ParseSkillMDFrontMatter(raw)
+	if err != nil {
+		t.Fatalf("ParseSkillMDFrontMatter should accept missing description, got: %v", err)
+	}
+	if name != "legacy-skill" {
+		t.Errorf("name = %q, want legacy-skill", name)
+	}
+	if version != 1 {
+		t.Errorf("version = %d, want 1", version)
+	}
+	if description != "" {
+		t.Errorf("description = %q, want empty string", description)
+	}
+}
+
+func TestParseSkillMDFrontMatter_WithDescription(t *testing.T) {
+	raw := `---
+name: new-skill
+description: A skill with a proper description
+version: 2
+category: FIX
+---
+
+# New skill
+`
+	name, _, _, _, description, err := ParseSkillMDFrontMatter(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "new-skill" {
+		t.Errorf("name = %q, want new-skill", name)
+	}
+	if description != "A skill with a proper description" {
+		t.Errorf("description = %q", description)
+	}
+}
