@@ -9,9 +9,8 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
-// ParseSkillMDFrontMatter extracts metadata from YAML front matter without
-// enforcing description requirements. Used by ValidateSkillMD and for --force
-// ingestion of legacy SKILL.md files that may lack a description field.
+// ParseSkillMDFrontMatter extracts metadata from YAML front matter.
+// Returns an error if required fields (name, description) are missing.
 func ParseSkillMDFrontMatter(raw string) (name string, version int, category string, tags []string, description string, err error) {
 	raw = strings.TrimSpace(raw)
 	if !strings.HasPrefix(raw, "---") {
@@ -74,17 +73,6 @@ func ParseSkillMDFrontMatter(raw string) (name string, version int, category str
 	if name == "" {
 		return "", 0, "", nil, "", fmt.Errorf("missing name in front matter")
 	}
-	return name, version, category, tags, description, nil
-}
-
-// ParseGeneratedSkillMD extracts name, description, version, category, and tags from the
-// YAML front matter of an LLM-generated SKILL.md. Returns an error if the
-// front matter is missing, the name field is absent, or description is empty/too long.
-func ParseGeneratedSkillMD(raw string) (name string, version int, category string, tags []string, description string, err error) {
-	name, version, category, tags, description, err = ParseSkillMDFrontMatter(raw)
-	if err != nil {
-		return "", 0, "", nil, "", err
-	}
 	if description == "" {
 		return "", 0, "", nil, "", fmt.Errorf("missing description in front matter")
 	}
@@ -94,12 +82,17 @@ func ParseGeneratedSkillMD(raw string) (name string, version int, category strin
 	return name, version, category, tags, description, nil
 }
 
+// ParseGeneratedSkillMD extracts name, description, version, category, and tags from the
+// YAML front matter of an LLM-generated SKILL.md. Returns an error if the
+// front matter is missing, the name field is absent, or description is empty/too long.
+func ParseGeneratedSkillMD(raw string) (name string, version int, category string, tags []string, description string, err error) {
+	return ParseSkillMDFrontMatter(raw)
+}
+
 // ValidateSkillMD checks required fields and constraints on a raw SKILL.md string.
 // Returns a list of validation errors (empty if valid).
-// Description is treated as optional for backwards compatibility with existing
-// SKILL.md files that predate the description field.
 func ValidateSkillMD(raw string) []error {
-	name, _, category, _, description, err := ParseSkillMDFrontMatter(raw)
+	name, _, category, _, _, err := ParseSkillMDFrontMatter(raw)
 	if err != nil {
 		return []error{err}
 	}
@@ -108,11 +101,6 @@ func ValidateSkillMD(raw string) []error {
 
 	if name == "" {
 		errs = append(errs, fmt.Errorf("required field 'name' is missing or empty"))
-	}
-
-	// Description is optional — not a hard reject for legacy SKILL.md files.
-	if len(description) > 200 {
-		errs = append(errs, fmt.Errorf("description exceeds 200 characters (%d)", len(description)))
 	}
 
 	validCategories := map[string]bool{

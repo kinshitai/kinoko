@@ -273,8 +273,8 @@ func TestValidateSkillMD_Valid(t *testing.T) {
 }
 
 func TestValidateSkillMD_MissingFields(t *testing.T) {
-	// Missing name should be a hard error; missing description is now optional (backwards compat).
-	raw := "---\nversion: 1\ncategory: BUILD\n---\n\n# Missing\n"
+	// Missing name — caught by ParseSkillMDFrontMatter.
+	raw := "---\ndescription: Some desc\nversion: 1\ncategory: BUILD\n---\n\n# Missing\n"
 	errs := ValidateSkillMD(raw)
 	if len(errs) < 1 {
 		t.Errorf("expected at least 1 error (name), got %d: %v", len(errs), errs)
@@ -287,6 +287,23 @@ func TestValidateSkillMD_MissingFields(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected name-related error, got %v", errs)
+	}
+}
+
+func TestValidateSkillMD_MissingDescription(t *testing.T) {
+	raw := "---\nname: no-desc\nversion: 1\ncategory: BUILD\n---\n\n# No Desc\n"
+	errs := ValidateSkillMD(raw)
+	if len(errs) < 1 {
+		t.Errorf("expected error for missing description, got none")
+	}
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e.Error(), "description") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected description-related error, got %v", errs)
 	}
 }
 
@@ -324,7 +341,7 @@ func TestBuildSkillMD_IncludesDescription(t *testing.T) {
 	}
 }
 
-func TestParseSkillMDFrontMatter_AcceptsMissingDescription(t *testing.T) {
+func TestParseSkillMDFrontMatter_RejectsMissingDescription(t *testing.T) {
 	raw := `---
 name: legacy-skill
 version: 1
@@ -333,18 +350,12 @@ category: BUILD
 
 # Legacy skill without description
 `
-	name, version, _, _, description, err := ParseSkillMDFrontMatter(raw)
-	if err != nil {
-		t.Fatalf("ParseSkillMDFrontMatter should accept missing description, got: %v", err)
+	_, _, _, _, _, err := ParseSkillMDFrontMatter(raw)
+	if err == nil {
+		t.Fatal("ParseSkillMDFrontMatter should reject missing description")
 	}
-	if name != "legacy-skill" {
-		t.Errorf("name = %q, want legacy-skill", name)
-	}
-	if version != 1 {
-		t.Errorf("version = %d, want 1", version)
-	}
-	if description != "" {
-		t.Errorf("description = %q, want empty string", description)
+	if !strings.Contains(err.Error(), "missing description") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 

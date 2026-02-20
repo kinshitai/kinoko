@@ -1,5 +1,6 @@
 ---
 name: fix-backend-database-connection
+description: How to fix database connection timeouts under load
 id: 019c6366-8d8a-706c-93f9-8eb120ec8847
 version: 1
 category: tactical

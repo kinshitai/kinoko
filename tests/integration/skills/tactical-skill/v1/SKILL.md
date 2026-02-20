@@ -1,5 +1,6 @@
 ---
 name: tactical-skill
+description: A tactical skill for integration testing
 id: 019c6366-8607-747d-a36c-e943840d2083
 version: 1
 category: tactical
