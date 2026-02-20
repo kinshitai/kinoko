@@ -9,10 +9,10 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
-// ParseGeneratedSkillMD extracts name, description, version, category, and tags from the
-// YAML front matter of an LLM-generated SKILL.md. Returns an error if the
-// front matter is missing, the name field is absent, or description is empty/too long.
-func ParseGeneratedSkillMD(raw string) (name string, version int, category string, tags []string, description string, err error) {
+// ParseSkillMDFrontMatter extracts metadata from YAML front matter without
+// enforcing description requirements. Used by ValidateSkillMD and for --force
+// ingestion of legacy SKILL.md files that may lack a description field.
+func ParseSkillMDFrontMatter(raw string) (name string, version int, category string, tags []string, description string, err error) {
 	raw = strings.TrimSpace(raw)
 	if !strings.HasPrefix(raw, "---") {
 		return "", 0, "", nil, "", fmt.Errorf("missing YAML front matter delimiter")
@@ -74,6 +74,17 @@ func ParseGeneratedSkillMD(raw string) (name string, version int, category strin
 	if name == "" {
 		return "", 0, "", nil, "", fmt.Errorf("missing name in front matter")
 	}
+	return name, version, category, tags, description, nil
+}
+
+// ParseGeneratedSkillMD extracts name, description, version, category, and tags from the
+// YAML front matter of an LLM-generated SKILL.md. Returns an error if the
+// front matter is missing, the name field is absent, or description is empty/too long.
+func ParseGeneratedSkillMD(raw string) (name string, version int, category string, tags []string, description string, err error) {
+	name, version, category, tags, description, err = ParseSkillMDFrontMatter(raw)
+	if err != nil {
+		return "", 0, "", nil, "", err
+	}
 	if description == "" {
 		return "", 0, "", nil, "", fmt.Errorf("missing description in front matter")
 	}
@@ -85,49 +96,23 @@ func ParseGeneratedSkillMD(raw string) (name string, version int, category strin
 
 // ValidateSkillMD checks required fields and constraints on a raw SKILL.md string.
 // Returns a list of validation errors (empty if valid).
+// Description is treated as optional for backwards compatibility with existing
+// SKILL.md files that predate the description field.
 func ValidateSkillMD(raw string) []error {
+	name, _, category, _, description, err := ParseSkillMDFrontMatter(raw)
+	if err != nil {
+		return []error{err}
+	}
+
 	var errs []error
 
-	raw = strings.TrimSpace(raw)
-	if !strings.HasPrefix(raw, "---") {
-		errs = append(errs, fmt.Errorf("missing YAML front matter delimiter"))
-		return errs
-	}
-
-	rest := raw[3:]
-	rest = strings.TrimLeft(rest, " \t")
-	if len(rest) > 0 && rest[0] == '\n' {
-		rest = rest[1:]
-	} else if len(rest) > 1 && rest[0] == '\r' && rest[1] == '\n' {
-		rest = rest[2:]
-	}
-
-	endIdx := strings.Index(rest, "\n---")
-	if endIdx < 0 {
-		errs = append(errs, fmt.Errorf("missing closing YAML front matter delimiter"))
-		return errs
-	}
-	frontMatter := rest[:endIdx]
-
-	fields := make(map[string]string)
-	for _, line := range strings.Split(frontMatter, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "- ") {
-			continue
-		}
-		parts := strings.SplitN(trimmed, ":", 2)
-		if len(parts) == 2 {
-			fields[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-		}
-	}
-
-	if fields["name"] == "" {
+	if name == "" {
 		errs = append(errs, fmt.Errorf("required field 'name' is missing or empty"))
 	}
-	if fields["description"] == "" {
-		errs = append(errs, fmt.Errorf("required field 'description' is missing or empty"))
-	} else if len(fields["description"]) > 200 {
-		errs = append(errs, fmt.Errorf("description exceeds 200 characters (%d)", len(fields["description"])))
+
+	// Description is optional — not a hard reject for legacy SKILL.md files.
+	if len(description) > 200 {
+		errs = append(errs, fmt.Errorf("description exceeds 200 characters (%d)", len(description)))
 	}
 
 	validCategories := map[string]bool{
@@ -135,8 +120,8 @@ func ValidateSkillMD(raw string) []error {
 		"DEBUG": true, "DESIGN": true, "LEARN": true,
 		"foundational": true, "tactical": true, "contextual": true,
 	}
-	if cat := fields["category"]; cat != "" && !validCategories[cat] {
-		errs = append(errs, fmt.Errorf("invalid category %q", cat))
+	if category != "" && !validCategories[category] {
+		errs = append(errs, fmt.Errorf("invalid category %q", category))
 	}
 
 	return errs

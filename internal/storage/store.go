@@ -26,7 +26,7 @@ var (
 )
 
 // skillColumns is the canonical column list for the skills table.
-const skillColumns = `id, name, version, parent_id, library_id, category,
+const skillColumns = `id, name, description, version, parent_id, library_id, category,
 	q_problem_specificity, q_solution_completeness, q_context_portability,
 	q_reasoning_transparency, q_technical_accuracy, q_verification_evidence,
 	q_innovation_level, q_composite_score, q_critic_confidence,

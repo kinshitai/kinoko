@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS skills (
     id                    TEXT PRIMARY KEY,
     name                  TEXT NOT NULL,
+    description           TEXT NOT NULL DEFAULT '',
     version               INTEGER NOT NULL DEFAULT 1,
     parent_id             TEXT REFERENCES skills(id),
     library_id            TEXT NOT NULL,

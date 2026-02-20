@@ -25,7 +25,7 @@ func scanSkillFrom(sc scanner) (*model.SkillRecord, error) {
 	var parentID, sourceSessionID sql.NullString
 	var lastInjected sql.NullTime
 	err := sc.Scan(
-		&s.ID, &s.Name, &s.Version, &parentID, &s.LibraryID, &s.Category,
+		&s.ID, &s.Name, &s.Description, &s.Version, &parentID, &s.LibraryID, &s.Category,
 		&s.Quality.ProblemSpecificity, &s.Quality.SolutionCompleteness, &s.Quality.ContextPortability,
 		&s.Quality.ReasoningTransparency, &s.Quality.TechnicalAccuracy, &s.Quality.VerificationEvidence,
 		&s.Quality.InnovationLevel, &s.Quality.CompositeScore, &s.Quality.CriticConfidence,

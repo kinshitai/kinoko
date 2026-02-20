@@ -273,10 +273,20 @@ func TestValidateSkillMD_Valid(t *testing.T) {
 }
 
 func TestValidateSkillMD_MissingFields(t *testing.T) {
+	// Missing name should be a hard error; missing description is now optional (backwards compat).
 	raw := "---\nversion: 1\ncategory: BUILD\n---\n\n# Missing\n"
 	errs := ValidateSkillMD(raw)
-	if len(errs) < 2 {
-		t.Errorf("expected at least 2 errors (name+description), got %d: %v", len(errs), errs)
+	if len(errs) < 1 {
+		t.Errorf("expected at least 1 error (name), got %d: %v", len(errs), errs)
+	}
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e.Error(), "name") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected name-related error, got %v", errs)
 	}
 }
 
