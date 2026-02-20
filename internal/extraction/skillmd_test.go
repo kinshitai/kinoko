@@ -477,6 +477,71 @@ func TestExportSkillMD_PatternsBecomeTags(t *testing.T) {
 	}
 }
 
+func TestExportSkillMD_DuplicateTagsFromPatternsAndTags(t *testing.T) {
+	// patterns: [a, b] and tags: [b, c] — should tags be deduped?
+	raw := "---\nname: dup\ndescription: test\npatterns:\n  - a\n  - b\ntags:\n  - b\n  - c\n---\n\n# Dup\n"
+	got, err := ExportSkillMD(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Document current behaviour: duplicates ARE present (b appears twice).
+	// Count occurrences of "  - b"
+	count := strings.Count(got, "  - b\n")
+	t.Logf("output:\n%s", got)
+	t.Logf("'  - b' appears %d time(s)", count)
+	if count > 1 {
+		t.Errorf("BUG: duplicate tag 'b' appears %d times — patterns+tags merge should deduplicate", count)
+	}
+}
+
+func TestExportSkillMD_YAMLFlowSyntaxTags(t *testing.T) {
+	// YAML flow syntax: tags: [foo, bar] on one line
+	raw := "---\nname: flow\ndescription: test\ntags: [foo, bar]\n---\n\n# Flow\n"
+	got, err := ExportSkillMD(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	t.Logf("output:\n%s", got)
+	if !strings.Contains(got, "foo") || !strings.Contains(got, "bar") {
+		t.Errorf("BUG: YAML flow syntax tags: [foo, bar] were lost in export")
+	}
+}
+
+func TestExportSkillMD_DescriptionWithColon(t *testing.T) {
+	raw := "---\nname: colon\ndescription: \"foo: bar baz\"\nversion: 1\n---\n\n# Colon\n"
+	got, err := ExportSkillMD(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	t.Logf("output:\n%s", got)
+	if !strings.Contains(got, "description: \"foo: bar baz\"") {
+		t.Errorf("description with colon not preserved: got %s", got)
+	}
+}
+
+func TestExportSkillMD_EmptyBody(t *testing.T) {
+	// Frontmatter only, no content after closing ---
+	raw := "---\nname: empty\ndescription: no body\n---\n"
+	got, err := ExportSkillMD(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	t.Logf("output:\n%s", got)
+	// Should produce valid output with just frontmatter
+	if !strings.Contains(got, "name: empty") {
+		t.Error("missing name")
+	}
+	// Body should be empty
+	idx := strings.Index(got[4:], "---\n")
+	if idx < 0 {
+		t.Fatal("no closing delimiter")
+	}
+	body := got[4+idx+4:]
+	if body != "" {
+		t.Errorf("expected empty body, got: %q", body)
+	}
+}
+
 func TestParseSkillMDFrontMatter_RejectsMissingDescription(t *testing.T) {
 	raw := `---
 name: legacy-skill
