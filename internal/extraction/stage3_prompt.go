@@ -58,6 +58,7 @@ STEP 2: If verdict is "extract", generate SKILL.md content.
 The SKILL.md must follow this format:
 ---
 name: <kebab-case-name>
+description: <one-line summary of what this skill teaches, max 200 chars>
 version: 1
 category: <BUILD|FIX|OPTIMIZE|DEBUG|DESIGN|LEARN>
 tags:

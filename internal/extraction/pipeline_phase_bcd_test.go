@@ -29,6 +29,7 @@ func passStage3WithSkillMD() *model.Stage3Result {
 	r := passStage3()
 	r.SkillMD = `---
 name: llm-generated-skill
+description: How to profile CPU usage in production Go services
 version: 3
 category: DEBUG
 tags:

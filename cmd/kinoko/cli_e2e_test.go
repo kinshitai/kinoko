@@ -133,6 +133,7 @@ func writeValidSkillMD(t *testing.T, dir, name string) string {
 	t.Helper()
 	content := fmt.Sprintf(`---
 name: %s
+description: A test skill for E2E testing
 version: 1
 category: tactical
 tags:

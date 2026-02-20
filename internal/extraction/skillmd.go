@@ -9,13 +9,13 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
-// ParseGeneratedSkillMD extracts name, version, category, and tags from the
+// ParseGeneratedSkillMD extracts name, description, version, category, and tags from the
 // YAML front matter of an LLM-generated SKILL.md. Returns an error if the
-// front matter is missing or the name field is absent.
-func ParseGeneratedSkillMD(raw string) (name string, version int, category string, tags []string, err error) {
+// front matter is missing, the name field is absent, or description is empty/too long.
+func ParseGeneratedSkillMD(raw string) (name string, version int, category string, tags []string, description string, err error) {
 	raw = strings.TrimSpace(raw)
 	if !strings.HasPrefix(raw, "---") {
-		return "", 0, "", nil, fmt.Errorf("missing YAML front matter delimiter")
+		return "", 0, "", nil, "", fmt.Errorf("missing YAML front matter delimiter")
 	}
 	// Find closing delimiter.
 	rest := raw[3:] // skip opening "---"
@@ -28,7 +28,7 @@ func ParseGeneratedSkillMD(raw string) (name string, version int, category strin
 
 	endIdx := strings.Index(rest, "\n---")
 	if endIdx < 0 {
-		return "", 0, "", nil, fmt.Errorf("missing closing YAML front matter delimiter")
+		return "", 0, "", nil, "", fmt.Errorf("missing closing YAML front matter delimiter")
 	}
 	frontMatter := rest[:endIdx]
 
@@ -58,6 +58,8 @@ func ParseGeneratedSkillMD(raw string) (name string, version int, category strin
 		switch key {
 		case "name":
 			name = val
+		case "description":
+			description = val
 		case "version":
 			if v, e := strconv.Atoi(val); e == nil {
 				version = v
@@ -70,9 +72,74 @@ func ParseGeneratedSkillMD(raw string) (name string, version int, category strin
 	}
 
 	if name == "" {
-		return "", 0, "", nil, fmt.Errorf("missing name in front matter")
+		return "", 0, "", nil, "", fmt.Errorf("missing name in front matter")
 	}
-	return name, version, category, tags, nil
+	if description == "" {
+		return "", 0, "", nil, "", fmt.Errorf("missing description in front matter")
+	}
+	if len(description) > 200 {
+		return "", 0, "", nil, "", fmt.Errorf("description exceeds 200 characters (%d)", len(description))
+	}
+	return name, version, category, tags, description, nil
+}
+
+// ValidateSkillMD checks required fields and constraints on a raw SKILL.md string.
+// Returns a list of validation errors (empty if valid).
+func ValidateSkillMD(raw string) []error {
+	var errs []error
+
+	raw = strings.TrimSpace(raw)
+	if !strings.HasPrefix(raw, "---") {
+		errs = append(errs, fmt.Errorf("missing YAML front matter delimiter"))
+		return errs
+	}
+
+	rest := raw[3:]
+	rest = strings.TrimLeft(rest, " \t")
+	if len(rest) > 0 && rest[0] == '\n' {
+		rest = rest[1:]
+	} else if len(rest) > 1 && rest[0] == '\r' && rest[1] == '\n' {
+		rest = rest[2:]
+	}
+
+	endIdx := strings.Index(rest, "\n---")
+	if endIdx < 0 {
+		errs = append(errs, fmt.Errorf("missing closing YAML front matter delimiter"))
+		return errs
+	}
+	frontMatter := rest[:endIdx]
+
+	fields := make(map[string]string)
+	for _, line := range strings.Split(frontMatter, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "- ") {
+			continue
+		}
+		parts := strings.SplitN(trimmed, ":", 2)
+		if len(parts) == 2 {
+			fields[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		}
+	}
+
+	if fields["name"] == "" {
+		errs = append(errs, fmt.Errorf("required field 'name' is missing or empty"))
+	}
+	if fields["description"] == "" {
+		errs = append(errs, fmt.Errorf("required field 'description' is missing or empty"))
+	} else if len(fields["description"]) > 200 {
+		errs = append(errs, fmt.Errorf("description exceeds 200 characters (%d)", len(fields["description"])))
+	}
+
+	validCategories := map[string]bool{
+		"BUILD": true, "FIX": true, "OPTIMIZE": true,
+		"DEBUG": true, "DESIGN": true, "LEARN": true,
+		"foundational": true, "tactical": true, "contextual": true,
+	}
+	if cat := fields["category"]; cat != "" && !validCategories[cat] {
+		errs = append(errs, fmt.Errorf("invalid category %q", cat))
+	}
+
+	return errs
 }
 
 // skillNameFromClassification derives a kebab-case skill name from classified
@@ -154,6 +221,7 @@ func buildSkillMD(skill *model.SkillRecord, stage3 *model.Stage3Result, content 
 	// YAML front matter
 	fmt.Fprintf(&b, "---\n")
 	fmt.Fprintf(&b, "name: %s\n", skill.Name)
+	fmt.Fprintf(&b, "description: %s\n", skill.Description)
 	fmt.Fprintf(&b, "id: %s\n", skill.ID)
 	fmt.Fprintf(&b, "version: %d\n", skill.Version)
 	fmt.Fprintf(&b, "category: %s\n", skill.Category)

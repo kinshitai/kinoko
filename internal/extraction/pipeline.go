@@ -360,15 +360,17 @@ func (p *Pipeline) publish(run *extractionRun) (*model.ExtractionResult, error) 
 	skillCategory := s2.ClassifiedCategory
 	skillPatterns := s2.ClassifiedPatterns
 	skillVersion := 1
+	skillDescription := ""
 	var generatedBody []byte
 
 	if s3.SkillMD != "" {
-		parsedName, parsedVersion, parsedCategory, parsedTags, parseErr := ParseGeneratedSkillMD(s3.SkillMD)
+		parsedName, parsedVersion, parsedCategory, parsedTags, parsedDescription, parseErr := ParseGeneratedSkillMD(s3.SkillMD)
 		if parseErr != nil {
 			p.log.Warn("failed to parse LLM-generated SKILL.md, falling back to template",
 				"session_id", run.session.ID, "error", parseErr)
 		} else {
 			skillName = parsedName
+			skillDescription = parsedDescription
 			skillVersion = parsedVersion
 			if parsedCategory != "" {
 				skillCategory = model.SkillCategory(parsedCategory)
@@ -386,6 +388,7 @@ func (p *Pipeline) publish(run *extractionRun) (*model.ExtractionResult, error) 
 	skill := &model.SkillRecord{
 		ID:              skillID,
 		Name:            skillName,
+		Description:     skillDescription,
 		Version:         skillVersion,
 		LibraryID:       run.session.LibraryID,
 		Category:        skillCategory,

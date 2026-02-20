@@ -103,6 +103,7 @@ func TestBuildSkillMD_EmptyContent(t *testing.T) {
 func TestParseGeneratedSkillMD_Valid(t *testing.T) {
 	raw := `---
 name: fix-database-timeout
+description: How to fix database connection timeouts under load
 version: 2
 category: FIX
 tags:
@@ -115,12 +116,15 @@ tags:
 ## Problem
 Connection timeouts under load.
 `
-	name, version, category, tags, err := ParseGeneratedSkillMD(raw)
+	name, version, category, tags, description, err := ParseGeneratedSkillMD(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if name != "fix-database-timeout" {
 		t.Errorf("name = %q, want fix-database-timeout", name)
+	}
+	if description != "How to fix database connection timeouts under load" {
+		t.Errorf("description = %q", description)
 	}
 	if version != 2 {
 		t.Errorf("version = %d, want 2", version)
@@ -136,12 +140,13 @@ Connection timeouts under load.
 func TestParseGeneratedSkillMD_DefaultVersion(t *testing.T) {
 	raw := `---
 name: simple-skill
+description: A simple skill for testing
 category: BUILD
 ---
 
 # Simple
 `
-	_, version, _, _, err := ParseGeneratedSkillMD(raw)
+	_, version, _, _, _, err := ParseGeneratedSkillMD(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -151,7 +156,7 @@ category: BUILD
 }
 
 func TestParseGeneratedSkillMD_MissingFrontMatter(t *testing.T) {
-	_, _, _, _, err := ParseGeneratedSkillMD("# Just a heading\nNo front matter.")
+	_, _, _, _, _, err := ParseGeneratedSkillMD("# Just a heading\nNo front matter.")
 	if err == nil {
 		t.Error("expected error for missing front matter")
 	}
@@ -159,13 +164,14 @@ func TestParseGeneratedSkillMD_MissingFrontMatter(t *testing.T) {
 
 func TestParseGeneratedSkillMD_MissingName(t *testing.T) {
 	raw := `---
+description: Some description
 category: FIX
 version: 1
 ---
 
 # No name field
 `
-	_, _, _, _, err := ParseGeneratedSkillMD(raw)
+	_, _, _, _, _, err := ParseGeneratedSkillMD(raw)
 	if err == nil {
 		t.Error("expected error for missing name")
 	}
@@ -176,15 +182,15 @@ func TestParseGeneratedSkillMD_MissingClosingDelimiter(t *testing.T) {
 name: broken
 category: FIX
 `
-	_, _, _, _, err := ParseGeneratedSkillMD(raw)
+	_, _, _, _, _, err := ParseGeneratedSkillMD(raw)
 	if err == nil {
 		t.Error("expected error for missing closing delimiter")
 	}
 }
 
 func TestParseGeneratedSkillMD_CRLFLineEndings(t *testing.T) {
-	raw := "---\r\nname: crlf-skill\r\nversion: 1\r\ncategory: BUILD\r\ntags:\r\n  - go/testing\r\n---\r\n\r\n# CRLF Skill\r\n"
-	name, version, category, tags, err := ParseGeneratedSkillMD(raw)
+	raw := "---\r\nname: crlf-skill\r\ndescription: CRLF test skill\r\nversion: 1\r\ncategory: BUILD\r\ntags:\r\n  - go/testing\r\n---\r\n\r\n# CRLF Skill\r\n"
+	name, version, category, tags, _, err := ParseGeneratedSkillMD(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -213,5 +219,97 @@ func TestBuildSkillMD_ContradictionWarning(t *testing.T) {
 	body = string(buildSkillMD(skill, &model.Stage3Result{ContradictsBestPractices: false}, []byte("x")))
 	if strings.Contains(body, "contradict") {
 		t.Error("unexpected contradiction warning")
+	}
+}
+
+func TestParseGeneratedSkillMD_MissingDescription(t *testing.T) {
+	raw := `---
+name: no-desc-skill
+version: 1
+category: BUILD
+---
+
+# No Description
+`
+	_, _, _, _, _, err := ParseGeneratedSkillMD(raw)
+	if err == nil {
+		t.Error("expected error for missing description")
+	}
+	if !strings.Contains(err.Error(), "missing description") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestParseGeneratedSkillMD_DescriptionTooLong(t *testing.T) {
+	longDesc := strings.Repeat("a", 201)
+	raw := "---\nname: long-desc\ndescription: " + longDesc + "\nversion: 1\ncategory: BUILD\n---\n\n# Long\n"
+	_, _, _, _, _, err := ParseGeneratedSkillMD(raw)
+	if err == nil {
+		t.Error("expected error for description >200 chars")
+	}
+	if !strings.Contains(err.Error(), "exceeds 200") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestParseGeneratedSkillMD_DescriptionExactly200(t *testing.T) {
+	desc := strings.Repeat("b", 200)
+	raw := "---\nname: exact-desc\ndescription: " + desc + "\nversion: 1\ncategory: BUILD\n---\n\n# Exact\n"
+	_, _, _, _, description, err := ParseGeneratedSkillMD(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if description != desc {
+		t.Errorf("description length = %d, want 200", len(description))
+	}
+}
+
+func TestValidateSkillMD_Valid(t *testing.T) {
+	raw := "---\nname: valid\ndescription: A valid skill\nversion: 1\ncategory: BUILD\n---\n\n# Valid\n"
+	errs := ValidateSkillMD(raw)
+	if len(errs) != 0 {
+		t.Errorf("expected no errors, got %v", errs)
+	}
+}
+
+func TestValidateSkillMD_MissingFields(t *testing.T) {
+	raw := "---\nversion: 1\ncategory: BUILD\n---\n\n# Missing\n"
+	errs := ValidateSkillMD(raw)
+	if len(errs) < 2 {
+		t.Errorf("expected at least 2 errors (name+description), got %d: %v", len(errs), errs)
+	}
+}
+
+func TestValidateSkillMD_InvalidCategory(t *testing.T) {
+	raw := "---\nname: cat-test\ndescription: Test\ncategory: INVALID\n---\n\n# Cat\n"
+	errs := ValidateSkillMD(raw)
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e.Error(), "invalid category") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected invalid category error, got %v", errs)
+	}
+}
+
+func TestValidateSkillMD_NoFrontMatter(t *testing.T) {
+	errs := ValidateSkillMD("# Just markdown")
+	if len(errs) == 0 {
+		t.Error("expected error for missing front matter")
+	}
+}
+
+func TestBuildSkillMD_IncludesDescription(t *testing.T) {
+	skill := &model.SkillRecord{
+		Name:        "desc-test",
+		Description: "A test skill description",
+		Version:     1,
+		Category:    model.CategoryTactical,
+	}
+	body := string(buildSkillMD(skill, nil, nil))
+	if !strings.Contains(body, "description: A test skill description") {
+		t.Error("buildSkillMD output missing description field")
 	}
 }
