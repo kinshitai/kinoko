@@ -20,7 +20,7 @@ Agent solves problem → Extracted to SKILL.md → Pushed to git → Injected in
 
 Active development. Core infrastructure is complete and reviewed.
 
-192 Go files · 707 tests · ~37K lines · 19 internal packages · 82% avg test coverage
+192 Go files · 707 tests · ~37K lines · 19 internal packages · 78.2% avg test coverage
 
 ## Quick Start
 
@@ -119,6 +119,8 @@ Category-specific half-lives (foundational: 365d, tactical: 90d, contextual: 180
 | `kinoko index <repo-path>` | Re-index a git repo into SQLite |
 | `kinoko decay` | Run a decay cycle |
 | `kinoko stats` | Print pipeline metrics |
+
+> See `kinoko --help` for all commands and `kinoko queue --help` for queue sub-commands (flush, list, retry, stats).
 
 ## API Endpoints
 
