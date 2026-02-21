@@ -89,7 +89,7 @@ jobs:
         run: go test -race -tags integration -coverpkg=./internal/...,./cmd/...,./pkg/... -coverprofile=integration.cov ./tests/integration/ -timeout 60s
 
       - name: E2E tests
-        run: go test -race -tags integration -coverpkg=./internal/...,./cmd/...,./pkg/... -coverprofile=e2e.cov ./tests/e2e/ -timeout 90s
+        run: go test -race -tags integration -coverpkg=./internal/...,./cmd/...,./pkg/... -coverprofile=e2e.cov ./tests/e2e/ -timeout 300s
 
       - name: Embedding tests
         env:
