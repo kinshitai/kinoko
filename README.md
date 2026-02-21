@@ -20,7 +20,7 @@ Agent solves problem → Extracted to SKILL.md → Pushed to git → Injected in
 
 Active development. Core infrastructure is complete and reviewed.
 
-194 Go files · 933 tests · ~29K lines · 19 internal packages · 80.6% test coverage
+192 Go files · 707 tests · ~37K lines · 19 internal packages · 82% avg test coverage
 
 ## Quick Start
 
@@ -63,7 +63,8 @@ That's it. `serve` manages git repos and the discovery API. `run` extracts knowl
 │  │                                              │   │
 │  │  Soft Serve (git) ← pre-receive (cred scan) │   │
 │  │                   ← post-receive (indexing)  │   │
-│  │  Discovery API (/discover, /health, /ingest) │   │
+│  │  API (/health, /discover, /embed, /ingest,   │
+│  │       /skills/decay)                         │   │
 │  └──────────────────────────────────────────────┘   │
 │                                  ↓                  │
 │  Injection → classify prompt → query skills → inject│
@@ -119,11 +120,21 @@ Category-specific half-lives (foundational: 365d, tactical: 90d, contextual: 180
 | `kinoko decay` | Run a decay cycle |
 | `kinoko stats` | Print pipeline metrics |
 
+## API Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/health` | Server health check |
+| `POST` | `/api/v1/discover` | Find skills matching a prompt |
+| `POST` | `/api/v1/embed` | Generate embeddings for text |
+| `POST` | `/api/v1/ingest` | Submit a markdown skill through the quality critic |
+| `GET` | `/api/v1/skills/decay` | List skills ordered by decay score |
+| `PATCH` | `/api/v1/skills/{id}/decay` | Update a skill's decay metadata |
+
 ## Documentation
 
-Full docs at [kinoko.tech](https://kinoko.tech) (WIP).
-
-Source in [`site/`](site/) — built with Astro Starlight.
+- [Architecture overview](docs/architecture.md) — system design, data flow, and package map
+- [kinoko.tech](https://kinoko.tech) (WIP) — full docs site, source in [`site/`](site/)
 
 ## Contributing
 
