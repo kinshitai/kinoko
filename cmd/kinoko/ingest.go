@@ -14,11 +14,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
-	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/extraction"
-	"github.com/kinoko-dev/kinoko/internal/gitserver"
-	"github.com/kinoko-dev/kinoko/internal/llm"
-	"github.com/kinoko-dev/kinoko/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/run/extraction"
+	"github.com/kinoko-dev/kinoko/internal/run/llm"
+	"github.com/kinoko-dev/kinoko/internal/serve/gitserver"
+	"github.com/kinoko-dev/kinoko/internal/shared/config"
+	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
 var ingestCmd = &cobra.Command{

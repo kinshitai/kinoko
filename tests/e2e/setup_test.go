@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/gitserver"
+	"github.com/kinoko-dev/kinoko/internal/serve/gitserver"
+	"github.com/kinoko-dev/kinoko/internal/shared/config"
 )
 
 // TestEnvironment manages a complete test environment for e2e testing

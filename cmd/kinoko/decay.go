@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/decay"
-	"github.com/kinoko-dev/kinoko/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/serve/storage"
+	"github.com/kinoko-dev/kinoko/internal/shared/config"
+	"github.com/kinoko-dev/kinoko/internal/shared/decay"
 )
 
 var decayCmd = &cobra.Command{

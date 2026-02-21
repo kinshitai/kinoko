@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/serve/storage"
+	"github.com/kinoko-dev/kinoko/internal/shared/config"
+	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
 // --- Mock LLM ---
@@ -304,5 +304,3 @@ type noopCommitter struct{}
 func (noopCommitter) CommitSkill(_ context.Context, _ string, _ *model.SkillRecord, _ []byte) (string, error) {
 	return "noop000", nil
 }
-
-

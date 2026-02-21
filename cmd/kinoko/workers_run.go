@@ -6,14 +6,14 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/debug"
-	"github.com/kinoko-dev/kinoko/internal/extraction"
-	"github.com/kinoko-dev/kinoko/internal/llm"
-	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/queue"
-	"github.com/kinoko-dev/kinoko/internal/serverclient"
-	"github.com/kinoko-dev/kinoko/internal/worker"
+	"github.com/kinoko-dev/kinoko/internal/run/debug"
+	"github.com/kinoko-dev/kinoko/internal/run/extraction"
+	"github.com/kinoko-dev/kinoko/internal/run/llm"
+	"github.com/kinoko-dev/kinoko/internal/run/queue"
+	"github.com/kinoko-dev/kinoko/internal/run/serverclient"
+	"github.com/kinoko-dev/kinoko/internal/run/worker"
+	"github.com/kinoko-dev/kinoko/internal/shared/config"
+	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
 // libraryIDs extracts library IDs from config.

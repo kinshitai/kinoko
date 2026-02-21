@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/serve/storage"
+	"github.com/kinoko-dev/kinoko/pkg/model"
 	skillpkg "github.com/kinoko-dev/kinoko/pkg/skill"
 )
 

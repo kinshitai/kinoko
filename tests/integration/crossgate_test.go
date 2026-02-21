@@ -17,13 +17,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kinoko-dev/kinoko/internal/api"
-	"github.com/kinoko-dev/kinoko/internal/client"
-	"github.com/kinoko-dev/kinoko/internal/extraction"
-	"github.com/kinoko-dev/kinoko/internal/gitserver"
-	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/sanitize"
-	"github.com/kinoko-dev/kinoko/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/run/client"
+	"github.com/kinoko-dev/kinoko/internal/run/extraction"
+	"github.com/kinoko-dev/kinoko/internal/run/sanitize"
+	"github.com/kinoko-dev/kinoko/internal/serve/api"
+	"github.com/kinoko-dev/kinoko/internal/serve/gitserver"
+	"github.com/kinoko-dev/kinoko/internal/serve/storage"
+	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
 // =============================================================================

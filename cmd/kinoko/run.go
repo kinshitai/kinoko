@@ -14,9 +14,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/queue"
-	"github.com/kinoko-dev/kinoko/internal/serverclient"
+	"github.com/kinoko-dev/kinoko/internal/run/queue"
+	"github.com/kinoko-dev/kinoko/internal/run/serverclient"
+	"github.com/kinoko-dev/kinoko/internal/shared/config"
 )
 
 var runCmd = &cobra.Command{

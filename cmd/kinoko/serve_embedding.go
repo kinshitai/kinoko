@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"path/filepath"
 
-	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/embedding"
+	"github.com/kinoko-dev/kinoko/internal/serve/embedding"
+	"github.com/kinoko-dev/kinoko/internal/shared/config"
 )
 
 // initEmbedEngine initializes the real ONNX embedding engine.

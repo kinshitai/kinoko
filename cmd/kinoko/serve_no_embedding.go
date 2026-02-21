@@ -5,8 +5,8 @@ package main
 import (
 	"log/slog"
 
-	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/embedding"
+	"github.com/kinoko-dev/kinoko/internal/serve/embedding"
+	"github.com/kinoko-dev/kinoko/internal/shared/config"
 )
 
 // initEmbedEngine returns nil when built without the "embedding" tag.

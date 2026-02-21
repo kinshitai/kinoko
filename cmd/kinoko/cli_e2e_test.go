@@ -15,8 +15,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/serverclient"
+	"github.com/kinoko-dev/kinoko/internal/run/serverclient"
+	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
 // ── mock API server ──

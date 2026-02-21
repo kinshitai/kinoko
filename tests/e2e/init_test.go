@@ -11,7 +11,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/kinoko-dev/kinoko/internal/config"
+	"github.com/kinoko-dev/kinoko/internal/shared/config"
 )
 
 func TestKinokoInit(t *testing.T) {

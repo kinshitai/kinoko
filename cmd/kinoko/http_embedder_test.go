@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/kinoko-dev/kinoko/internal/serverclient"
+	"github.com/kinoko-dev/kinoko/internal/run/serverclient"
 )
 
 func TestHTTPEmbedder_Embed(t *testing.T) {

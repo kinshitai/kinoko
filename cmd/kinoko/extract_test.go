@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kinoko-dev/kinoko/internal/extraction"
-	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/serverclient"
+	"github.com/kinoko-dev/kinoko/internal/run/extraction"
+	"github.com/kinoko-dev/kinoko/internal/run/serverclient"
+	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
 // Tests for parseSessionFromLog edge cases — R9 area.

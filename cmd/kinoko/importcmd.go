@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/extraction"
-	"github.com/kinoko-dev/kinoko/internal/queue"
-	"github.com/kinoko-dev/kinoko/internal/worker"
+	"github.com/kinoko-dev/kinoko/internal/run/extraction"
+	"github.com/kinoko-dev/kinoko/internal/run/queue"
+	"github.com/kinoko-dev/kinoko/internal/run/worker"
+	"github.com/kinoko-dev/kinoko/internal/shared/config"
 )
 
 var importCmd = &cobra.Command{
