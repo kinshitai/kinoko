@@ -1,5 +1,59 @@
 # Contributing to Kinoko
 
+## Project Structure
+
+```
+cmd/kinoko/            CLI entry point — all cobra commands
+internal/
+  run/                 Client daemon (kinoko run)
+    apiclient/         HTTP client for the server API
+    client/            Local config and SSH key management
+    debug/             Pipeline debug tracing
+    extraction/        3-stage skill extraction pipeline
+    injection/         Skill injection (classify → discover → prompt)
+    llm/               LLM provider abstraction
+    llmutil/           JSON extraction helpers
+    metrics/           Client pipeline metrics
+    queue/             Local SQLite job queue
+    sanitize/          Credential scanning
+    worker/            Worker pool and scheduler
+  serve/               Infrastructure server (kinoko serve)
+    api/               HTTP API (/api/v1/discover, /health, /ingest, etc.)
+    embedding/         Embedding providers (OpenAI, ONNX)
+    gitserver/         Soft Serve git server, hooks, committer
+    storage/           SQLite skill store (schema, indexer, querier)
+  shared/              Shared by both run and serve
+    circuitbreaker/    Circuit breaker for external calls
+    config/            YAML config loading and defaults
+    decay/             Skill decay (half-life degradation)
+pkg/
+  model/               Public domain types and interfaces
+  skill/               SKILL.md parser and validator
+tests/
+  architecture/        Import boundary tests
+  e2e/                 End-to-end tests
+  integration/         Integration tests
+  fixtures/            Test data
+docs/                  Architecture and reference docs
+site/                  Public documentation site (Astro)
+rfcs/                  Design RFCs
+scripts/               Git hooks and tooling
+```
+
+For a detailed walkthrough, see [docs/architecture.md](docs/architecture.md).
+
+## Building and Testing
+
+```bash
+make build             # Build the kinoko binary
+make check             # Full CI: build + vet + lint + unit tests + integration + e2e
+go test ./...          # Unit tests only
+go test -tags integration ./tests/integration/   # Integration tests
+go test -tags integration ./tests/e2e/           # End-to-end tests
+```
+
+Requirements: Go 1.22+, `golangci-lint`.
+
 ## Git Flow
 
 **Never push directly to `main`.** All changes go through pull requests.
