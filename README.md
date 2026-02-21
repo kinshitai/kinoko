@@ -20,7 +20,7 @@ Agent solves problem → Extracted to SKILL.md → Pushed to git → Injected in
 
 Active development. Core infrastructure is complete and reviewed.
 
-117 Go files · 456 tests · ~30K lines · 16 internal packages · 73.6% test coverage
+194 Go files · 933 tests · ~29K lines · 19 internal packages · 80.6% test coverage
 
 ## Quick Start
 
@@ -105,14 +105,19 @@ Category-specific half-lives (foundational: 365d, tactical: 90d, contextual: 180
 | `kinoko serve` | Start git server + discovery API + hooks |
 | `kinoko run` | Start local daemon (workers, scheduler, injection) |
 | `kinoko run --server host:port` | Connect daemon to a specific server |
-| `kinoko extract <file>` | Manually extract from a session log |
+| `kinoko extract <file>` | Run extraction pipeline on a session log |
+| `kinoko import <files>` | Import session logs into the extraction queue |
+| `kinoko ingest <file>` | Import a markdown file as a skill through the quality critic |
+| `kinoko match <query>` | Find skills matching a query |
 | `kinoko pull <repo>` | Clone/sync a skill from the server |
 | `kinoko pull --all` | Sync all cached skills |
+| `kinoko queue` | Queue inspection and management |
+| `kinoko rebuild` | Rebuild SQLite cache from git repos |
 | `kinoko scan <file>` | Scan for credentials |
 | `kinoko scan --dir <path>` | Scan a directory recursively |
 | `kinoko index <repo-path>` | Re-index a git repo into SQLite |
 | `kinoko decay` | Run a decay cycle |
-| `kinoko stats` | View pipeline metrics and A/B results |
+| `kinoko stats` | Print pipeline metrics |
 
 ## Documentation
 
