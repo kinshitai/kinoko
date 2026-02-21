@@ -1,6 +1,6 @@
-// Package serverclient provides HTTP client implementations for kinoko run
+// Package apiclient provides HTTP client implementations for kinoko run
 // to communicate with kinoko serve.
-package serverclient
+package apiclient
 
 import (
 	"bytes"

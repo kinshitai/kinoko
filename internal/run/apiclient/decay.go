@@ -1,4 +1,4 @@
-package serverclient
+package apiclient
 
 import (
 	"context"

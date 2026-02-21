@@ -6,11 +6,11 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/kinoko-dev/kinoko/internal/run/apiclient"
 	"github.com/kinoko-dev/kinoko/internal/run/debug"
 	"github.com/kinoko-dev/kinoko/internal/run/extraction"
 	"github.com/kinoko-dev/kinoko/internal/run/llm"
 	"github.com/kinoko-dev/kinoko/internal/run/queue"
-	"github.com/kinoko-dev/kinoko/internal/run/serverclient"
 	"github.com/kinoko-dev/kinoko/internal/run/worker"
 	"github.com/kinoko-dev/kinoko/internal/shared/config"
 	"github.com/kinoko-dev/kinoko/pkg/model"
@@ -26,9 +26,9 @@ func libraryIDs(cfg *config.Config) []string {
 }
 
 // buildClientPipeline creates an extraction pipeline for kinoko run (client mode).
-// Uses serverclient for embedding, skill querying, session writing, review, and git commit.
+// Uses apiclient for embedding, skill querying, session writing, review, and git commit.
 // Returns nil if no LLM key is configured.
-func buildClientPipeline(cfg *config.Config, serverClient *serverclient.Client, logger *slog.Logger) (model.Extractor, error) {
+func buildClientPipeline(cfg *config.Config, serverClient *apiclient.Client, logger *slog.Logger) (model.Extractor, error) {
 	llmAPIKey := os.Getenv("KINOKO_LLM_API_KEY")
 	if llmAPIKey == "" {
 		llmAPIKey = os.Getenv("OPENAI_API_KEY")
@@ -38,10 +38,10 @@ func buildClientPipeline(cfg *config.Config, serverClient *serverclient.Client, 
 	}
 
 	// Embedder via server HTTP API.
-	embedder := serverclient.NewHTTPEmbedder(serverClient, cfg.Embedding.GetDims())
+	embedder := apiclient.NewHTTPEmbedder(serverClient, cfg.Embedding.GetDims())
 
 	// Skill querier via server HTTP API.
-	querier := serverclient.NewHTTPQuerier(serverClient)
+	querier := apiclient.NewHTTPQuerier(serverClient)
 
 	llmModel := cfg.LLM.Model
 	if llmModel == "" {
@@ -58,7 +58,7 @@ func buildClientPipeline(cfg *config.Config, serverClient *serverclient.Client, 
 
 	// Git committer via SSH push.
 	sshURL := fmt.Sprintf("ssh://%s:%d", cfg.Server.Host, cfg.Server.Port)
-	committer := serverclient.NewGitPushCommitter(sshURL, cfg.Server.DataDir, logger)
+	committer := apiclient.NewGitPushCommitter(sshURL, cfg.Server.DataDir, logger)
 
 	// Session writer and reviewer are client-local concerns (not server endpoints)
 	// Sessions are now tracked via git commits; reviews stay local
@@ -102,7 +102,7 @@ func startClientWorkerSystem(
 	ctx context.Context,
 	cfg *config.Config,
 	queueStore *queue.Store,
-	serverClient *serverclient.Client,
+	serverClient *apiclient.Client,
 	logger *slog.Logger,
 ) (q *queue.Queue, pool worker.Pool, sched worker.Scheduler, err error) {
 	workerCfg := worker.DefaultConfig()

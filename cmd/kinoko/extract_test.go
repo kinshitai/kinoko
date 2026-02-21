@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kinoko-dev/kinoko/internal/run/apiclient"
 	"github.com/kinoko-dev/kinoko/internal/run/extraction"
-	"github.com/kinoko-dev/kinoko/internal/run/serverclient"
 	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
@@ -178,8 +178,8 @@ func TestEstimateTokens(t *testing.T) {
 }
 
 func TestHTTPQuerier_Interface(t *testing.T) {
-	// Verify that serverclient.NewHTTPQuerier returns model.SkillQuerier.
-	var _ model.SkillQuerier = serverclient.NewHTTPQuerier(nil)
+	// Verify that apiclient.NewHTTPQuerier returns model.SkillQuerier.
+	var _ model.SkillQuerier = apiclient.NewHTTPQuerier(nil)
 }
 
 func TestExitError(t *testing.T) {

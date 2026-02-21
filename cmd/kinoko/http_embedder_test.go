@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/kinoko-dev/kinoko/internal/run/serverclient"
+	"github.com/kinoko-dev/kinoko/internal/run/apiclient"
 )
 
 func TestHTTPEmbedder_Embed(t *testing.T) {
@@ -26,8 +26,8 @@ func TestHTTPEmbedder_Embed(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := serverclient.New(srv.URL)
-	e := serverclient.NewHTTPEmbedder(client, 3)
+	client := apiclient.New(srv.URL)
+	e := apiclient.NewHTTPEmbedder(client, 3)
 	vec, err := e.Embed(context.Background(), "hello world")
 	if err != nil {
 		t.Fatal(err)
@@ -50,8 +50,8 @@ func TestHTTPEmbedder_EmbedBatch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := serverclient.New(srv.URL)
-	e := serverclient.NewHTTPEmbedder(client, 1)
+	client := apiclient.New(srv.URL)
+	e := apiclient.NewHTTPEmbedder(client, 1)
 	vecs, err := e.EmbedBatch(context.Background(), []string{"a", "b", "c"})
 	if err != nil {
 		t.Fatal(err)
@@ -70,8 +70,8 @@ func TestHTTPEmbedder_Embed_ServerError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := serverclient.New(srv.URL)
-	e := serverclient.NewHTTPEmbedder(client, 3)
+	client := apiclient.New(srv.URL)
+	e := apiclient.NewHTTPEmbedder(client, 3)
 	_, err := e.Embed(context.Background(), "test")
 	if err == nil {
 		t.Fatal("expected error on server error")

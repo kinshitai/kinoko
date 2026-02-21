@@ -13,6 +13,30 @@ func TestRunServeIsolation(t *testing.T) {
 	checkNoImport(t, "serve", "run")
 }
 
+// TestSharedNeverImportsUpward verifies that shared/ packages never import run/ or serve/.
+func TestSharedNeverImportsUpward(t *testing.T) {
+	checkNoImport(t, "shared", "run")
+	checkNoImport(t, "shared", "serve")
+}
+
+// TestPkgNeverImportsInternal verifies that pkg/ packages never depend on internal/.
+func TestPkgNeverImportsInternal(t *testing.T) {
+	t.Helper()
+
+	out, err := exec.Command("go", "list", "-deps", "github.com/kinoko-dev/kinoko/pkg/...").CombinedOutput()
+	if err != nil {
+		t.Fatalf("go list failed for pkg/...: %v\n%s", err, out)
+	}
+
+	forbidden := "github.com/kinoko-dev/kinoko/internal/"
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, forbidden) {
+			t.Errorf("BOUNDARY VIOLATION: pkg/... depends on %s (pkg/ must not import internal/)", line)
+		}
+	}
+}
+
 func checkNoImport(t *testing.T, from, to string) {
 	t.Helper()
 

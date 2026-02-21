@@ -1,4 +1,4 @@
-package serverclient
+package apiclient
 
 import (
 	"github.com/kinoko-dev/kinoko/internal/shared/decay"

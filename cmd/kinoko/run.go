@@ -14,8 +14,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/kinoko-dev/kinoko/internal/run/apiclient"
 	"github.com/kinoko-dev/kinoko/internal/run/queue"
-	"github.com/kinoko-dev/kinoko/internal/run/serverclient"
 	"github.com/kinoko-dev/kinoko/internal/shared/config"
 )
 
@@ -97,7 +97,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	defer queueStore.Close()
 
 	// Create server client for HTTP communication.
-	serverClient := serverclient.New(serverURL)
+	serverClient := apiclient.New(serverURL)
 
 	// Start worker system (queue + pool + scheduler).
 	_, pool, sched, err := startClientWorkerSystem(cmd.Context(), cfg, queueStore, serverClient, logger)
