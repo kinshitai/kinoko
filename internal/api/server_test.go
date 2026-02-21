@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
@@ -45,7 +44,7 @@ func TestDiscoverPOST_MissingPrompt(t *testing.T) {
 	}
 }
 
-func TestIngest_MissingFields(t *testing.T) {
+func TestIngest_MissingRepo(t *testing.T) {
 	srv := New(Config{Port: 0})
 	body, _ := json.Marshal(IngestRequest{})
 	req := httptest.NewRequest("POST", "/api/v1/ingest", bytes.NewReader(body))
@@ -95,9 +94,9 @@ func TestDiscoverRateLimitStructure(t *testing.T) {
 	}
 }
 
-func TestIngest_NilEnqueue_Returns501(t *testing.T) {
+func TestIngest_NilIndexFn_Returns501(t *testing.T) {
 	srv := New(Config{Port: 0})
-	body, _ := json.Marshal(IngestRequest{SessionID: "s1", Log: "hello"})
+	body, _ := json.Marshal(IngestRequest{Repo: "local/test-skill"})
 	req := httptest.NewRequest("POST", "/api/v1/ingest", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.httpServer.Handler.ServeHTTP(w, req)
@@ -107,19 +106,45 @@ func TestIngest_NilEnqueue_Returns501(t *testing.T) {
 	}
 }
 
-func TestIngest_WithEnqueue_Returns200(t *testing.T) {
+func TestIngest_WithIndexFn_Returns202(t *testing.T) {
 	srv := New(Config{
 		Port: 0,
-		Enqueue: func(_ context.Context, _ model.SessionRecord, _ []byte) error {
+		IndexFn: func(_ context.Context, repo, rev string) error {
 			return nil
 		},
 	})
-	body, _ := json.Marshal(IngestRequest{SessionID: "s1", Log: "hello"})
+	body, _ := json.Marshal(IngestRequest{Repo: "local/test-skill", Rev: "abc123"})
 	req := httptest.NewRequest("POST", "/api/v1/ingest", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.httpServer.Handler.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestIngest_InvalidRepo_Returns400(t *testing.T) {
+	srv := New(Config{Port: 0, IndexFn: func(_ context.Context, _, _ string) error { return nil }})
+	for _, repo := range []string{"", "../etc/passwd", "UPPER/case", "no-slash"} {
+		body, _ := json.Marshal(IngestRequest{Repo: repo})
+		req := httptest.NewRequest("POST", "/api/v1/ingest", bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		srv.httpServer.Handler.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("repo=%q: expected 400, got %d", repo, w.Code)
+		}
+	}
+}
+
+func TestIngest_InvalidRev_Returns400(t *testing.T) {
+	srv := New(Config{Port: 0, IndexFn: func(_ context.Context, _, _ string) error { return nil }})
+	for _, rev := range []string{"not-hex!", "ABC123", "ab"} {
+		body, _ := json.Marshal(IngestRequest{Repo: "local/skill", Rev: rev})
+		req := httptest.NewRequest("POST", "/api/v1/ingest", bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		srv.httpServer.Handler.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("rev=%q: expected 400, got %d", rev, w.Code)
+		}
 	}
 }

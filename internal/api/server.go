@@ -8,11 +8,18 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/kinoko-dev/kinoko/internal/embedding"
-	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
+)
+
+var (
+	// reValidRepo matches owner/name format (lowercase alphanum, hyphens, underscores).
+	reValidRepo = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9_-]*$`)
+	// reValidRev matches a hex git commit hash (4-40 chars).
+	reValidRev = regexp.MustCompile(`^[0-9a-f]{4,40}$`)
 )
 
 // Server is the HTTP API server for discovery and ingestion.
@@ -22,7 +29,7 @@ type Server struct {
 	embedder    embedding.Embedder
 	sshURL      string // SSH clone base URL
 	logger      *slog.Logger
-	enqueue     func(ctx context.Context, session model.SessionRecord, log []byte) error
+	indexFn     func(ctx context.Context, repo, rev string) error
 	discoverSem chan struct{} // P1-7: semaphore to limit concurrent discover requests
 	embedEngine embedding.Engine
 }
@@ -35,7 +42,7 @@ type Config struct {
 	Embedder embedding.Embedder
 	SSHURL   string // e.g. "ssh://localhost:23231"
 	Logger   *slog.Logger
-	Enqueue  func(ctx context.Context, session model.SessionRecord, log []byte) error
+	IndexFn  func(ctx context.Context, repo, rev string) error
 }
 
 // DiscoverRequest is the JSON body for POST /api/v1/discover.
@@ -64,9 +71,10 @@ type DiscoverResponse struct {
 }
 
 // IngestRequest is the JSON body for POST /api/v1/ingest.
+// Used as a post-receive hook trigger: "a repo was pushed, please index it."
 type IngestRequest struct {
-	SessionID string `json:"session_id"`
-	Log       string `json:"log"`
+	Repo string `json:"repo"`
+	Rev  string `json:"rev"`
 }
 
 // HealthResponse is the JSON response for GET /api/v1/health.
@@ -87,7 +95,7 @@ func New(cfg Config) *Server {
 		embedder:    cfg.Embedder,
 		sshURL:      cfg.SSHURL,
 		logger:      cfg.Logger,
-		enqueue:     cfg.Enqueue,
+		indexFn:     cfg.IndexFn,
 		discoverSem: make(chan struct{}, 10), // P1-7: max 10 concurrent discover requests
 	}
 
@@ -259,31 +267,40 @@ func (s *Server) discoverWithQuery(w http.ResponseWriter, r *http.Request, req D
 // Removed unused discover() method - replaced by unified handleDiscover
 
 func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
-	// P1-6: Limit request body to 10 MB to prevent memory exhaustion.
-	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
+	// P1-6: Limit request body to 1 MB (repo+rev payload is tiny).
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req IngestRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 		return
 	}
-	if req.SessionID == "" || req.Log == "" {
-		http.Error(w, `{"error":"session_id and log required"}`, http.StatusBadRequest)
+
+	// Validate repo: must be owner/name format, no path traversal.
+	if !reValidRepo.MatchString(req.Repo) {
+		http.Error(w, `{"error":"invalid repo format"}`, http.StatusBadRequest)
+		return
+	}
+	// Validate rev: must be a hex commit hash (4-40 chars).
+	if req.Rev != "" && !reValidRev.MatchString(req.Rev) {
+		http.Error(w, `{"error":"invalid rev format"}`, http.StatusBadRequest)
 		return
 	}
 
-	if s.enqueue == nil {
-		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "ingestion not available — use 'kinoko run' to process sessions"})
+	if s.indexFn == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "indexing not configured"})
 		return
 	}
 
-	session := model.SessionRecord{ID: req.SessionID}
-	if err := s.enqueue(r.Context(), session, []byte(req.Log)); err != nil {
-		s.logger.Error("ingest enqueue failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
-		return
-	}
+	// Run indexing asynchronously — the hook caller doesn't need to wait.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		if err := s.indexFn(ctx, req.Repo, req.Rev); err != nil {
+			s.logger.Error("index failed", "repo", req.Repo, "rev", req.Rev, "error", err)
+		}
+	}()
 
-	writeJSON(w, http.StatusOK, map[string]bool{"queued": true})
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "indexing", "repo": req.Repo})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
