@@ -20,7 +20,11 @@ The same config file is used by both `kinoko serve` (infrastructure) and `kinoko
 server:
   host: "127.0.0.1"
   port: 23231
+  apiPort: 0           # defaults to port+2
   dataDir: ~/.kinoko/data
+
+client:
+  queue_dsn: ~/.kinoko/queue.db
 
 storage:
   driver: sqlite
@@ -56,14 +60,21 @@ decay:
   deprecation_threshold: 0.05
   rescue_boost: 0.3
   rescue_window_days: 30
+  interval_hours: 6
 
 embedding:
   provider: openai
   model: text-embedding-3-small
   base_url: https://api.openai.com
+  api_key: ""
+  dims: 384
+  novelty_threshold: 0.85
 
 llm:
+  provider: openai
   model: gpt-4o-mini
+  api_key: ""
+  base_url: ""
 
 hooks:
   credential_scan: true
@@ -85,6 +96,7 @@ Controls the git server started by `kinoko serve`.
 |-------|------|---------|-------------|
 | `host` | string | `"127.0.0.1"` | IP to bind. Use `"0.0.0.0"` for all interfaces. |
 | `port` | int | `23231` | SSH port. Must be 1–65535. |
+| `apiPort` | int | `port+2` | HTTP API port. Defaults to `port+2` (port+1 is Soft Serve HTTP). |
 | `dataDir` | string | `~/.kinoko/data` | Directory for server data. Auto-created. |
 
 ### `storage`
@@ -93,6 +105,14 @@ Controls the git server started by `kinoko serve`.
 |-------|------|---------|-------------|
 | `driver` | string | `"sqlite"` | `"sqlite"` or `"postgres"` |
 | `dsn` | string | `~/.kinoko/kinoko.db` | Connection string. File path for SQLite, URL for Postgres. |
+
+### `client`
+
+Settings for `kinoko run` (client/daemon mode).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `queue_dsn` | string | `~/.kinoko/queue.db` | Path to the local extraction queue SQLite database. |
 
 ### `libraries`
 
@@ -142,6 +162,7 @@ Controls the 3-stage extraction pipeline.
 | `deprecation_threshold` | float | `0.05` | Score below which skills are deprecated |
 | `rescue_boost` | float | `0.3` | Boost for recently-used successful skills |
 | `rescue_window_days` | int | `30` | Window for rescue eligibility (days) |
+| `interval_hours` | int | `6` | Decay cycle interval in hours |
 
 ### `embedding`
 
@@ -150,12 +171,18 @@ Controls the 3-stage extraction pipeline.
 | `provider` | string | `"openai"` | Embedding provider |
 | `model` | string | `"text-embedding-3-small"` | Embedding model name |
 | `base_url` | string | `"https://api.openai.com"` | Base URL for API calls |
+| `api_key` | string | `""` | Provider API key (overridden by `KINOKO_EMBEDDING_API_KEY` env var) |
+| `dims` | int | `384` | Embedding dimensions |
+| `novelty_threshold` | float | `0.85` | Cosine similarity above which content is considered "too similar" |
 
 ### `llm`
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| `provider` | string | `"openai"` | LLM provider (`"openai"` or `"anthropic"`) |
 | `model` | string | `"gpt-4o-mini"` | LLM model name |
+| `api_key` | string | `""` | Provider API key (overridden by `KINOKO_LLM_API_KEY` env var) |
+| `base_url` | string | `""` | Optional base URL for proxies or custom endpoints |
 
 ### `hooks`
 
@@ -171,6 +198,13 @@ Controls the 3-stage extraction pipeline.
 |-------|------|---------|-------------|
 | `author` | string | `""` | Default author identifier |
 | `confidence` | float | `0.7` | Default confidence score (0.0–1.0) |
+
+### `debug`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable pipeline debug tracing |
+| `dir` | string | `""` | Directory for debug trace output |
 
 ## Environment Variables
 

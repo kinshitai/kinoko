@@ -155,7 +155,7 @@ A key architectural decision: **git is the source of truth**, everything else is
 - Skills have full version history, branching, and independent versioning
 
 This means:
-- `kinoko serve --reindex` rebuilds the entire index from git
+- `kinoko rebuild` rebuilds the entire index from git
 - No data loss if SQLite corrupts — git is the recovery path
 - Skills can be forked, overridden, and layered like Docker images
 

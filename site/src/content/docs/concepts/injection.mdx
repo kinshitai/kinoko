@@ -50,13 +50,11 @@ Returns:
 {
   "skills": [
     {
-      "id": "fix-database-timeout", 
-      "name": "fix-database-timeout",
       "repo": "default",
-      "quality": 0.87, 
-      "similarity": 0.82,
-      "ssh_url": "ssh://localhost:23231/default.git",
-      "patterns": ["database", "timeout", "postgres"]
+      "name": "fix-database-timeout",
+      "description": "How to diagnose and fix database connection timeouts",
+      "score": 0.87,
+      "clone_url": "ssh://localhost:23231/default.git"
     }
   ]
 }
@@ -86,10 +84,10 @@ Matched skills are formatted as a prompt section and injected into the agent ses
 
 The following skills may be relevant to your current task.
 
-### fix-database-timeout (relevance: 0.87)
+### fix-database-timeout (score: 0.87)
 [Full SKILL.md content]
 
-### go-subprocess-management (relevance: 0.72)
+### go-subprocess-management (score: 0.72)
 [Full SKILL.md content]
 ```
 
