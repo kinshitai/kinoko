@@ -6,8 +6,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/kinoko-dev/kinoko/internal/injection"
-	"github.com/kinoko-dev/kinoko/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/run/injection"
+	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
 func TestABTestFlow(t *testing.T) {

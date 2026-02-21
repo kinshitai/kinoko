@@ -14,13 +14,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kinoko-dev/kinoko/internal/decay"
-	"github.com/kinoko-dev/kinoko/internal/extraction"
-	"github.com/kinoko-dev/kinoko/internal/injection"
-	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/queue"
-	"github.com/kinoko-dev/kinoko/internal/storage"
-	"github.com/kinoko-dev/kinoko/internal/worker"
+	"github.com/kinoko-dev/kinoko/internal/run/extraction"
+	"github.com/kinoko-dev/kinoko/internal/run/injection"
+	"github.com/kinoko-dev/kinoko/internal/run/queue"
+	"github.com/kinoko-dev/kinoko/internal/run/worker"
+	"github.com/kinoko-dev/kinoko/internal/serve/storage"
+	"github.com/kinoko-dev/kinoko/internal/shared/decay"
+	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
 // =============================================================================

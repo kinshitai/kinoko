@@ -5,7 +5,7 @@ package integration
 import (
 	"testing"
 
-	"github.com/kinoko-dev/kinoko/internal/metrics"
+	"github.com/kinoko-dev/kinoko/internal/run/metrics"
 )
 
 func TestStatsCollectorReturnsMetrics(t *testing.T) {

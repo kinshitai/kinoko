@@ -96,7 +96,7 @@ jobs:
           LD_LIBRARY_PATH: ${{ github.workspace }}/onnxruntime-linux-x64-1.22.0/lib
         run: |
           go test -v -tags embedding -coverpkg=./internal/...,./cmd/...,./pkg/... \
-            -coverprofile=embedding.cov ./internal/embedding/... -timeout 120s
+            -coverprofile=embedding.cov ./internal/serve/embedding/... -timeout 120s
 
       - name: Coverage report
         run: |

@@ -10,12 +10,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/debug"
-	"github.com/kinoko-dev/kinoko/internal/extraction"
-	"github.com/kinoko-dev/kinoko/internal/llm"
-	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/serverclient"
+	"github.com/kinoko-dev/kinoko/internal/run/apiclient"
+	"github.com/kinoko-dev/kinoko/internal/run/debug"
+	"github.com/kinoko-dev/kinoko/internal/run/extraction"
+	"github.com/kinoko-dev/kinoko/internal/run/llm"
+	"github.com/kinoko-dev/kinoko/internal/shared/config"
+	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
 // noOpSessionWriter implements extraction.SessionWriter by doing nothing.
@@ -120,13 +120,13 @@ func runExtract(cmd *cobra.Command, args []string) error {
 	if extractAPIURL != "" {
 		serverURL = extractAPIURL
 	}
-	serverClient := serverclient.New(serverURL)
+	serverClient := apiclient.New(serverURL)
 
 	// Embedder via server HTTP API.
-	embedder := serverclient.NewHTTPEmbedder(serverClient, cfg.Embedding.GetDims())
+	embedder := apiclient.NewHTTPEmbedder(serverClient, cfg.Embedding.GetDims())
 
 	// Skill querier via server HTTP API.
-	querier := serverclient.NewHTTPQuerier(serverClient)
+	querier := apiclient.NewHTTPQuerier(serverClient)
 
 	// Initialize LLM client — Stage2 and Stage3 need it.
 	llmAPIKey := cfg.LLM.APIKey
@@ -159,7 +159,7 @@ func runExtract(cmd *cobra.Command, args []string) error {
 
 	// Git committer via SSH push.
 	sshURL := fmt.Sprintf("ssh://%s:%d", cfg.Server.Host, cfg.Server.Port)
-	committer := serverclient.NewGitPushCommitter(sshURL, cfg.Server.DataDir, logger)
+	committer := apiclient.NewGitPushCommitter(sshURL, cfg.Server.DataDir, logger)
 
 	// Session writer and reviewer are client-local concerns (not server endpoints)
 	// Sessions are now tracked via git commits; reviews stay local

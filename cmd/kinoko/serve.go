@@ -13,11 +13,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kinoko-dev/kinoko/internal/api"
-	"github.com/kinoko-dev/kinoko/internal/config"
-	"github.com/kinoko-dev/kinoko/internal/embedding"
-	"github.com/kinoko-dev/kinoko/internal/gitserver"
-	"github.com/kinoko-dev/kinoko/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/serve/api"
+	"github.com/kinoko-dev/kinoko/internal/serve/embedding"
+	"github.com/kinoko-dev/kinoko/internal/serve/gitserver"
+	"github.com/kinoko-dev/kinoko/internal/serve/storage"
+	"github.com/kinoko-dev/kinoko/internal/shared/config"
 )
 
 var serveCmd = &cobra.Command{

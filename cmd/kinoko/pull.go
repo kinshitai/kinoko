@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kinoko-dev/kinoko/internal/client"
+	"github.com/kinoko-dev/kinoko/internal/run/client"
 )
 
 var pullAll bool

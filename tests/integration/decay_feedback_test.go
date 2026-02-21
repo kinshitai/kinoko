@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kinoko-dev/kinoko/internal/decay"
-	"github.com/kinoko-dev/kinoko/internal/model"
+	"github.com/kinoko-dev/kinoko/internal/shared/decay"
+	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
 func TestDecayCycle(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/storage"
+	"github.com/kinoko-dev/kinoko/internal/serve/storage"
+	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
 func TestMultipleSkillsQueryOrdering(t *testing.T) {
