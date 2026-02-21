@@ -66,7 +66,11 @@ func ParseSkillMDFrontMatter(raw string) (name string, version int, category str
 		case "category":
 			category = val
 		case "tags":
-			inTags = true
+			if flow := parseFlowTags(val); len(flow) > 0 {
+				tags = append(tags, flow...)
+			} else {
+				inTags = true
+			}
 		}
 	}
 
@@ -182,8 +186,13 @@ func ExportSkillMD(raw string) (string, error) {
 
 		if key == "tags" || key == "patterns" {
 			// Both map to tags in export.
-			inList = true
-			currentListKey = "tags"
+			// Check for inline/flow syntax first.
+			if flow := parseFlowTags(val); len(flow) > 0 {
+				tags = append(tags, flow...)
+			} else {
+				inList = true
+				currentListKey = "tags"
+			}
 			continue
 		}
 		if allowedScalar[key] {
@@ -215,6 +224,7 @@ func ExportSkillMD(raw string) (string, error) {
 	if category != "" {
 		fmt.Fprintf(&b, "category: %s\n", category)
 	}
+	tags = dedupStrings(tags)
 	if len(tags) > 0 {
 		b.WriteString("tags:\n")
 		for _, tag := range tags {
@@ -227,6 +237,40 @@ func ExportSkillMD(raw string) (string, error) {
 	}
 
 	return b.String(), nil
+}
+
+// parseFlowTags parses YAML flow-syntax tags from a value string.
+// Handles: "[foo, bar]", "foo, bar", and empty strings.
+func parseFlowTags(val string) []string {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return nil
+	}
+	// Strip surrounding brackets if present.
+	if strings.HasPrefix(val, "[") && strings.HasSuffix(val, "]") {
+		val = val[1 : len(val)-1]
+	}
+	var tags []string
+	for _, item := range strings.Split(val, ",") {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			tags = append(tags, item)
+		}
+	}
+	return tags
+}
+
+// dedupStrings removes duplicate strings, preserving first-occurrence order.
+func dedupStrings(ss []string) []string {
+	seen := make(map[string]bool, len(ss))
+	out := make([]string, 0, len(ss))
+	for _, s := range ss {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // skillNameFromClassification derives a kebab-case skill name from classified
