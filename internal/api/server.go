@@ -8,10 +8,18 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/kinoko-dev/kinoko/internal/embedding"
 	"github.com/kinoko-dev/kinoko/internal/storage"
+)
+
+var (
+	// reValidRepo matches owner/name format (lowercase alphanum, hyphens, underscores).
+	reValidRepo = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*/[a-z0-9][a-z0-9_-]*$`)
+	// reValidRev matches a hex git commit hash (4-40 chars).
+	reValidRev = regexp.MustCompile(`^[0-9a-f]{4,40}$`)
 )
 
 // Server is the HTTP API server for discovery and ingestion.
@@ -266,8 +274,15 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 		return
 	}
-	if req.Repo == "" {
-		http.Error(w, `{"error":"repo required"}`, http.StatusBadRequest)
+
+	// Validate repo: must be owner/name format, no path traversal.
+	if !reValidRepo.MatchString(req.Repo) {
+		http.Error(w, `{"error":"invalid repo format"}`, http.StatusBadRequest)
+		return
+	}
+	// Validate rev: must be a hex commit hash (4-40 chars).
+	if req.Rev != "" && !reValidRev.MatchString(req.Rev) {
+		http.Error(w, `{"error":"invalid rev format"}`, http.StatusBadRequest)
 		return
 	}
 
@@ -276,13 +291,16 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.indexFn(r.Context(), req.Repo, req.Rev); err != nil {
-		s.logger.Error("index failed", "repo", req.Repo, "rev", req.Rev, "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "indexing failed"})
-		return
-	}
+	// Run indexing asynchronously — the hook caller doesn't need to wait.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		if err := s.indexFn(ctx, req.Repo, req.Rev); err != nil {
+			s.logger.Error("index failed", "repo", req.Repo, "rev", req.Rev, "error", err)
+		}
+	}()
 
-	writeJSON(w, http.StatusOK, map[string]string{"indexed": req.Repo})
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "indexing", "repo": req.Repo})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

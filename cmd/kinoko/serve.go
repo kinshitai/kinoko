@@ -81,7 +81,7 @@ func bootstrapServer(dataDir string, logger *slog.Logger) error {
 
 // buildIndexFn returns a function that triggers skill indexing for a given repo+rev.
 // It shells out to `kinoko index` so the indexing logic stays in one place.
-func buildIndexFn(_ *storage.SQLiteStore, dataDir string, logger *slog.Logger) func(ctx context.Context, repo, rev string) error {
+func buildIndexFn(dataDir string, logger *slog.Logger) func(ctx context.Context, repo, rev string) error {
 	kinokoBin, err := os.Executable()
 	if err != nil {
 		kinokoBin = "kinoko"
@@ -180,7 +180,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	apiPort := cfg.Server.GetAPIPort()
 	// Build indexFn that reuses the store and embedder for post-receive hook triggers.
-	indexFn := buildIndexFn(store, cfg.Server.DataDir, logger)
+	indexFn := buildIndexFn(cfg.Server.DataDir, logger)
 	apiSrv := api.New(api.Config{
 		Host:     cfg.Server.Host,
 		Port:     apiPort,

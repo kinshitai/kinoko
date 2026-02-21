@@ -71,19 +71,20 @@ func (f *failEmbedder) EmbedBatch(_ context.Context, _ []string) ([][]float32, e
 }
 func (f *failEmbedder) Dimensions() int { return 8 }
 
-func TestIngest_IndexError(t *testing.T) {
+func TestIngest_IndexError_Returns202(t *testing.T) {
+	// With async indexing, errors are logged but 202 is still returned.
 	srv := New(Config{
 		Port: 0,
 		IndexFn: func(_ context.Context, _, _ string) error {
 			return fmt.Errorf("index failed")
 		},
 	})
-	body, _ := json.Marshal(IngestRequest{Repo: "local/test", Rev: "abc"})
+	body, _ := json.Marshal(IngestRequest{Repo: "local/test", Rev: "abcd"})
 	req := httptest.NewRequest("POST", "/api/v1/ingest", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.httpServer.Handler.ServeHTTP(w, req)
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", w.Code)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", w.Code)
 	}
 }
 
