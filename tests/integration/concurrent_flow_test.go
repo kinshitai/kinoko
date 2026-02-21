@@ -61,7 +61,7 @@ func TestConcurrentExtractionAndInjection(t *testing.T) {
 		go func(idx int) {
 			emb := newPredictableEmbedder(3)
 			llm := &predictableLLM{classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"})}
-			inj := injection.New(emb, store, llm, store, testLogger())
+			inj := injection.New(emb, store, llm, nil, testLogger())
 			_, err := inj.Inject(ctx, model.InjectionRequest{
 				Prompt: "fix database issue", LibraryIDs: []string{"test-lib"},
 				MaxSkills: 3, SessionID: fmt.Sprintf("sess-cinj-%d", idx),

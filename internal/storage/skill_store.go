@@ -239,21 +239,6 @@ func (s *SQLiteStore) UpdateUsage(ctx context.Context, id string, outcome string
 		return fmt.Errorf("update usage: %w", err)
 	}
 
-	if outcome == "success" || outcome == "failure" {
-		_, err = s.db.ExecContext(ctx, `
-			UPDATE skills SET success_correlation = (
-				SELECT COALESCE(
-					(CAST(SUM(CASE WHEN session_outcome='success' THEN 1 ELSE 0 END) AS REAL)
-					 - CAST(SUM(CASE WHEN session_outcome='failure' THEN 1 ELSE 0 END) AS REAL))
-					/ CAST(COUNT(*) AS REAL),
-				0.0)
-				FROM injection_events WHERE skill_id = ? AND session_outcome IS NOT NULL
-			) WHERE id = ?`, id, id)
-		if err != nil {
-			return fmt.Errorf("update correlation: %w", err)
-		}
-	}
-
 	return nil
 }
 

@@ -271,17 +271,6 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create session record in store if available.
-	if s.store != nil {
-		sess := &model.SessionRecord{
-			ID:               req.SessionID,
-			ExtractionStatus: model.StatusQueued,
-		}
-		if err := s.store.InsertSession(r.Context(), sess); err != nil {
-			s.logger.Warn("insert session on ingest (may already exist)", "error", err)
-		}
-	}
-
 	if s.enqueue == nil {
 		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "ingestion not available — use 'kinoko run' to process sessions"})
 		return

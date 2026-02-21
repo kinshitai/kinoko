@@ -4,58 +4,12 @@ package integration
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/kinoko-dev/kinoko/internal/decay"
 	"github.com/kinoko-dev/kinoko/internal/model"
-	"github.com/kinoko-dev/kinoko/internal/storage"
 )
-
-func TestFeedbackLoop(t *testing.T) {
-	store := newTestStore(t)
-	ctx := context.Background()
-	embedder := newPredictableEmbedder(3)
-
-	skill := &model.SkillRecord{
-		ID: "skill-fb-1", Name: "fix-auth-flow", Version: 1, LibraryID: "test-lib",
-		Category: model.CategoryTactical, Patterns: []string{"FIX/Backend/AuthFlow"},
-		Quality: model.QualityScores{
-			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
-			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
-			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
-		},
-		Embedding:  embedder.deterministicVector("fix auth flow"),
-		DecayScore: 1.0, SuccessCorrelation: 0.0,
-		ExtractedBy: "test", FilePath: "skills/fix-auth/SKILL.md",
-	}
-	if err := store.Put(ctx, skill, nil); err != nil {
-		t.Fatal(err)
-	}
-
-	now := time.Now().UTC()
-	for i, outcome := range []string{"success", "success", "failure", "success"} {
-		ev := storage.InjectionEventRecord{
-			ID: fmt.Sprintf("ev-fb-%d", i), SessionID: fmt.Sprintf("sess-fb-%d", i),
-			SkillID: "skill-fb-1", RankPosition: 1, MatchScore: 0.8, InjectedAt: now,
-		}
-		if err := store.WriteInjectionEvent(ctx, ev); err != nil {
-			t.Fatalf("write event %d: %v", i, err)
-		}
-		store.DB().Exec("UPDATE injection_events SET session_outcome = ? WHERE id = ?", outcome, ev.ID)
-	}
-
-	if err := store.UpdateUsage(ctx, "skill-fb-1", "success"); err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := store.Get(ctx, "skill-fb-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertApprox(t, got.SuccessCorrelation, 0.5, 0.01, "success_correlation")
-}
 
 func TestDecayCycle(t *testing.T) {
 	store := newTestStore(t)

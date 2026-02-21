@@ -40,11 +40,11 @@ func TestNewSQLiteStore_DBAccessible(t *testing.T) {
 
 	// Verify tables were created.
 	var count int
-	err = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sessions'").Scan(&count)
+	err = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='skills'").Scan(&count)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
-		t.Fatal("sessions table not created")
+		t.Fatal("skills table not created")
 	}
 }
