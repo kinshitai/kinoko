@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"math"
@@ -306,41 +305,4 @@ func (noopCommitter) CommitSkill(_ context.Context, _ string, _ *model.SkillReco
 	return "noop000", nil
 }
 
-// insertSession inserts a session record into the sessions table for metrics.
-func insertSession(t *testing.T, db *sql.DB, sess model.SessionRecord, result *model.ExtractionResult) {
-	t.Helper()
-	status := string(result.Status)
-	rejStage := 0
-	rejReason := ""
-	skillID := ""
 
-	if result.Status == model.StatusRejected {
-		switch {
-		case result.Stage1 != nil && !result.Stage1.Passed:
-			rejStage = 1
-			rejReason = result.Stage1.Reason
-		case result.Stage2 != nil && !result.Stage2.Passed:
-			rejStage = 2
-			rejReason = result.Stage2.Reason
-		case result.Stage3 != nil && !result.Stage3.Passed:
-			rejStage = 3
-			rejReason = result.Stage3.CriticReasoning
-		}
-	}
-	if result.Skill != nil {
-		skillID = result.Skill.ID
-	}
-
-	_, err := db.Exec(`INSERT INTO sessions (id, started_at, ended_at, duration_minutes, tool_call_count,
-		error_count, message_count, error_rate, has_successful_exec, tokens_used, agent_model, user_id,
-		library_id, extraction_status, rejected_at_stage, rejection_reason, extracted_skill_id)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		sess.ID, sess.StartedAt, sess.EndedAt, sess.DurationMinutes, sess.ToolCallCount,
-		sess.ErrorCount, sess.MessageCount, sess.ErrorRate, sess.HasSuccessfulExec,
-		sess.TokensUsed, sess.AgentModel, sess.UserID,
-		sess.LibraryID, status, rejStage, rejReason,
-		sql.NullString{String: skillID, Valid: skillID != ""})
-	if err != nil {
-		t.Fatalf("insert session %s: %v", sess.ID, err)
-	}
-}

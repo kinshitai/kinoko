@@ -40,67 +40,7 @@ CREATE TABLE IF NOT EXISTS skill_embeddings (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS sessions (
-    id                   TEXT PRIMARY KEY,
-    started_at           TIMESTAMP NOT NULL,
-    ended_at             TIMESTAMP NOT NULL,
-    duration_minutes     REAL NOT NULL,
-    tool_call_count      INTEGER NOT NULL,
-    error_count          INTEGER NOT NULL,
-    message_count        INTEGER NOT NULL,
-    error_rate           REAL NOT NULL,
-    has_successful_exec  BOOLEAN NOT NULL,
-    tokens_used          INTEGER NOT NULL DEFAULT 0,
-    agent_model          TEXT NOT NULL DEFAULT '',
-    user_id              TEXT NOT NULL DEFAULT '',
-    library_id           TEXT NOT NULL,
-    extraction_status    TEXT NOT NULL DEFAULT 'pending',
-    rejected_at_stage    INTEGER NOT NULL DEFAULT 0,
-    rejection_reason     TEXT NOT NULL DEFAULT '',
-    extracted_skill_id   TEXT REFERENCES skills(id),
-    log_content_path     TEXT NOT NULL DEFAULT '',
-    retry_count          INTEGER NOT NULL DEFAULT 0,
-    last_error           TEXT NOT NULL DEFAULT '',
-    next_retry_at        TIMESTAMP,
-    claimed_by           TEXT NOT NULL DEFAULT '',
-    claimed_at           TIMESTAMP,
-    created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS injection_events (
-    id              TEXT PRIMARY KEY,
-    session_id      TEXT NOT NULL,
-    skill_id        TEXT NOT NULL REFERENCES skills(id),
-    rank_position   INTEGER NOT NULL,
-    match_score     REAL NOT NULL,
-    pattern_overlap REAL NOT NULL,
-    cosine_sim      REAL NOT NULL,
-    historical_rate REAL NOT NULL,
-    injected_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    session_outcome TEXT DEFAULT NULL,
-    ab_group        TEXT NOT NULL DEFAULT '',
-    delivered       BOOLEAN NOT NULL DEFAULT 1
-);
-
-CREATE TABLE IF NOT EXISTS human_review_samples (
-    id              TEXT PRIMARY KEY,
-    session_id      TEXT NOT NULL REFERENCES sessions(id),
-    extraction_result TEXT NOT NULL,
-    reviewer        TEXT,
-    verdict         TEXT,
-    notes           TEXT,
-    sampled_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    reviewed_at     TIMESTAMP
-);
-
 CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category);
 CREATE INDEX IF NOT EXISTS idx_skills_decay ON skills(decay_score);
 CREATE INDEX IF NOT EXISTS idx_skills_library ON skills(library_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(extraction_status);
-CREATE INDEX IF NOT EXISTS idx_sessions_library ON sessions(library_id);
-CREATE INDEX IF NOT EXISTS idx_injection_events_skill ON injection_events(skill_id);
-CREATE INDEX IF NOT EXISTS idx_injection_events_session ON injection_events(session_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_name_library ON skills(name, library_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_queue ON sessions(extraction_status, next_retry_at);
-CREATE INDEX IF NOT EXISTS idx_injection_events_ab_group ON injection_events(ab_group);
-CREATE INDEX IF NOT EXISTS idx_injection_events_outcome ON injection_events(skill_id, session_outcome);

@@ -522,7 +522,7 @@ func TestInjectMissingSkillFile(t *testing.T) {
 	llm := &predictableLLM{
 		classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"}),
 	}
-	inj := injection.New(embedder, store, llm, store, testLogger())
+	inj := injection.New(embedder, store, llm, nil, testLogger())
 
 	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix database connection",
@@ -579,7 +579,7 @@ func TestExtractThenInject(t *testing.T) {
 	classifyLLM := &predictableLLM{
 		classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"}),
 	}
-	inj := injection.New(embedder, store, classifyLLM, store, testLogger())
+	inj := injection.New(embedder, store, classifyLLM, nil, testLogger())
 
 	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix database connection",
@@ -677,7 +677,7 @@ func TestExtractDecayInjectRanking(t *testing.T) {
 	llm := &predictableLLM{
 		classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"}),
 	}
-	inj := injection.New(embedder, store, llm, store, testLogger())
+	inj := injection.New(embedder, store, llm, nil, testLogger())
 
 	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix database connection",
@@ -757,7 +757,7 @@ func TestSkillFileDeletedGraceful(t *testing.T) {
 	llm := &predictableLLM{
 		classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"}),
 	}
-	inj := injection.New(embedder, store, llm, store, testLogger())
+	inj := injection.New(embedder, store, llm, nil, testLogger())
 
 	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix database connection",
@@ -989,7 +989,6 @@ func TestBug_SamplingCounterRace(t *testing.T) {
 	// Verifies that the P0 sampling counter race (TECH-DEBT D.1) is fixed.
 	// Sampling counters now use atomic.Int64 — this test should pass with -race.
 	// Each goroutine gets its own mocks to avoid test-mock races.
-	store := newTestStore(t)
 	ctx := context.Background()
 
 	const n = 10
@@ -1007,9 +1006,8 @@ func TestBug_SamplingCounterRace(t *testing.T) {
 			s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
 			s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 			pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-				Stage1: s1, Stage2: s2, Stage3: s3, Sessions: store,
-				Committer: noopCommitter{}, Reviewer: store, Log: testLogger(),
-				SampleRate: 1.0,
+				Stage1: s1, Stage2: s2, Stage3: s3,
+				Committer: noopCommitter{}, Log: testLogger(),
 			})
 			sess := goodSession(fmt.Sprintf("sess-race-%d", idx), "test-lib")
 			pipeline.Extract(ctx, sess, []byte(fmt.Sprintf("fix problem %d with solution", idx)))
@@ -1018,50 +1016,6 @@ func TestBug_SamplingCounterRace(t *testing.T) {
 	wg.Wait()
 
 	t.Log("Sampling counter race (TECH-DEBT D.1) — FIXED: atomic.Int64 counters, no race detected")
-}
-
-// =============================================================================
-// P18: Bug — Session insert failure swallows error (TECH-DEBT D.5)
-// =============================================================================
-
-func TestBug_SessionInsertFailureSwallowed(t *testing.T) {
-	store := newTestStore(t)
-	ctx := context.Background()
-	embedder := newPredictableEmbedder(3)
-
-	llm := &predictableLLM{
-		rubricResponse: goodRubricJSON(),
-		criticResponse: extractVerdictJSON(),
-	}
-
-	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
-	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
-
-	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3,
-		Committer: noopCommitter{}, Sessions: store, Log: testLogger(),
-		Extractor: "session-test",
-	})
-
-	// Extract a session — session should be persisted.
-	sess := goodSession("sess-swallow-1", "test-lib")
-	result, _ := pipeline.Extract(ctx, sess, []byte("fix database connection pooling"))
-	if result.Status != model.StatusExtracted {
-		t.Fatalf("status = %q, want extracted", result.Status)
-	}
-
-	// Now extract with SAME session ID — InsertSession will fail (duplicate).
-	// But extraction continues and updateSessionStatus will UPDATE 0 rows.
-	result2, _ := pipeline.Extract(ctx, sess, []byte("fix database connection pooling again"))
-
-	// The second extraction may succeed or fail — the point is the session
-	// status in DB still reflects the FIRST extraction.
-	var dbStatus string
-	store.DB().QueryRow("SELECT extraction_status FROM sessions WHERE id = ?", "sess-swallow-1").Scan(&dbStatus)
-
-	t.Logf("Second extraction status: %q, DB status: %q", result2.Status, dbStatus)
-	t.Log("BUG: If session insert fails, updateSessionStatus silently affects 0 rows (TECH-DEBT D.5)")
 }
 
 // =============================================================================
@@ -1195,7 +1149,7 @@ func TestInjectWithFailingEmbedder(t *testing.T) {
 		classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"}),
 	}
 
-	inj := injection.New(failEmbedder, store, llm, store, testLogger())
+	inj := injection.New(failEmbedder, store, llm, nil, testLogger())
 
 	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix database connection",
@@ -1256,7 +1210,7 @@ func TestExtractDecayToZeroFiltered(t *testing.T) {
 	llm := &predictableLLM{
 		classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"}),
 	}
-	inj := injection.New(embedder, store, llm, store, testLogger())
+	inj := injection.New(embedder, store, llm, nil, testLogger())
 
 	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "fix database connection",
@@ -1372,7 +1326,7 @@ func TestInjectionMatchScoreOrdering(t *testing.T) {
 	llm := &predictableLLM{
 		classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"}),
 	}
-	inj := injection.New(embedder, store, llm, store, testLogger())
+	inj := injection.New(embedder, store, llm, nil, testLogger())
 
 	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt:     "exact-match", // Same text as first skill's embedding.

@@ -1,10 +1,8 @@
-// Package storage provides SQLite-backed persistence for skills, sessions,
-// injection events, and human review samples. It implements the SkillStore
-// and SessionStore interfaces consumed by the extraction and injection pipelines.
+// Package storage provides SQLite-backed persistence for skills.
+// It implements the SkillStore interface consumed by the server.
 package storage
 
 import (
-	"context"
 	"database/sql"
 	_ "embed"
 	"fmt"
@@ -32,12 +30,6 @@ const skillColumns = `id, name, description, version, parent_id, library_id, cat
 	q_innovation_level, q_composite_score, q_critic_confidence,
 	injection_count, last_injected_at, success_correlation, decay_score,
 	source_session_id, extracted_by, file_path, created_at, updated_at`
-
-// SessionStore persists and updates session records.
-type SessionStore interface {
-	InsertSession(ctx context.Context, session *model.SessionRecord) error
-	UpdateSessionResult(ctx context.Context, session *model.SessionRecord) error
-}
 
 // SkillStore is an alias for model.SkillStore.
 type SkillStore = model.SkillStore
@@ -94,12 +86,6 @@ func NewSQLiteStore(dsn string, embeddingModel string) (*SQLiteStore, error) {
 	}
 
 	for _, col := range []struct{ name, ddl string }{
-		{"log_content_path", "ALTER TABLE sessions ADD COLUMN log_content_path TEXT NOT NULL DEFAULT ''"},
-		{"retry_count", "ALTER TABLE sessions ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0"},
-		{"last_error", "ALTER TABLE sessions ADD COLUMN last_error TEXT NOT NULL DEFAULT ''"},
-		{"next_retry_at", "ALTER TABLE sessions ADD COLUMN next_retry_at TIMESTAMP"},
-		{"claimed_by", "ALTER TABLE sessions ADD COLUMN claimed_by TEXT NOT NULL DEFAULT ''"},
-		{"claimed_at", "ALTER TABLE sessions ADD COLUMN claimed_at TIMESTAMP"},
 		{"skill_description", "ALTER TABLE skills ADD COLUMN description TEXT NOT NULL DEFAULT ''"},
 	} {
 		if _, err := db.Exec(col.ddl); err != nil {

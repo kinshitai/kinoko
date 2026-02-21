@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"testing"
 
@@ -260,125 +259,6 @@ func TestEmbeddingFailureDegradation(t *testing.T) {
 	}
 	if len(resp.Skills) == 0 {
 		t.Error("pattern-only injection should still return matching skills")
-	}
-}
-
-func TestSessionPersistence(t *testing.T) {
-	store := newTestStore(t)
-	ctx := context.Background()
-	embedder := newPredictableEmbedder(3)
-
-	llm := &predictableLLM{
-		rubricResponse: goodRubricJSON(),
-		criticResponse: extractVerdictJSON(),
-	}
-
-	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.50}, llm, defaultExtractionConfig(), testLogger())
-	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
-
-	indexer := storage.NewSQLiteIndexer(store)
-	committer := &indexingCommitter{indexer: indexer, embedder: embedder}
-	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3,
-		Committer: committer, Sessions: store,
-		Log: testLogger(), SampleRate: 0, Extractor: "session-persist-test",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	sess := goodSession("sess-persist-1", "test-lib")
-	result, err := pipeline.Extract(ctx, sess, []byte("fix database connection pooling issue with retry logic"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Status != model.StatusExtracted {
-		t.Fatalf("status = %q, want extracted", result.Status)
-	}
-
-	var status string
-	var skillID sql.NullString
-	err = store.DB().QueryRow("SELECT extraction_status, extracted_skill_id FROM sessions WHERE id = ?", "sess-persist-1").Scan(&status, &skillID)
-	if err != nil {
-		t.Fatalf("query session: %v", err)
-	}
-	if status != "extracted" {
-		t.Errorf("session status = %q, want extracted", status)
-	}
-	if !skillID.Valid || skillID.String == "" {
-		t.Error("extracted_skill_id should be set")
-	}
-
-	rejSess := shortSession("sess-persist-2", "test-lib")
-	rejResult, err := pipeline.Extract(ctx, rejSess, []byte("tiny"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rejResult.Status != model.StatusRejected {
-		t.Fatalf("status = %q, want rejected", rejResult.Status)
-	}
-
-	var rejStatus string
-	var rejStage int
-	var rejReason string
-	err = store.DB().QueryRow("SELECT extraction_status, rejected_at_stage, rejection_reason FROM sessions WHERE id = ?", "sess-persist-2").Scan(&rejStatus, &rejStage, &rejReason)
-	if err != nil {
-		t.Fatalf("query rejected session: %v", err)
-	}
-	if rejStatus != "rejected" {
-		t.Errorf("rejected session status = %q, want rejected", rejStatus)
-	}
-	if rejStage != 1 {
-		t.Errorf("rejected_at_stage = %d, want 1", rejStage)
-	}
-	if rejReason == "" {
-		t.Error("rejection_reason should not be empty")
-	}
-}
-
-func TestHumanReviewSampling(t *testing.T) {
-	store := newTestStore(t)
-	ctx := context.Background()
-	embedder := newPredictableEmbedder(3)
-
-	llm := &predictableLLM{
-		rubricResponse: goodRubricJSON(),
-		criticResponse: extractVerdictJSON(),
-	}
-
-	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.50}, llm, defaultExtractionConfig(), testLogger())
-	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
-
-	pipeline, err := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3,
-		Sessions: store, Reviewer: store, Committer: noopCommitter{},
-		Log: testLogger(), SampleRate: 1.0, Extractor: "sampling-test",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	sess := goodSession("sess-sample-1", "test-lib")
-	result, err := pipeline.Extract(ctx, sess, []byte("fix database connection pooling"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Status != model.StatusExtracted {
-		t.Fatalf("status = %q, want extracted", result.Status)
-	}
-
-	var sampleCount int
-	store.DB().QueryRow("SELECT COUNT(*) FROM human_review_samples WHERE session_id = ?", "sess-sample-1").Scan(&sampleCount)
-	if sampleCount != 1 {
-		t.Errorf("sample count = %d, want 1", sampleCount)
-	}
-
-	var resultJSON string
-	store.DB().QueryRow("SELECT extraction_result FROM human_review_samples WHERE session_id = ?", "sess-sample-1").Scan(&resultJSON)
-	if resultJSON == "" {
-		t.Error("extraction_result should not be empty")
 	}
 }
 

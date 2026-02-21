@@ -7,9 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 // TestBug_UnboundedINClause tests the P1 issue where loadPatternsMulti and
@@ -83,74 +80,5 @@ func TestFileAfterCommit(t *testing.T) {
 	}
 	if string(fileContent) != string(body) {
 		t.Errorf("file content mismatch")
-	}
-}
-
-func TestDuplicateSessionInsert(t *testing.T) {
-	s := testStore(t)
-	ctx := context.Background()
-
-	sess := &model.SessionRecord{
-		ID:                "sess-dup-1",
-		StartedAt:         time.Now(),
-		EndedAt:           time.Now(),
-		DurationMinutes:   5.0,
-		ToolCallCount:     3,
-		ErrorCount:        0,
-		MessageCount:      10,
-		ErrorRate:         0.0,
-		HasSuccessfulExec: true,
-		LibraryID:         "default",
-		ExtractionStatus:  model.StatusPending,
-	}
-
-	if err := s.InsertSession(ctx, sess); err != nil {
-		t.Fatalf("first insert: %v", err)
-	}
-
-	// Second insert with same ID should fail with UNIQUE constraint
-	err := s.InsertSession(ctx, sess)
-	if err == nil {
-		t.Fatal("expected error on duplicate session insert")
-	}
-	if !strings.Contains(err.Error(), "UNIQUE constraint") {
-		t.Errorf("expected UNIQUE constraint error, got: %v", err)
-	}
-}
-
-func TestSessionInsertAndGet(t *testing.T) {
-	s := testStore(t)
-	ctx := context.Background()
-
-	sess := &model.SessionRecord{
-		ID:                "sess-ig-1",
-		StartedAt:         time.Now().UTC().Truncate(time.Second),
-		EndedAt:           time.Now().UTC().Truncate(time.Second),
-		DurationMinutes:   12.5,
-		ToolCallCount:     7,
-		ErrorCount:        1,
-		MessageCount:      20,
-		ErrorRate:         0.05,
-		HasSuccessfulExec: true,
-		TokensUsed:        1500,
-		AgentModel:        "gpt-4",
-		UserID:            "user-1",
-		LibraryID:         "lib-1",
-		ExtractionStatus:  model.StatusPending,
-	}
-
-	if err := s.InsertSession(ctx, sess); err != nil {
-		t.Fatalf("insert: %v", err)
-	}
-
-	got, err := s.GetSession(ctx, "sess-ig-1")
-	if err != nil {
-		t.Fatalf("get: %v", err)
-	}
-	if got.DurationMinutes != 12.5 {
-		t.Errorf("duration = %f, want 12.5", got.DurationMinutes)
-	}
-	if got.ExtractionStatus != model.StatusPending {
-		t.Errorf("status = %q, want pending", got.ExtractionStatus)
 	}
 }

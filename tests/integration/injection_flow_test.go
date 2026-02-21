@@ -52,7 +52,7 @@ func TestFullInjectionFlow(t *testing.T) {
 	llm := &predictableLLM{
 		classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"}),
 	}
-	inj := injection.New(embedder, store, llm, store, testLogger())
+	inj := injection.New(embedder, store, llm, nil, testLogger())
 
 	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt: "fix database connection pooling issue", LibraryIDs: []string{"test-lib"},
@@ -71,11 +71,6 @@ func TestFullInjectionFlow(t *testing.T) {
 		t.Errorf("top skill = %q, want skill-inj-1", resp.Skills[0].SkillID)
 	}
 
-	var eventCount int
-	store.DB().QueryRow("SELECT COUNT(*) FROM injection_events WHERE session_id = ?", "sess-inj-001").Scan(&eventCount)
-	if eventCount != 2 {
-		t.Errorf("injection events = %d, want 2", eventCount)
-	}
 }
 
 func TestDeadSkillFiltering(t *testing.T) {
@@ -112,7 +107,7 @@ func TestDeadSkillFiltering(t *testing.T) {
 	llm := &predictableLLM{
 		classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"}),
 	}
-	inj := injection.New(embedder, store, llm, store, testLogger())
+	inj := injection.New(embedder, store, llm, nil, testLogger())
 
 	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt: "fix db", LibraryIDs: []string{"test-lib"},
@@ -154,7 +149,7 @@ func TestEmbeddingCosineSimilarityE2E(t *testing.T) {
 	llm := &predictableLLM{
 		classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"}),
 	}
-	inj := injection.New(embedder, store, llm, store, testLogger())
+	inj := injection.New(embedder, store, llm, nil, testLogger())
 
 	resp, err := inj.Inject(ctx, model.InjectionRequest{
 		Prompt: "fix database connection", LibraryIDs: []string{"test-lib"},
