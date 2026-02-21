@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/kinoko-dev/kinoko/internal/model"
 )
 
 func TestAddr(t *testing.T) {
@@ -73,14 +71,14 @@ func (f *failEmbedder) EmbedBatch(_ context.Context, _ []string) ([][]float32, e
 }
 func (f *failEmbedder) Dimensions() int { return 8 }
 
-func TestIngest_EnqueueError(t *testing.T) {
+func TestIngest_IndexError(t *testing.T) {
 	srv := New(Config{
 		Port: 0,
-		Enqueue: func(_ context.Context, _ model.SessionRecord, _ []byte) error {
-			return fmt.Errorf("queue full")
+		IndexFn: func(_ context.Context, _, _ string) error {
+			return fmt.Errorf("index failed")
 		},
 	})
-	body, _ := json.Marshal(IngestRequest{SessionID: "s1", Log: "data"})
+	body, _ := json.Marshal(IngestRequest{Repo: "local/test", Rev: "abc"})
 	req := httptest.NewRequest("POST", "/api/v1/ingest", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.httpServer.Handler.ServeHTTP(w, req)

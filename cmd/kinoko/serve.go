@@ -17,7 +17,6 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/config"
 	"github.com/kinoko-dev/kinoko/internal/embedding"
 	"github.com/kinoko-dev/kinoko/internal/gitserver"
-	"github.com/kinoko-dev/kinoko/internal/model"
 	"github.com/kinoko-dev/kinoko/internal/storage"
 )
 
@@ -78,6 +77,29 @@ func bootstrapServer(dataDir string, logger *slog.Logger) error {
 	}
 	logger.Info("Admin keypair generated", "path", keyPath)
 	return nil
+}
+
+// buildIndexFn returns a function that triggers skill indexing for a given repo+rev.
+// It shells out to `kinoko index` so the indexing logic stays in one place.
+func buildIndexFn(_ *storage.SQLiteStore, dataDir string, logger *slog.Logger) func(ctx context.Context, repo, rev string) error {
+	kinokoBin, err := os.Executable()
+	if err != nil {
+		kinokoBin = "kinoko"
+	}
+	return func(ctx context.Context, repo, rev string) error {
+		args := []string{"index", "--repo", repo, "--data-dir", dataDir}
+		if rev != "" {
+			args = append(args, "--rev", rev)
+		}
+		cmd := exec.CommandContext(ctx, kinokoBin, args...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		logger.Info("triggering index", "repo", repo, "rev", rev)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("kinoko index: %w", err)
+		}
+		return nil
+	}
 }
 
 // libraryIDs is defined in workers_run.go.
@@ -157,6 +179,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logger.Warn("No embedding API key — /discover will return 503")
 	}
 	apiPort := cfg.Server.GetAPIPort()
+	// Build indexFn that reuses the store and embedder for post-receive hook triggers.
+	indexFn := buildIndexFn(store, cfg.Server.DataDir, logger)
 	apiSrv := api.New(api.Config{
 		Host:     cfg.Server.Host,
 		Port:     apiPort,
@@ -164,9 +188,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Embedder: apiEmbedder,
 		SSHURL:   connInfo.SSHUrl,
 		Logger:   logger,
-		Enqueue: func(ctx context.Context, session model.SessionRecord, logContent []byte) error {
-			return fmt.Errorf("extraction not available on server — use 'kinoko run' to process sessions")
-		},
+		IndexFn:  indexFn,
 	})
 	// Wire embedding engine for /api/v1/embed endpoint.
 	// Built with -tags embedding: real ONNX engine. Without: nil (503).
