@@ -35,3 +35,5 @@ coverage.out
 combined.cov
 REVIEW*.md
 cover.out
+cover-full.out
+cover-noncmd.out
