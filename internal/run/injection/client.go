@@ -1,4 +1,3 @@
-// Package injection provides the skill injection client and prompt builder.
 package injection
 
 import (
