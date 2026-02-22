@@ -17,13 +17,16 @@ AVAILABLE COMMANDS:
   serve     Start the Kinoko infrastructure server
   run       Start the local agent daemon
   extract   Run extraction pipeline on a session log file
+  import    Import session logs into the extraction queue
   ingest    Import a markdown file as a skill through the quality critic
   match     Find skills matching a query
   decay     Run one decay cycle
   scan      Scan files for credentials and secrets
   index     Index a skill repo into SQLite
   pull      Clone or update skill repositories
-  stats     Print pipeline metrics
+  queue     Queue inspection and management
+  rebuild   Rebuild SQLite cache from git repos
+  stats     Print client pipeline metrics
   help      Help about any command
 
 GLOBAL FLAGS:
@@ -277,6 +280,43 @@ kinoko ingest doc.md --name my-skill --library team-alpha
 
 ---
 
+## `kinoko import`
+
+Parse session log files and enqueue them for extraction. Does **not** start workers — sessions wait for `kinoko run` to process them.
+
+```bash
+kinoko import [path...] [flags]
+kinoko import --dir ./logs/
+```
+
+**Arguments:**
+
+| Argument | Description |
+|---|---|
+| `[path...]` | One or more session log file paths |
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--config` | string | `""` | Config file path |
+| `--library` | string | first configured | Library ID |
+| `--dir` | string | `""` | Directory of log files to import (`.log`, `.txt`, `.json`) |
+
+**Examples:**
+```bash
+kinoko import session.log
+kinoko import a.log b.log c.log
+kinoko import --dir ./logs/
+kinoko import --dir ./logs/ --library my-team
+```
+
+**Behavior:**
+- Files larger than 50 MB are skipped
+- Provide file paths as arguments, `--dir`, or both
+
+---
+
 ## `kinoko match`
 
 Query the Kinoko server for skills matching a text query. Useful for testing injection relevance or exploring the skill library.
@@ -456,9 +496,58 @@ kinoko pull --all                # Sync all cached skills
 
 ---
 
+## `kinoko queue`
+
+Queue inspection and management subcommands.
+
+```bash
+kinoko queue stats     # Print queue depth and status counts
+kinoko queue list      # List queued, pending, and errored sessions
+kinoko queue retry <session-id>  # Requeue a failed session
+kinoko queue flush     # Delete all queued sessions from the queue
+```
+
+**Subcommands:**
+
+| Subcommand | Description |
+|---|---|
+| `stats` | Print queue depth and status counts |
+| `list` | List queued, pending, and errored sessions |
+| `retry <session-id>` | Requeue a failed session for re-extraction |
+| `flush` | Delete all queued sessions from the queue |
+
+---
+
+## `kinoko rebuild`
+
+Rebuild the SQLite cache from git repos. Scans the repos directory for bare git repositories containing SKILL.md files, parses and indexes each one into SQLite.
+
+```bash
+kinoko rebuild [flags]
+```
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--clean` | bool | `false` | Drop skill tables before rebuilding |
+| `--library` | string | `""` | Only rebuild repos under this library prefix |
+| `--dsn` | string | `$KINOKO_STORAGE_DSN` | SQLite DSN |
+| `--api-url` | string | `$KINOKO_API_URL` or `http://127.0.0.1:23233` | Kinoko API URL |
+| `--data-dir` | string | `$SOFT_SERVE_DATA_PATH` or `~/.kinoko/data` | Soft Serve data directory |
+
+**Examples:**
+```bash
+kinoko rebuild
+kinoko rebuild --clean
+kinoko rebuild --library my-team --clean
+```
+
+---
+
 ## `kinoko stats`
 
-Query the database and print pipeline metrics.
+Query the database and print client pipeline metrics.
 
 ```bash
 kinoko stats [flags]
