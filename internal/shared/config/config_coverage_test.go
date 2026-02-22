@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"os/user"
 	"path/filepath"
 	"testing"
 )
@@ -201,5 +202,110 @@ func TestLoad_FileReadError(t *testing.T) {
 	_, err := Load(path)
 	if err == nil {
 		t.Fatal("expected error when config path is a directory")
+	}
+}
+
+func TestGetQueueDSN_Custom(t *testing.T) {
+	c := &ClientConfig{QueueDSN: "/custom/queue.db"}
+	if got := c.GetQueueDSN(); got != "/custom/queue.db" {
+		t.Fatalf("GetQueueDSN() = %q, want /custom/queue.db", got)
+	}
+}
+
+func TestGetQueueDSN_Default(t *testing.T) {
+	c := &ClientConfig{}
+	got := c.GetQueueDSN()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		// fallback branch
+		if got != "queue.db" {
+			t.Fatalf("GetQueueDSN() = %q, want queue.db (no home dir)", got)
+		}
+		return
+	}
+	want := filepath.Join(home, ".kinoko", "queue.db")
+	if got != want {
+		t.Fatalf("GetQueueDSN() = %q, want %q", got, want)
+	}
+}
+
+func TestServerURL(t *testing.T) {
+	cfg := &Config{Server: ServerConfig{Host: "10.0.0.1", Port: 5000}}
+	got := cfg.ServerURL()
+	// APIPort defaults to Port+2 = 5002
+	if got != "http://10.0.0.1:5002" {
+		t.Fatalf("ServerURL() = %q, want http://10.0.0.1:5002", got)
+	}
+}
+
+func TestGetDims_Default(t *testing.T) {
+	e := EmbeddingConfig{}
+	if got := e.GetDims(); got != 384 {
+		t.Fatalf("GetDims() = %d, want 384", got)
+	}
+}
+
+func TestGetDims_Custom(t *testing.T) {
+	e := EmbeddingConfig{Dims: 768}
+	if got := e.GetDims(); got != 768 {
+		t.Fatalf("GetDims() = %d, want 768", got)
+	}
+}
+
+func TestGetDims_Negative(t *testing.T) {
+	e := EmbeddingConfig{Dims: -1}
+	if got := e.GetDims(); got != 384 {
+		t.Fatalf("GetDims() = %d, want 384 for negative input", got)
+	}
+}
+
+func TestGetNoveltyThreshold_Default(t *testing.T) {
+	e := EmbeddingConfig{}
+	if got := e.GetNoveltyThreshold(); got != 0.85 {
+		t.Fatalf("GetNoveltyThreshold() = %f, want 0.85", got)
+	}
+}
+
+func TestGetNoveltyThreshold_Custom(t *testing.T) {
+	e := EmbeddingConfig{NoveltyThreshold: 0.5}
+	if got := e.GetNoveltyThreshold(); got != 0.5 {
+		t.Fatalf("GetNoveltyThreshold() = %f, want 0.5", got)
+	}
+}
+
+func TestGetNoveltyThreshold_Negative(t *testing.T) {
+	e := EmbeddingConfig{NoveltyThreshold: -0.1}
+	if got := e.GetNoveltyThreshold(); got != 0.85 {
+		t.Fatalf("GetNoveltyThreshold() = %f, want 0.85 for negative", got)
+	}
+}
+
+func TestGetNoveltyThreshold_AboveOne(t *testing.T) {
+	e := EmbeddingConfig{NoveltyThreshold: 1.5}
+	if got := e.GetNoveltyThreshold(); got != 0.85 {
+		t.Fatalf("GetNoveltyThreshold() = %f, want 0.85 for >1", got)
+	}
+}
+
+func TestGetNoveltyThreshold_ExactlyOne(t *testing.T) {
+	e := EmbeddingConfig{NoveltyThreshold: 1.0}
+	if got := e.GetNoveltyThreshold(); got != 1.0 {
+		t.Fatalf("GetNoveltyThreshold() = %f, want 1.0", got)
+	}
+}
+
+func TestExpandPath_UsernameNoTrailingPath(t *testing.T) {
+	// ~username with no slash — exercises the else branch (remainingPath="")
+	cu, err := user.Current()
+	if err != nil {
+		t.Skip("cannot get current user")
+	}
+	got := expandPath("~" + cu.Username)
+	// Should resolve to user's home dir
+	if got != cu.HomeDir {
+		// If lookup fails, original is returned — also acceptable
+		if got != "~"+cu.Username {
+			t.Fatalf("expandPath(~%s) = %q, want %q or unchanged", cu.Username, got, cu.HomeDir)
+		}
 	}
 }
