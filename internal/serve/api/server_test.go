@@ -99,8 +99,8 @@ func (m *mockEngine) EmbedBatch(_ context.Context, texts []string) ([][]float32,
 	return result, nil
 }
 func (m *mockEngine) Dims() int       { return 8 }
-func (m *mockEngine) ModelID() string  { return "test-model" }
-func (m *mockEngine) Close() error     { return nil }
+func (m *mockEngine) ModelID() string { return "test-model" }
+func (m *mockEngine) Close() error    { return nil }
 
 // P1-7: Verify rate limit returns 429 (tested indirectly via structure).
 func TestDiscoverRateLimitStructure(t *testing.T) {
@@ -209,7 +209,7 @@ func TestSetEmbedEngine(t *testing.T) {
 func TestHandleListByDecay_StoreError(t *testing.T) {
 	// store is nil → will panic or error; use a server with nil store
 	// Actually store.ListByDecay will panic on nil. Let's use a real store and test happy path,
-	// then for error we need a store that returns error. We'll test with nil store causing panic recovery... 
+	// then for error we need a store that returns error. We'll test with nil store causing panic recovery...
 	// Better: just test the endpoint works with a valid store.
 	store := newTestStore(t)
 	srv := New(Config{Port: 0, Store: store})
