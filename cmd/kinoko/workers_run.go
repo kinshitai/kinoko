@@ -97,7 +97,7 @@ func buildClientPipeline(cfg *config.Config, serverClient *apiclient.Client, log
 }
 
 // startClientWorkerSystem creates queue, pool, scheduler for kinoko run (client mode).
-// Uses local queue DB and server HTTP client. Decay is nil (moves to serve in T7).
+// Uses local queue DB and server HTTP client.
 func startClientWorkerSystem(
 	ctx context.Context,
 	cfg *config.Config,
@@ -120,7 +120,7 @@ func startClientWorkerSystem(
 		// Degraded mode — no LLM key, skip extraction workers.
 		logger.Warn("No LLM API key — extraction disabled, running scheduler only.")
 
-		// No decay runner in client mode (decay moves to serve in T7).
+		// No decay runner in client mode; decay runs server-side.
 		sched = worker.NewScheduler(q, nil, nil, libraryIDs(cfg), schedCfg, logger)
 		if err := sched.Start(ctx); err != nil {
 			return nil, nil, nil, fmt.Errorf("start scheduler: %w", err)
@@ -157,7 +157,7 @@ func startClientWorkerSystem(
 		return nil, nil, nil, fmt.Errorf("start pool: %w", err)
 	}
 
-	// No decay runner in client mode (decay moves to serve in T7).
+	// No decay runner in client mode; decay runs server-side.
 	sched = worker.NewScheduler(q, pool, nil, libraryIDs(cfg), schedCfg, logger)
 	if err := sched.Start(ctx); err != nil {
 		_ = pool.Stop(context.Background())
