@@ -26,7 +26,7 @@ var runCmd = &cobra.Command{
 
 This command starts:
   • Worker pool — extracts knowledge from local session logs
-  • Scheduler — decay cron, stale sweep, periodic stats
+  • Scheduler — stale sweep, periodic stats
   • Injection — loads relevant skills into agent sessions
 
 The daemon reads the server URL from config to push extracted skills.
