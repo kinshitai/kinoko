@@ -34,3 +34,4 @@ internal-docs/
 coverage.out
 combined.cov
 REVIEW*.md
+cover.out
