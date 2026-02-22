@@ -509,6 +509,7 @@ func TestWorkerPoolE2E(t *testing.T) {
 
 	cfg := workerConfig()
 	cfg.Concurrency = 2
+	cfg.InitialBackoff = 30 * time.Second // Prevent retry within test deadline
 	queueStore, err := queue.New(filepath.Join(tmpDir, "queue.db"))
 	if err != nil {
 		t.Fatal(err)
