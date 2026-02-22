@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -408,6 +409,76 @@ func TestClaimFromEmptyQueue(t *testing.T) {
 	}
 	if entry != nil {
 		t.Fatal("expected nil from empty queue")
+	}
+}
+
+func TestEnqueueWriteFileError(t *testing.T) {
+	_, q, dir := setup(t)
+	ctx := context.Background()
+
+	// Make the queue directory read-only so WriteFile fails.
+	queueDir := filepath.Join(dir, "queue")
+	if err := os.MkdirAll(queueDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.Chmod(queueDir, 0o444); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+	t.Cleanup(func() { os.Chmod(queueDir, 0o755) })
+
+	err := q.Enqueue(ctx, makeSession("wf1"), []byte("log"))
+	if err == nil {
+		t.Fatal("expected error from read-only log directory")
+	}
+	if !strings.Contains(err.Error(), "write log file") {
+		t.Fatalf("expected 'write log file' error, got: %v", err)
+	}
+}
+
+func TestClaimAfterDBClose(t *testing.T) {
+	store, q, _ := setup(t)
+	ctx := context.Background()
+
+	store.Close()
+	_, err := q.Claim(ctx, "w1")
+	if err == nil {
+		t.Fatal("expected error after DB close")
+	}
+}
+
+func TestDepthAfterDBClose(t *testing.T) {
+	store, q, _ := setup(t)
+	ctx := context.Background()
+
+	store.Close()
+	_, err := q.Depth(ctx)
+	if err == nil {
+		t.Fatal("expected error after DB close")
+	}
+}
+
+func TestRequeueStaleAfterDBClose(t *testing.T) {
+	store, q, _ := setup(t)
+	ctx := context.Background()
+
+	store.Close()
+	_, err := q.RequeueStale(ctx, 10*time.Minute)
+	if err == nil {
+		t.Fatal("expected error after DB close")
+	}
+}
+
+func TestNewInvalidDSN(t *testing.T) {
+	// Use a path that cannot be created (nested under a file, not a directory).
+	tmpFile := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(tmpFile, []byte("x"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	dsn := filepath.Join(tmpFile, "sub", "queue.db")
+
+	_, err := New(dsn)
+	if err == nil {
+		t.Fatal("expected error for invalid DSN")
 	}
 }
 
