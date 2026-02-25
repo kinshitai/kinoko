@@ -1,10 +1,12 @@
 package llm
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -158,13 +160,114 @@ func detectMaxProxy() bool {
 
 // loadClaudeCodeOAuth reads Claude Code OAuth credentials.
 // Linux/Windows: ~/.claude/.credentials.json
-// Stub for now — full implementation in commit 2.
+// Returns the access token as APIKey (both API keys and OAuth tokens use the same auth header).
+// TODO: macOS Keychain support for "Claude Code-credentials" item is out of scope for v1.
 func loadClaudeCodeOAuth() (*Credentials, error) {
-	return nil, fmt.Errorf("Claude Code OAuth reader not implemented yet")
+	return loadClaudeCodeOAuthWithHome("")
+}
+
+// loadClaudeCodeOAuthWithHome reads Claude Code OAuth credentials with a custom home directory.
+// Used for testing. If homeDir is empty, uses the user's actual home directory.
+func loadClaudeCodeOAuthWithHome(homeDir string) (*Credentials, error) {
+	if homeDir == "" {
+		var err error
+		homeDir, err = os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get home directory: %w", err)
+		}
+	}
+
+	credPath := filepath.Join(homeDir, ".claude", ".credentials.json")
+	
+	data, err := os.ReadFile(credPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("Claude Code credentials not found at %s", credPath)
+		}
+		return nil, fmt.Errorf("failed to read Claude Code credentials: %w", err)
+	}
+
+	var creds struct {
+		AccessToken  string `json:"accessToken"`
+		RefreshToken string `json:"refreshToken"`
+		ExpiresAt    int64  `json:"expiresAt"`
+	}
+
+	if err := json.Unmarshal(data, &creds); err != nil {
+		return nil, fmt.Errorf("malformed Claude Code credentials JSON: %w", err)
+	}
+
+	if creds.AccessToken == "" {
+		return nil, fmt.Errorf("Claude Code credentials missing accessToken")
+	}
+
+	// Check expiry (if expiresAt is 0 or missing, treat as valid)
+	if creds.ExpiresAt > 0 && time.Now().Unix() >= creds.ExpiresAt {
+		return nil, fmt.Errorf("OAuth token expired. Run 'claude' to refresh your Claude Code session")
+	}
+
+	return &Credentials{
+		Provider: "anthropic",
+		APIKey:   creds.AccessToken,
+		Model:    getDefaultModel("anthropic"),
+		BaseURL:  "",
+	}, nil
 }
 
 // loadCodexOAuth reads Codex OAuth credentials from ~/.codex/auth.json.
-// Stub for now — full implementation in commit 2.
 func loadCodexOAuth() (*Credentials, error) {
-	return nil, fmt.Errorf("Codex OAuth reader not implemented yet")
+	return loadCodexOAuthWithHome("")
+}
+
+// loadCodexOAuthWithHome reads Codex OAuth credentials with a custom home directory.
+// Used for testing. If homeDir is empty, uses the user's actual home directory.
+func loadCodexOAuthWithHome(homeDir string) (*Credentials, error) {
+	if homeDir == "" {
+		var err error
+		homeDir, err = os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get home directory: %w", err)
+		}
+	}
+
+	credPath := filepath.Join(homeDir, ".codex", "auth.json")
+	
+	data, err := os.ReadFile(credPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("Codex credentials not found at %s", credPath)
+		}
+		return nil, fmt.Errorf("failed to read Codex credentials: %w", err)
+	}
+
+	var creds struct {
+		Token     string `json:"token"`
+		ExpiresAt string `json:"expires_at"`
+	}
+
+	if err := json.Unmarshal(data, &creds); err != nil {
+		return nil, fmt.Errorf("malformed Codex credentials JSON: %w", err)
+	}
+
+	if creds.Token == "" {
+		return nil, fmt.Errorf("Codex credentials missing token")
+	}
+
+	// Check expiry (if expires_at is missing, treat as valid)
+	if creds.ExpiresAt != "" {
+		expiryTime, err := time.Parse(time.RFC3339, creds.ExpiresAt)
+		if err != nil {
+			return nil, fmt.Errorf("malformed Codex expiry time: %w", err)
+		}
+		if time.Now().After(expiryTime) {
+			return nil, fmt.Errorf("OAuth token expired. Run 'codex login' to refresh your Codex session")
+		}
+	}
+
+	return &Credentials{
+		Provider: "openai",
+		APIKey:   creds.Token,
+		Model:    getDefaultModel("openai"),
+		BaseURL:  "",
+	}, nil
 }
