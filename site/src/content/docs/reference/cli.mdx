@@ -60,6 +60,59 @@ kinoko init [flags]
 - Safe to run multiple times — won't overwrite existing files
 - With `--connect`, configures the workspace as a client of the given server
 - Without `--connect`, sets up for solo use (localhost)
+- Interactive LLM setup wizard detects existing credentials and guides you through provider selection
+
+---
+
+## `kinoko doctor`
+
+Validate your Kinoko installation by checking configuration, database access, SSH keys, server connectivity, and LLM credentials.
+
+```bash
+kinoko doctor [flags]
+```
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--config` | string | `~/.kinoko/config.yaml` | Path to config file |
+
+**Checks performed:**
+
+1. **Config file** — exists and parses correctly
+2. **Queue database** — path is writable for SQLite operations
+3. **Cache directory** — exists for local skill storage
+4. **SSH key** — exists for git server authentication
+5. **Server** — reachable on configured port (localhost:23233 by default)
+6. **LLM credentials** — resolvable via the 10-step credential chain
+7. **LLM connectivity** — actual API test with latency measurement
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | All checks passed |
+| 1 | Issues found (see output for details) |
+
+**Example output:**
+```
+🍄 Kinoko Doctor
+
+  ✓ Config file      /home/user/.kinoko/config.yaml
+  ✓ Queue database   /home/user/.kinoko/queue.db
+  ✓ Cache directory  /home/user/.kinoko/cache/
+  ✓ SSH key          /home/user/.kinoko/id_ed25519
+  ✗ Server           localhost:23233 (connection refused)
+  ✓ LLM credentials  Anthropic (setup token)
+  ✓ LLM connectivity claude-opus-4-0-20250514 (247ms)
+
+  1 issue found. Run 'kinoko serve' to start the server.
+```
+
+**Common issues:**
+- Server not running: start with `kinoko serve`
+- Missing LLM credentials: run `kinoko init` for the setup wizard, or set environment variables
 
 ---
 

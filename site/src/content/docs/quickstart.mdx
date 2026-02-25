@@ -68,12 +68,48 @@ Three ports open: SSH (23231), Soft Serve HTTP (23232), and the Kinoko API (2323
 
 Keep this terminal open. The server self-bootstraps on first run — it creates its data directory and admin keypair automatically.
 
-## 5. Start the Agent Daemon
+## 5. Configure LLM Access
+
+For extraction and quality scoring, Kinoko needs access to an LLM. You have several options:
+
+**Option A: Environment Variables (Recommended)**
+```bash
+# Anthropic
+export ANTHROPIC_API_KEY=sk-ant-api03-...
+
+# Or OpenAI
+export OPENAI_API_KEY=sk-...
+```
+
+**Option B: Setup Wizard**
+```bash
+kinoko init  # Run again to trigger the LLM wizard
+```
+
+The wizard detects existing credentials and guides you through 7 setup options including OAuth reuse from Claude Code or Codex.
+
+**Option C: Reuse Existing CLI Credentials**
+
+If you use Claude Code or Codex CLI, Kinoko can automatically reuse your credentials:
+- **Claude Code:** `~/.claude/.credentials.json`
+- **Codex:** `~/.codex/auth.json`
+
+**Verify setup:**
+```bash
+kinoko doctor
+```
+
+This validates your LLM credentials and tests connectivity.
+
+:::tip[No LLM key? No problem]
+`kinoko run` works without an LLM key in degraded mode — the scheduler and injection still function, only extraction is disabled.
+:::
+
+## 6. Start the Agent Daemon
 
 In another terminal:
 
 ```bash
-export OPENAI_API_KEY=sk-...
 kinoko run
 ```
 
@@ -85,11 +121,9 @@ INFO Scheduler started                   decay_interval=24h
 INFO Injection enabled                   skills_loaded=0
 ```
 
-:::tip[No API key?]
-`kinoko run` works without an LLM key in degraded mode — the scheduler and injection still function, only extraction is disabled.
-:::
+If you configured LLM credentials in the previous step, extraction will be enabled. Otherwise, it runs in degraded mode.
 
-## 6. Test It
+## 7. Test It
 
 In another terminal:
 
@@ -103,6 +137,12 @@ You can also check the API:
 
 ```bash
 curl http://localhost:23233/api/v1/health
+```
+
+Verify your full setup:
+
+```bash
+kinoko doctor
 ```
 
 ## What You Have Now

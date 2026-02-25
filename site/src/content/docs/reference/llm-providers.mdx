@@ -8,35 +8,117 @@ import { Aside } from '@astrojs/starlight/components';
 
 Kinoko uses LLMs for Stage 3 extraction (the critic) and quality scoring. The LLM client is provider-agnostic — switch between OpenAI and Anthropic by changing a single config field.
 
-## Configuration
+## Credential Resolution Chain
+
+Kinoko automatically detects LLM credentials from 10 sources in priority order:
+
+1. **Config API key** (`llm.api_key` in config file)
+2. **Setup token** (`llm.setup_token` in config file — Anthropic OAuth tokens)
+3. **KINOKO_API_KEY** environment variable (provider auto-detected from key prefix)
+4. **ANTHROPIC_API_KEY** environment variable
+5. **OPENAI_API_KEY** environment variable
+6. **Claude Code OAuth** (`~/.claude/.credentials.json`)
+7. **Codex OAuth** (`~/.codex/auth.json`)
+8. **Local proxy detection** (localhost:3456/health check for claude-max-api-proxy)
+9. **Claude CLI on PATH** (delegates to `claude` command)
+10. **No credentials** (returns error with setup suggestions)
+
+This means you can often use Kinoko without any configuration — just set environment variables or reuse existing OAuth credentials.
+
+<Aside type="tip">
+  Run `kinoko doctor` to see which credential source was detected and test connectivity.
+</Aside>
+
+## Setup Methods
+
+### Interactive Wizard
+
+The easiest way to configure LLM access:
+
+```bash
+kinoko init
+```
+
+The wizard detects existing credentials and offers 7 setup options:
+
+1. **Anthropic API key** — direct API access (recommended for API users)
+2. **Anthropic setup token** — OAuth token from `claude setup-token` (recommended for Claude Code subscribers)
+3. **Anthropic OAuth** — reuse Claude Code credentials automatically
+4. **OpenAI API key** — direct API access
+5. **OpenAI ChatGPT subscription** — reuse Codex credentials automatically
+6. **Custom provider** — OpenAI-compatible endpoint (Ollama, proxies, etc.)
+7. **Skip** — configure later with environment variables
+
+### Environment Variables
+
+For automated setups or CI/CD:
+
+```bash
+# Anthropic
+export ANTHROPIC_API_KEY=sk-ant-api03-...
+
+# OpenAI
+export OPENAI_API_KEY=sk-...
+
+# Generic (provider auto-detected)
+export KINOKO_API_KEY=sk-ant-api03-...
+```
+
+### Manual Configuration
 
 In your `kinoko.yaml`:
 
 ```yaml
-# OpenAI (default)
+# Anthropic API key
+llm:
+  provider: anthropic
+  api_key: sk-ant-api03-...
+  model: claude-opus-4-0-20250514
+
+# Anthropic setup token (OAuth)
+llm:
+  provider: anthropic
+  setup_token: sk-ant-oat01-...
+  model: claude-opus-4-0-20250514
+
+# OpenAI
 llm:
   provider: openai
   api_key: sk-...
-  model: gpt-4o-mini
-  # base_url: https://api.openai.com  # optional, for proxies
+  model: gpt-5.2
 
-# Anthropic
+# Custom endpoint
 llm:
-  provider: anthropic
-  api_key: sk-ant-...
-  model: claude-sonnet-4-20250514
-  # base_url: https://api.anthropic.com  # optional
+  provider: custom
+  api_key: optional-key
+  model: llama3:latest
+  base_url: http://localhost:11434/v1
 ```
 
 | Field | Required | Default | Description |
 |---|---|---|---|
-| `provider` | No | `openai` | `"openai"` or `"anthropic"` |
-| `api_key` | Yes | — | Your API key |
-| `model` | Yes | — | Model identifier |
+| `provider` | No | `anthropic` | `"anthropic"`, `"openai"`, or `"custom"` |
+| `api_key` | No | Auto-detected | API key (overrides environment variables) |
+| `setup_token` | No | Auto-detected | Anthropic OAuth token from `claude setup-token` |
+| `model` | No | Provider default | Model identifier |
 | `base_url` | No | Provider default | Custom endpoint (proxies, Azure, etc.) |
 
-<Aside type="tip">
-  Omitting `provider` or setting it to `""` defaults to OpenAI. This is backward-compatible — existing configs without a `provider` field keep working.
+### OAuth Reuse
+
+Kinoko can reuse credentials from popular CLI tools:
+
+**Claude Code** (Anthropic):
+1. Install Claude Code from https://claude.ai/download
+2. Sign in to your Anthropic account
+3. Kinoko automatically finds `~/.claude/.credentials.json`
+
+**Codex** (OpenAI):
+1. Install Codex CLI from OpenAI
+2. Run `codex login` to authenticate
+3. Kinoko automatically finds `~/.codex/auth.json`
+
+<Aside type="note">
+  OAuth tokens expire. If validation fails, re-authenticate with the original CLI tool.
 </Aside>
 
 ## Factory Pattern
@@ -67,13 +149,51 @@ Both providers implement the same interface. The extraction pipeline, quality sc
 
 ## Provider Details
 
-### OpenAI
-
-Uses the Chat Completions API (`/v1/chat/completions`). Supports custom `base_url` for Azure OpenAI, local proxies, or compatible APIs (Ollama, vLLM, etc.).
-
 ### Anthropic
 
-Uses the Messages API (`/v1/messages`) with API version `2023-06-01`. The API key is sent via the `x-api-key` header (not Bearer auth).
+**API endpoints:** Messages API (`/v1/messages`) with API version `2023-06-01`  
+**Authentication:** `x-api-key` header (not Bearer auth)  
+**Default model:** `claude-opus-4-0-20250514`  
+
+**Key formats:**
+- API keys: `sk-ant-api03-...`
+- Setup tokens (OAuth): `sk-ant-oat01-...`
+
+**Setup options:**
+- Direct API key from https://console.anthropic.com/settings/keys
+- Setup token via `claude setup-token` (requires Claude Code subscription)
+- OAuth reuse from Claude Code (`~/.claude/.credentials.json`)
+
+### OpenAI
+
+**API endpoints:** Chat Completions API (`/v1/chat/completions`)  
+**Authentication:** `Authorization: Bearer` header  
+**Default model:** `gpt-5.2`  
+
+**Key format:** `sk-...`
+
+**Setup options:**
+- API key from https://platform.openai.com/api-keys
+- OAuth reuse from Codex CLI (`~/.codex/auth.json`)
+- Compatible endpoints (Azure OpenAI, Ollama, vLLM) via custom `base_url`
+
+### Custom Providers
+
+For OpenAI-compatible endpoints like Ollama, corporate proxies, or local models:
+
+```yaml
+llm:
+  provider: custom
+  base_url: http://localhost:11434/v1
+  model: llama3:latest
+  api_key: ""  # often not required for local models
+```
+
+**Tested with:**
+- Ollama
+- claude-max-api-proxy
+- vLLM
+- Azure OpenAI (use OpenAI provider with custom `base_url`)
 
 ## Error Handling
 
