@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 
 	"github.com/kinoko-dev/kinoko/internal/run/apiclient"
 	"github.com/kinoko-dev/kinoko/internal/run/debug"
@@ -29,11 +28,9 @@ func libraryIDs(cfg *config.Config) []string {
 // Uses apiclient for embedding, skill querying, session writing, review, and git commit.
 // Returns nil if no LLM key is configured.
 func buildClientPipeline(cfg *config.Config, serverClient *apiclient.Client, logger *slog.Logger) (model.Extractor, error) {
-	llmAPIKey := os.Getenv("KINOKO_LLM_API_KEY")
-	if llmAPIKey == "" {
-		llmAPIKey = os.Getenv("OPENAI_API_KEY")
-	}
-	if llmAPIKey == "" {
+	creds, err := llm.ResolveCredentials(cfg.LLM)
+	if err != nil {
+		// Return nil to enable degraded mode (extraction disabled, scheduler only)
 		return nil, nil
 	}
 
@@ -43,11 +40,12 @@ func buildClientPipeline(cfg *config.Config, serverClient *apiclient.Client, log
 	// Skill querier via server HTTP API.
 	querier := apiclient.NewHTTPQuerier(serverClient)
 
+	// Use config model if set, otherwise use the model from credentials
 	llmModel := cfg.LLM.Model
 	if llmModel == "" {
-		llmModel = "gpt-4o-mini"
+		llmModel = creds.Model
 	}
-	llmClient, err := llm.NewClient(cfg.LLM.Provider, llmAPIKey, llmModel, cfg.LLM.BaseURL)
+	llmClient, err := llm.NewClient(creds.Provider, creds.APIKey, llmModel, creds.BaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("create LLM client: %w", err)
 	}

@@ -129,21 +129,17 @@ func runExtract(cmd *cobra.Command, args []string) error {
 	querier := apiclient.NewHTTPQuerier(serverClient)
 
 	// Initialize LLM client — Stage2 and Stage3 need it.
-	llmAPIKey := cfg.LLM.APIKey
-	if llmAPIKey == "" {
-		llmAPIKey = os.Getenv("KINOKO_LLM_API_KEY")
+	creds, err := llm.ResolveCredentials(cfg.LLM)
+	if err != nil {
+		return fmt.Errorf("LLM credentials: %w", err)
 	}
-	if llmAPIKey == "" {
-		llmAPIKey = os.Getenv("OPENAI_API_KEY")
-	}
-	if llmAPIKey == "" {
-		return fmt.Errorf("OPENAI_API_KEY or KINOKO_LLM_API_KEY required for extraction")
-	}
+
+	// Use config model if set, otherwise use the model from credentials
 	llmModel := cfg.LLM.Model
 	if llmModel == "" {
-		llmModel = "gpt-4o-mini"
+		llmModel = creds.Model
 	}
-	llmClient, err := llm.NewClient(cfg.LLM.Provider, llmAPIKey, llmModel, cfg.LLM.BaseURL)
+	llmClient, err := llm.NewClient(creds.Provider, creds.APIKey, llmModel, creds.BaseURL)
 	if err != nil {
 		return fmt.Errorf("create LLM client: %w", err)
 	}

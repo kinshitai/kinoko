@@ -72,6 +72,9 @@ func initCommand(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to generate client SSH key: %w", err)
 	}
 
+	// Run LLM setup wizard (non-fatal — user can configure later via kinoko init)
+	_ = runLLMWizard(configFile)
+
 	printSuccessMessage()
 	return nil
 }

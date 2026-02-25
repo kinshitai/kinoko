@@ -142,25 +142,17 @@ func runIngest(cmd *cobra.Command, args []string) error {
 		skillDescription = parsedDescription
 	} else {
 		// Run through Stage 3 critic.
-		llmAPIKey := cfg.LLM.APIKey
-		if llmAPIKey == "" {
-			llmAPIKey = os.Getenv("KINOKO_LLM_API_KEY")
-		}
-		if llmAPIKey == "" {
-			llmAPIKey = os.Getenv("ANTHROPIC_API_KEY")
-		}
-		if llmAPIKey == "" {
-			llmAPIKey = os.Getenv("OPENAI_API_KEY")
-		}
-		if llmAPIKey == "" {
-			return fmt.Errorf("LLM API key required: set KINOKO_LLM_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY")
+		creds, err := llm.ResolveCredentials(cfg.LLM)
+		if err != nil {
+			return fmt.Errorf("LLM credentials: %w", err)
 		}
 
+		// Use config model if set, otherwise use the model from credentials
 		llmModel := cfg.LLM.Model
 		if llmModel == "" {
-			llmModel = "gpt-4o-mini"
+			llmModel = creds.Model
 		}
-		llmClient, err := llm.NewClient(cfg.LLM.Provider, llmAPIKey, llmModel, cfg.LLM.BaseURL)
+		llmClient, err := llm.NewClient(creds.Provider, creds.APIKey, llmModel, creds.BaseURL)
 		if err != nil {
 			return fmt.Errorf("create LLM client: %w", err)
 		}
