@@ -223,8 +223,8 @@ func TestStage3Critic_Stage2InputEdges(t *testing.T) {
 		name   string
 		stage2 *model.Stage2Result
 	}{
-		{"zero novelty score", &model.Stage2Result{
-			Passed: true, NoveltyScore: 0, EmbeddingDistance: 0.5,
+		{"basic rubric scores", &model.Stage2Result{
+			Passed: true,
 			RubricScores: model.QualityScores{
 				ProblemSpecificity: 3, SolutionCompleteness: 3, ContextPortability: 3,
 				ReasoningTransparency: 3, TechnicalAccuracy: 3, VerificationEvidence: 3,
@@ -233,7 +233,7 @@ func TestStage3Critic_Stage2InputEdges(t *testing.T) {
 			ClassifiedCategory: model.CategoryTactical,
 		}},
 		{"empty patterns", &model.Stage2Result{
-			Passed: true, NoveltyScore: 0.5, EmbeddingDistance: 0.5,
+			Passed: true,
 			RubricScores: model.QualityScores{
 				ProblemSpecificity: 3, SolutionCompleteness: 3, ContextPortability: 3,
 				ReasoningTransparency: 3, TechnicalAccuracy: 3, VerificationEvidence: 3,
@@ -242,7 +242,7 @@ func TestStage3Critic_Stage2InputEdges(t *testing.T) {
 			ClassifiedCategory: model.CategoryTactical, ClassifiedPatterns: []string{},
 		}},
 		{"max scores", &model.Stage2Result{
-			Passed: true, NoveltyScore: 1.0, EmbeddingDistance: 0.8,
+			Passed: true,
 			RubricScores: model.QualityScores{
 				ProblemSpecificity: 5, SolutionCompleteness: 5, ContextPortability: 5,
 				ReasoningTransparency: 5, TechnicalAccuracy: 5, VerificationEvidence: 5,
@@ -251,7 +251,7 @@ func TestStage3Critic_Stage2InputEdges(t *testing.T) {
 			ClassifiedCategory: model.CategoryFoundational, ClassifiedPatterns: []string{"BUILD/Backend/APIDesign"},
 		}},
 		{"min viable scores", &model.Stage2Result{
-			Passed: true, NoveltyScore: 0.05, EmbeddingDistance: 0.3,
+			Passed: true,
 			RubricScores: model.QualityScores{
 				ProblemSpecificity: 1, SolutionCompleteness: 1, ContextPortability: 1,
 				ReasoningTransparency: 1, TechnicalAccuracy: 1, VerificationEvidence: 1,

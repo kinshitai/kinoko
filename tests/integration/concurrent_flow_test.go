@@ -43,10 +43,9 @@ func TestConcurrentExtractionAndInjection(t *testing.T) {
 
 	for i := 0; i < n; i++ {
 		go func(idx int) {
-			emb := newPredictableEmbedder(3)
 			llm := &predictableLLM{rubricResponse: goodRubricJSON(), criticResponse: extractVerdictJSON()}
 			s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-			s2 := extraction.NewStage2Scorer(emb, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+			s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 			s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 			p, _ := extraction.NewPipeline(extraction.PipelineConfig{
 				Stage1: s1, Stage2: s2, Stage3: s3, Committer: noopCommitter{}, Log: testLogger(),

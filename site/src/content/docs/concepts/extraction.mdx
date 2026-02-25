@@ -54,17 +54,13 @@ Fast checks against session metadata — no content analysis needed:
 
 This stage rejects the bulk of sessions instantly. A session that lasted 3 seconds with zero tool calls isn't worth analyzing further.
 
-## Stage 2 — Embedding Novelty + Rubric Scoring
+## Stage 2 — LLM Rubric Scoring
 
-**Cost:** moderate (embedding + lightweight scoring). **Purpose:** filter noise and duplicates.
+**Cost:** moderate (one LLM call). **Purpose:** filter low-quality sessions before expensive extraction.
 
-Two checks run in parallel:
+An LLM call scores the session across 7 quality dimensions: problem specificity, solution completeness, context portability, reasoning transparency, technical accuracy, verification evidence, and innovation level. Sessions below the minimum viable threshold are rejected.
 
-1. **Embedding novelty** — the session content is embedded and compared against existing skills via the server's discover API (`POST /api/v1/discover`). If the session is too similar to something already known (above the `novelty_threshold`, default 0.85), it's rejected as a duplicate.
-
-2. **LLM rubric scoring** — a lightweight LLM call scores the session across 7 quality dimensions (problem specificity, solution completeness, context portability, reasoning transparency, technical accuracy, verification evidence, innovation level). Sessions below threshold are rejected.
-
-The novelty check is **fail-open**: if the server is unreachable, the session passes through. Better to extract a potential duplicate than lose novel knowledge.
+Stage 2 also classifies the session's category (foundational, tactical, contextual) and identifies matching patterns from the taxonomy.
 
 ## Stage 3 — Combined Critic + SKILL.md Generation
 

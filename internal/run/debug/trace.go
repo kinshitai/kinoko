@@ -185,22 +185,14 @@ type FilterTrace struct {
 
 // Stage2Trace captures Stage 2 scoring results.
 type Stage2Trace struct {
-	Passed           bool               `json:"passed"`
-	EmbeddingNovelty *EmbeddingTrace    `json:"embedding_novelty,omitempty"`
-	RubricScores     map[string]float64 `json:"rubric_scores,omitempty"`
-	RubricAggregate  float64            `json:"rubric_aggregate"`
-	RubricThreshold  float64            `json:"rubric_threshold"`
-	Meta             *LLMMeta           `json:"meta,omitempty"`
-	RawRequestFile   string             `json:"raw_request_file,omitempty"`
-	RawResponseFile  string             `json:"raw_response_file,omitempty"`
-	DurationMs       int64              `json:"duration_ms"`
-}
-
-// EmbeddingTrace captures embedding novelty details.
-type EmbeddingTrace struct {
-	Distance     float64 `json:"distance"`
-	NearestSkill string  `json:"nearest_skill"`
-	Threshold    float64 `json:"threshold"`
+	Passed          bool               `json:"passed"`
+	RubricScores    map[string]float64 `json:"rubric_scores,omitempty"`
+	RubricAggregate float64            `json:"rubric_aggregate"`
+	RubricThreshold float64            `json:"rubric_threshold"`
+	Meta            *LLMMeta           `json:"meta,omitempty"`
+	RawRequestFile  string             `json:"raw_request_file,omitempty"`
+	RawResponseFile string             `json:"raw_response_file,omitempty"`
+	DurationMs      int64              `json:"duration_ms"`
 }
 
 // LLMMeta captures LLM call metadata.

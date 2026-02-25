@@ -249,11 +249,6 @@ func (p *Pipeline) score(run *extractionRun) bool {
 
 	run.trace.WriteStage("stage2-scoring", debug.Stage2Trace{
 		Passed: s2.Passed,
-		EmbeddingNovelty: &debug.EmbeddingTrace{
-			Distance:     s2.EmbeddingDistance,
-			NearestSkill: s2.NearestSkillName,
-			Threshold:    p.extCfg.NoveltyMinDistance,
-		},
 		RubricScores: map[string]float64{
 			"problem_specificity":    float64(s2.RubricScores.ProblemSpecificity),
 			"solution_completeness":  float64(s2.RubricScores.SolutionCompleteness),
