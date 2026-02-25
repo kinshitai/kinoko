@@ -121,7 +121,7 @@ func ResolveCredentials(cfg config.LLMConfig) (*Credentials, error) {
 	}
 
 	// 10. Error: no credentials found
-	return nil, fmt.Errorf("no LLM credentials found — run 'kinoko init' to configure")
+	return nil, fmt.Errorf("no LLM credentials found\n\n  Options:\n  • Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable\n  • Run 'kinoko init' to use the setup wizard\n  • Run 'kinoko doctor' to diagnose credential issues")
 }
 
 // inferProvider determines the provider from API key prefix.

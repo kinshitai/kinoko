@@ -74,7 +74,7 @@ func runLLMWizard(configPath string) error {
 	fmt.Println("  6. Custom provider (OpenAI-compatible endpoint)")
 	fmt.Println("  7. Skip (configure later)")
 	fmt.Println()
-	fmt.Print("Choice [1-7]: ")
+	fmt.Print("Choice [1-7, default=1]: ")
 
 	scanner := bufio.NewScanner(os.Stdin)
 	if !scanner.Scan() {
@@ -251,8 +251,15 @@ func setupAnthropicOAuth() (*llm.Credentials, error) {
 	creds, err := llm.ResolveCredentials(config.LLMConfig{}) // Empty config to skip config/env checks
 	if err != nil || creds.Provider != "anthropic" || strings.HasPrefix(creds.APIKey, "sk-ant-api03-") {
 		fmt.Println("❌ Not found")
-		fmt.Println("   No Claude Code OAuth credentials detected.")
-		fmt.Println("   Make sure Claude Code is installed and authenticated.")
+		fmt.Println()
+		fmt.Println("   Claude Code OAuth allows reusing credentials from the Claude desktop app.")
+		fmt.Println()
+		fmt.Println("   To set this up:")
+		fmt.Println("   1. Install Claude Code from https://claude.ai/download")
+		fmt.Println("   2. Sign in to your Anthropic account")
+		fmt.Println("   3. Run this wizard again")
+		fmt.Println()
+		fmt.Println("   Or choose a different option above.")
 		return nil, fmt.Errorf("no Claude Code OAuth credentials found")
 	}
 
@@ -321,8 +328,15 @@ func setupCodexOAuth() (*llm.Credentials, error) {
 	creds, err := llm.ResolveCredentials(config.LLMConfig{}) // Empty config, will check OAuth files
 	if err != nil || creds.Provider != "openai" || strings.HasPrefix(creds.APIKey, "sk-") {
 		fmt.Println("❌ Not found")
-		fmt.Println("   No Codex OAuth credentials detected.")
-		fmt.Println("   Make sure Codex is installed and authenticated with 'codex login'.")
+		fmt.Println()
+		fmt.Println("   Codex OAuth allows reusing credentials from the OpenAI Codex CLI.")
+		fmt.Println()
+		fmt.Println("   To set this up:")
+		fmt.Println("   1. Install Codex from the OpenAI platform")
+		fmt.Println("   2. Run 'codex login' to authenticate")
+		fmt.Println("   3. Run this wizard again")
+		fmt.Println()
+		fmt.Println("   Or choose a different option above.")
 		return nil, fmt.Errorf("no Codex OAuth credentials found")
 	}
 

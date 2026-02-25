@@ -169,7 +169,8 @@ func TestResolveCredentials_Proxy(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected error when no credentials found")
 	}
-	if err.Error() != "no LLM credentials found — run 'kinoko init' to configure" {
+	expected := "no LLM credentials found\n\n  Options:\n  • Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable\n  • Run 'kinoko init' to use the setup wizard\n  • Run 'kinoko doctor' to diagnose credential issues"
+	if err.Error() != expected {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }

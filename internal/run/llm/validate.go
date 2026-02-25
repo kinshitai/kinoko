@@ -72,12 +72,17 @@ func validateAnthropicCredentials(ctx context.Context, creds *Credentials) error
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == 401 || resp.StatusCode == 403 {
-		return fmt.Errorf("authentication failed (HTTP %d)", resp.StatusCode)
+	if resp.StatusCode == 401 {
+		return fmt.Errorf("authentication failed — check your API key")
 	}
-
+	if resp.StatusCode == 403 {
+		return fmt.Errorf("access denied — API key may lack required permissions")
+	}
+	if resp.StatusCode == 429 {
+		return fmt.Errorf("rate limited — try again in a moment")
+	}
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("API error (HTTP %d)", resp.StatusCode)
+		return fmt.Errorf("API error (HTTP %d) — check your endpoint URL and model name", resp.StatusCode)
 	}
 
 	return nil
@@ -106,12 +111,17 @@ func validateOpenAICredentials(ctx context.Context, creds *Credentials) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == 401 || resp.StatusCode == 403 {
-		return fmt.Errorf("authentication failed (HTTP %d)", resp.StatusCode)
+	if resp.StatusCode == 401 {
+		return fmt.Errorf("authentication failed — check your API key")
 	}
-
+	if resp.StatusCode == 403 {
+		return fmt.Errorf("access denied — API key may lack required permissions")
+	}
+	if resp.StatusCode == 429 {
+		return fmt.Errorf("rate limited — try again in a moment")
+	}
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("API error (HTTP %d)", resp.StatusCode)
+		return fmt.Errorf("API error (HTTP %d) — check your endpoint URL and model name", resp.StatusCode)
 	}
 
 	return nil
