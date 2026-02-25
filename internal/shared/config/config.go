@@ -83,10 +83,11 @@ func (e EmbeddingConfig) GetNoveltyThreshold() float64 {
 
 // LLMConfig configures the LLM used for extraction and injection.
 type LLMConfig struct {
-	Provider string `yaml:"provider"` // "openai" | "anthropic"
-	Model    string `yaml:"model"`    // e.g. "gpt-4o-mini", "claude-sonnet-4-20250514"
-	APIKey   string `yaml:"api_key"`  // provider API key
-	BaseURL  string `yaml:"base_url"` // optional, for proxies/custom endpoints
+	Provider   string `yaml:"provider"`    // "openai" | "anthropic"
+	Model      string `yaml:"model"`       // e.g. "gpt-4o-mini", "claude-sonnet-4-20250514"
+	APIKey     string `yaml:"api_key"`     // provider API key
+	SetupToken string `yaml:"setup_token"` // from `claude setup-token`
+	BaseURL    string `yaml:"base_url"`    // optional, for proxies/custom endpoints
 }
 
 // DecayConfig mirrors decay.Config for YAML config loading.
