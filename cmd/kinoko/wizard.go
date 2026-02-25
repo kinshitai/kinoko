@@ -2,13 +2,9 @@ package main
 
 import (
 	"bufio"
-	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/kinoko-dev/kinoko/internal/run/llm"
 	"github.com/kinoko-dev/kinoko/internal/shared/config"
@@ -46,7 +42,7 @@ func runLLMWizard(configPath string) error {
 		fmt.Println()
 
 		// Test the detected credentials
-		if testErr := testCredentials(creds); testErr != nil {
+		if testErr := llm.ValidateCredentials(creds); testErr != nil {
 			fmt.Printf("⚠️  Detected credentials failed validation: %v\n", testErr)
 			fmt.Println("   Proceeding with manual setup...")
 		} else {
@@ -59,6 +55,9 @@ func runLLMWizard(configPath string) error {
 					fmt.Println("✓ Using detected credentials")
 					return nil // Already configured, no need to save
 				}
+			}
+			if err := scanner.Err(); err != nil {
+				return fmt.Errorf("failed to read input: %w", err)
 			}
 		}
 		fmt.Println()
@@ -79,6 +78,9 @@ func runLLMWizard(configPath string) error {
 
 	scanner := bufio.NewScanner(os.Stdin)
 	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return fmt.Errorf("failed to read input: %w", err)
+		}
 		return fmt.Errorf("failed to read input")
 	}
 
@@ -164,6 +166,9 @@ func promptAnthropicAPIKey(scanner *bufio.Scanner) (*llm.Credentials, error) {
 	fmt.Print("Enter API key (sk-ant-api03-...): ")
 
 	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return nil, fmt.Errorf("failed to read API key: %w", err)
+		}
 		return nil, fmt.Errorf("failed to read API key")
 	}
 
@@ -185,7 +190,7 @@ func promptAnthropicAPIKey(scanner *bufio.Scanner) (*llm.Credentials, error) {
 
 	// Test the credentials
 	fmt.Print("🔍 Testing API key... ")
-	if err := testCredentials(creds); err != nil {
+	if err := llm.ValidateCredentials(creds); err != nil {
 		fmt.Printf("❌ Failed: %v\n", err)
 		return nil, fmt.Errorf("API key validation failed: %w", err)
 	}
@@ -204,6 +209,9 @@ func promptAnthropicSetupToken(scanner *bufio.Scanner) (*llm.Credentials, error)
 	fmt.Print("Enter setup token (sk-ant-oat01-...): ")
 
 	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return nil, fmt.Errorf("failed to read setup token: %w", err)
+		}
 		return nil, fmt.Errorf("failed to read setup token")
 	}
 
@@ -225,7 +233,7 @@ func promptAnthropicSetupToken(scanner *bufio.Scanner) (*llm.Credentials, error)
 
 	// Test the credentials
 	fmt.Print("🔍 Testing setup token... ")
-	if err := testCredentials(creds); err != nil {
+	if err := llm.ValidateCredentials(creds); err != nil {
 		fmt.Printf("❌ Failed: %v\n", err)
 		return nil, fmt.Errorf("setup token validation failed: %w", err)
 	}
@@ -252,7 +260,7 @@ func setupAnthropicOAuth() (*llm.Credentials, error) {
 
 	// Test the credentials
 	fmt.Print("🔍 Testing OAuth credentials... ")
-	if err := testCredentials(creds); err != nil {
+	if err := llm.ValidateCredentials(creds); err != nil {
 		fmt.Printf("❌ Failed: %v\n", err)
 		return nil, fmt.Errorf("OAuth credentials validation failed: %w", err)
 	}
@@ -270,6 +278,9 @@ func promptOpenAIAPIKey(scanner *bufio.Scanner) (*llm.Credentials, error) {
 	fmt.Print("Enter API key (sk-...): ")
 
 	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return nil, fmt.Errorf("failed to read API key: %w", err)
+		}
 		return nil, fmt.Errorf("failed to read API key")
 	}
 
@@ -291,7 +302,7 @@ func promptOpenAIAPIKey(scanner *bufio.Scanner) (*llm.Credentials, error) {
 
 	// Test the credentials
 	fmt.Print("🔍 Testing API key... ")
-	if err := testCredentials(creds); err != nil {
+	if err := llm.ValidateCredentials(creds); err != nil {
 		fmt.Printf("❌ Failed: %v\n", err)
 		return nil, fmt.Errorf("API key validation failed: %w", err)
 	}
@@ -319,7 +330,7 @@ func setupCodexOAuth() (*llm.Credentials, error) {
 
 	// Test the credentials
 	fmt.Print("🔍 Testing OAuth credentials... ")
-	if err := testCredentials(creds); err != nil {
+	if err := llm.ValidateCredentials(creds); err != nil {
 		fmt.Printf("❌ Failed: %v\n", err)
 		return nil, fmt.Errorf("OAuth credentials validation failed: %w", err)
 	}
@@ -337,6 +348,9 @@ func promptCustomProvider(scanner *bufio.Scanner) (*llm.Credentials, error) {
 
 	fmt.Print("Enter endpoint URL: ")
 	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return nil, fmt.Errorf("failed to read endpoint URL: %w", err)
+		}
 		return nil, fmt.Errorf("failed to read endpoint URL")
 	}
 
@@ -347,6 +361,9 @@ func promptCustomProvider(scanner *bufio.Scanner) (*llm.Credentials, error) {
 
 	fmt.Print("Enter API key (optional, press Enter to skip): ")
 	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return nil, fmt.Errorf("failed to read API key: %w", err)
+		}
 		return nil, fmt.Errorf("failed to read API key")
 	}
 
@@ -354,6 +371,9 @@ func promptCustomProvider(scanner *bufio.Scanner) (*llm.Credentials, error) {
 
 	fmt.Print("Enter model name (e.g., gpt-4, llama3:latest): ")
 	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return nil, fmt.Errorf("failed to read model name: %w", err)
+		}
 		return nil, fmt.Errorf("failed to read model name")
 	}
 
@@ -371,7 +391,7 @@ func promptCustomProvider(scanner *bufio.Scanner) (*llm.Credentials, error) {
 
 	// Test the credentials
 	fmt.Print("🔍 Testing custom endpoint... ")
-	if err := testCredentials(creds); err != nil {
+	if err := llm.ValidateCredentials(creds); err != nil {
 		fmt.Printf("❌ Failed: %v\n", err)
 		fmt.Println("   Note: Some endpoints may not support the test API call.")
 		fmt.Print("Continue anyway? [y/N]: ")
@@ -383,119 +403,14 @@ func promptCustomProvider(scanner *bufio.Scanner) (*llm.Credentials, error) {
 				return creds, nil
 			}
 		}
+		if err := scanner.Err(); err != nil {
+			return nil, fmt.Errorf("failed to read input: %w", err)
+		}
 		return nil, fmt.Errorf("endpoint validation failed: %w", err)
 	}
 
 	fmt.Println("✓ Endpoint validated")
 	return creds, nil
-}
-
-// testCredentials makes a simple API call to validate the credentials work.
-func testCredentials(creds *llm.Credentials) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	switch creds.Provider {
-	case "anthropic":
-		return testAnthropicCredentials(ctx, creds)
-	case "openai", "custom":
-		return testOpenAICredentials(ctx, creds)
-	case "claude-cli":
-		// For CLI delegation, we can't easily test without actually calling the CLI
-		// which might be expensive. Just assume it works if claude is on PATH.
-		return nil
-	default:
-		// For unknown providers, try OpenAI format first, then Anthropic
-		if err := testOpenAICredentials(ctx, creds); err == nil {
-			return nil
-		}
-		return testAnthropicCredentials(ctx, creds)
-	}
-}
-
-// testAnthropicCredentials tests Anthropic API access with a minimal request.
-func testAnthropicCredentials(ctx context.Context, creds *llm.Credentials) error {
-	url := "https://api.anthropic.com/v1/messages"
-	if creds.BaseURL != "" {
-		url = strings.TrimSuffix(creds.BaseURL, "/") + "/v1/messages"
-	}
-
-	// Create a minimal test message
-	payload := map[string]interface{}{
-		"model":      creds.Model,
-		"max_tokens": 1,
-		"messages": []map[string]string{
-			{
-				"role":    "user",
-				"content": "Hi",
-			},
-		},
-	}
-
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(jsonData)))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", creds.APIKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == 401 || resp.StatusCode == 403 {
-		return fmt.Errorf("authentication failed (HTTP %d)", resp.StatusCode)
-	}
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("API error (HTTP %d)", resp.StatusCode)
-	}
-
-	return nil
-}
-
-// testOpenAICredentials tests OpenAI API access by listing models.
-func testOpenAICredentials(ctx context.Context, creds *llm.Credentials) error {
-	url := "https://api.openai.com/v1/models"
-	if creds.BaseURL != "" {
-		url = strings.TrimSuffix(creds.BaseURL, "/") + "/v1/models"
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	if creds.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+creds.APIKey)
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == 401 || resp.StatusCode == 403 {
-		return fmt.Errorf("authentication failed (HTTP %d)", resp.StatusCode)
-	}
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("API error (HTTP %d)", resp.StatusCode)
-	}
-
-	return nil
 }
 
 // saveLLMConfig saves the LLM credentials to the config file.

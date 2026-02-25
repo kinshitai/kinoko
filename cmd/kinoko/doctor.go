@@ -206,10 +206,8 @@ func runDoctor() error {
 			fmt.Printf("  %d issues found. Run 'kinoko init' to configure missing components.\n", issues)
 		}
 		// Return error to set exit code 1
-		os.Exit(1)
+		return fmt.Errorf("%d issues found", issues)
 	}
-
-	return nil
 }
 
 // checkConfigFile validates that the config file exists and can be parsed
@@ -249,10 +247,7 @@ func checkQueueDatabase(queuePath string) error {
 // checkCacheDirectory validates that the cache directory exists
 func checkCacheDirectory(cachePath string) error {
 	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
-		// Try to create it
-		if err := os.MkdirAll(cachePath, 0755); err != nil {
-			return fmt.Errorf("cannot create")
-		}
+		return fmt.Errorf("not found")
 	}
 	return nil
 }
@@ -306,8 +301,8 @@ func checkServer(serverURL string) error {
 func checkLLMConnectivity(creds *llm.Credentials) (time.Duration, error) {
 	start := time.Now()
 
-	// Reuse the testCredentials function from wizard.go
-	if err := testCredentials(creds); err != nil {
+	// Use the shared validation function
+	if err := llm.ValidateCredentials(creds); err != nil {
 		return 0, err
 	}
 
