@@ -44,8 +44,6 @@ extraction:
   max_duration_minutes: 180
   min_tool_calls: 3
   max_error_rate: 0.7
-  novelty_min_distance: 0.15
-  novelty_max_distance: 0.95
   version_similarity_threshold: 0.85
   sample_rate: 0.01
   ab_test:
@@ -139,8 +137,6 @@ Controls the 3-stage extraction pipeline.
 | `max_duration_minutes` | float | `180` | Stage 1: maximum session duration |
 | `min_tool_calls` | int | `3` | Stage 1: minimum tool call count |
 | `max_error_rate` | float | `0.7` | Stage 1: maximum error rate (0.0–1.0) |
-| `novelty_min_distance` | float | `0.15` | Stage 2: minimum embedding distance for novelty |
-| `novelty_max_distance` | float | `0.95` | Stage 2: maximum embedding distance |
 | `version_similarity_threshold` | float | `0.85` | Threshold for skill versioning |
 | `sample_rate` | float | `0.01` | Human review sample rate (0.0–1.0) |
 

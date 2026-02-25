@@ -26,12 +26,9 @@ type Stage1Result struct {
 	Reason          string `json:"reason,omitempty"`
 }
 
-// Stage2Result is the output of embedding + rubric scoring.
+// Stage2Result is the output of rubric scoring.
 type Stage2Result struct {
 	Passed             bool          `json:"passed"`
-	EmbeddingDistance  float64       `json:"embedding_distance"`
-	NearestSkillName   string        `json:"nearest_skill_name,omitempty"`
-	NoveltyScore       float64       `json:"novelty_score"`
 	RubricScores       QualityScores `json:"rubric_scores"`
 	ClassifiedCategory SkillCategory `json:"classified_category"`
 	ClassifiedPatterns []string      `json:"classified_patterns"`

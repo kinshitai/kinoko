@@ -34,12 +34,6 @@ func buildClientPipeline(cfg *config.Config, serverClient *apiclient.Client, log
 		return nil, nil
 	}
 
-	// Embedder via server HTTP API.
-	embedder := apiclient.NewHTTPEmbedder(serverClient, cfg.Embedding.GetDims())
-
-	// Skill querier via server HTTP API.
-	querier := apiclient.NewHTTPQuerier(serverClient)
-
 	// Use config model if set, otherwise use the model from credentials
 	llmModel := cfg.LLM.Model
 	if llmModel == "" {
@@ -51,7 +45,7 @@ func buildClientPipeline(cfg *config.Config, serverClient *apiclient.Client, log
 	}
 
 	stage1 := extraction.NewStage1Filter(cfg.Extraction, logger)
-	stage2 := extraction.NewStage2Scorer(embedder, querier, llmClient, cfg.Extraction, logger)
+	stage2 := extraction.NewStage2Scorer(llmClient, cfg.Extraction, logger)
 	stage3 := extraction.NewStage3Critic(llmClient, cfg.Extraction, logger)
 
 	// Git committer via SSH push.

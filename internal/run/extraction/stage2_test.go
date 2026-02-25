@@ -15,36 +15,6 @@ import (
 
 // --- Mocks ---
 
-type mockEmbedder struct {
-	embedFn func(ctx context.Context, text string) ([]float32, error)
-}
-
-func (m *mockEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
-	return m.embedFn(ctx, text)
-}
-
-func (m *mockEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
-	var out [][]float32
-	for _, t := range texts {
-		v, err := m.embedFn(ctx, t)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, v)
-	}
-	return out, nil
-}
-
-func (m *mockEmbedder) Dimensions() int { return 1536 }
-
-type mockQuerier struct {
-	queryFn func(ctx context.Context, embedding []float32, libraryID string) (*model.SkillQueryResult, error)
-}
-
-func (m *mockQuerier) QueryNearest(ctx context.Context, embedding []float32, libraryID string) (*model.SkillQueryResult, error) {
-	return m.queryFn(ctx, embedding, libraryID)
-}
-
 type mockLLM struct {
 	completeFn func(ctx context.Context, prompt string) (string, error)
 }
@@ -60,10 +30,7 @@ func testLogger() *slog.Logger {
 }
 
 func testConfig() config.ExtractionConfig {
-	return config.ExtractionConfig{
-		NoveltyMinDistance: 0.15,
-		NoveltyMaxDistance: 0.95,
-	}
+	return config.ExtractionConfig{}
 }
 
 func testSession() model.SessionRecord {
@@ -107,31 +74,6 @@ func failRubricJSON() string {
 	}`
 }
 
-// querierWithSimilarity returns a mock querier with the given cosine similarity.
-func querierWithSimilarity(sim float64) *mockQuerier {
-	return &mockQuerier{
-		queryFn: func(_ context.Context, _ []float32, _ string) (*model.SkillQueryResult, error) {
-			return &model.SkillQueryResult{CosineSim: sim}, nil
-		},
-	}
-}
-
-func emptyQuerier() *mockQuerier {
-	return &mockQuerier{
-		queryFn: func(_ context.Context, _ []float32, _ string) (*model.SkillQueryResult, error) {
-			return nil, nil
-		},
-	}
-}
-
-func okEmbedder() *mockEmbedder {
-	return &mockEmbedder{
-		embedFn: func(_ context.Context, _ string) ([]float32, error) {
-			return make([]float32, 1536), nil
-		},
-	}
-}
-
 func okLLM(json string) *mockLLM {
 	return &mockLLM{
 		completeFn: func(_ context.Context, _ string) (string, error) {
@@ -145,44 +87,13 @@ func okLLM(json string) *mockLLM {
 func TestStage2Scorer(t *testing.T) {
 	tests := []struct {
 		name        string
-		embedder    *mockEmbedder
-		querier     *mockQuerier
 		llm         *mockLLM
 		wantPassed  bool
 		wantErr     bool
 		checkResult func(t *testing.T, r *model.Stage2Result)
 	}{
 		{
-			name:       "novelty too low (too similar)",
-			embedder:   okEmbedder(),
-			querier:    querierWithSimilarity(0.90), // distance = 0.10 < 0.15
-			llm:        okLLM(goodRubricJSON()),
-			wantPassed: false,
-			checkResult: func(t *testing.T, r *model.Stage2Result) {
-				if r.EmbeddingDistance >= 0.15 {
-					t.Errorf("expected distance < 0.15, got %f", r.EmbeddingDistance)
-				}
-				if r.Reason == "" {
-					t.Error("expected rejection reason")
-				}
-			},
-		},
-		{
-			name:       "novelty too high (too unrelated)",
-			embedder:   okEmbedder(),
-			querier:    querierWithSimilarity(0.02), // distance = 0.98 > 0.95
-			llm:        okLLM(goodRubricJSON()),
-			wantPassed: false,
-			checkResult: func(t *testing.T, r *model.Stage2Result) {
-				if r.EmbeddingDistance <= 0.95 {
-					t.Errorf("expected distance > 0.95, got %f", r.EmbeddingDistance)
-				}
-			},
-		},
-		{
-			name:       "novelty in range but rubric fails",
-			embedder:   okEmbedder(),
-			querier:    querierWithSimilarity(0.50), // distance = 0.50, in range
+			name:       "rubric fails minimum viable",
 			llm:        okLLM(failRubricJSON()),
 			wantPassed: false,
 			checkResult: func(t *testing.T, r *model.Stage2Result) {
@@ -192,9 +103,7 @@ func TestStage2Scorer(t *testing.T) {
 			},
 		},
 		{
-			name:       "full pass",
-			embedder:   okEmbedder(),
-			querier:    querierWithSimilarity(0.50), // distance = 0.50
+			name:       "rubric passes",
 			llm:        okLLM(goodRubricJSON()),
 			wantPassed: true,
 			checkResult: func(t *testing.T, r *model.Stage2Result) {
@@ -207,27 +116,10 @@ func TestStage2Scorer(t *testing.T) {
 				if r.RubricScores.CompositeScore == 0 {
 					t.Error("expected non-zero composite score")
 				}
-				if r.NoveltyScore <= 0 {
-					t.Errorf("expected positive novelty score, got %f", r.NoveltyScore)
-				}
 			},
 		},
 		{
-			name:       "full pass with no existing skills",
-			embedder:   okEmbedder(),
-			querier:    emptyQuerier(),
-			llm:        okLLM(goodRubricJSON()),
-			wantPassed: false, // distance=1.0 > maxDist=0.95
-			checkResult: func(t *testing.T, r *model.Stage2Result) {
-				if r.EmbeddingDistance != 1.0 {
-					t.Errorf("expected distance 1.0, got %f", r.EmbeddingDistance)
-				}
-			},
-		},
-		{
-			name:     "LLM returns bad JSON",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.50),
+			name: "LLM returns bad JSON",
 			llm: &mockLLM{
 				completeFn: func(_ context.Context, _ string) (string, error) {
 					return "this is not json at all", nil
@@ -236,31 +128,7 @@ func TestStage2Scorer(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "embedder error",
-			embedder: &mockEmbedder{
-				embedFn: func(_ context.Context, _ string) ([]float32, error) {
-					return nil, errors.New("embedding service unavailable")
-				},
-			},
-			querier: querierWithSimilarity(0.50),
-			llm:     okLLM(goodRubricJSON()),
-			wantErr: true,
-		},
-		{
-			name:     "store error",
-			embedder: okEmbedder(),
-			querier: &mockQuerier{
-				queryFn: func(_ context.Context, _ []float32, _ string) (*model.SkillQueryResult, error) {
-					return nil, errors.New("db locked")
-				},
-			},
-			llm:     okLLM(goodRubricJSON()),
-			wantErr: true,
-		},
-		{
-			name:     "LLM error",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.50),
+			name: "LLM error",
 			llm: &mockLLM{
 				completeFn: func(_ context.Context, _ string) (string, error) {
 					return "", errors.New("rate limited")
@@ -270,29 +138,11 @@ func TestStage2Scorer(t *testing.T) {
 		},
 		{
 			name:       "LLM response wrapped in markdown code block",
-			embedder:   okEmbedder(),
-			querier:    querierWithSimilarity(0.50),
 			llm:        okLLM(fmt.Sprintf("```json\n%s\n```", goodRubricJSON())),
 			wantPassed: true,
 		},
 		{
-			name:       "boundary: distance exactly at min",
-			embedder:   okEmbedder(),
-			querier:    querierWithSimilarity(0.85), // distance = 0.15 == minDist
-			llm:        okLLM(goodRubricJSON()),
-			wantPassed: true,
-		},
-		{
-			name:       "boundary: distance exactly at max",
-			embedder:   okEmbedder(),
-			querier:    querierWithSimilarity(0.05), // distance = 0.95 == maxDist
-			llm:        okLLM(goodRubricJSON()),
-			wantPassed: true,
-		},
-		{
-			name:     "P1.1: out-of-range rubric scores rejected",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.50),
+			name: "out-of-range rubric scores rejected",
 			llm: okLLM(`{
 				"scores": {
 					"problem_specificity": 47,
@@ -309,9 +159,7 @@ func TestStage2Scorer(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:     "P1.1: zero score rejected",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.50),
+			name: "zero score rejected",
 			llm: okLLM(`{
 				"scores": {
 					"problem_specificity": 0,
@@ -328,9 +176,7 @@ func TestStage2Scorer(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:     "P1.1: negative score rejected",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.50),
+			name: "negative score rejected",
 			llm: okLLM(`{
 				"scores": {
 					"problem_specificity": 4,
@@ -347,9 +193,7 @@ func TestStage2Scorer(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:     "P1.2: invalid category defaults to tactical",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.50),
+			name: "invalid category defaults to tactical",
 			llm: okLLM(`{
 				"scores": {
 					"problem_specificity": 4,
@@ -371,9 +215,7 @@ func TestStage2Scorer(t *testing.T) {
 			},
 		},
 		{
-			name:     "P1.3: invalid patterns stripped",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.50),
+			name: "invalid patterns stripped",
 			llm: okLLM(`{
 				"scores": {
 					"problem_specificity": 4,
@@ -395,9 +237,7 @@ func TestStage2Scorer(t *testing.T) {
 			},
 		},
 		{
-			name:     "P1.3: all patterns invalid yields empty list",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.50),
+			name: "all patterns invalid yields empty list",
 			llm: okLLM(`{
 				"scores": {
 					"problem_specificity": 4,
@@ -419,40 +259,12 @@ func TestStage2Scorer(t *testing.T) {
 			},
 		},
 		{
-			name:       "P2.1: JSON with preamble containing braces",
-			embedder:   okEmbedder(),
-			querier:    querierWithSimilarity(0.50),
+			name:       "JSON with preamble containing braces",
 			llm:        okLLM(fmt.Sprintf("Here's my analysis:\n```json\n%s\n```", goodRubricJSON())),
 			wantPassed: true,
 		},
 		{
-			name:       "P2.2: novelty score at boundary is nonzero",
-			embedder:   okEmbedder(),
-			querier:    querierWithSimilarity(0.85), // distance = 0.15 = minDist
-			llm:        okLLM(goodRubricJSON()),
-			wantPassed: true,
-			checkResult: func(t *testing.T, r *model.Stage2Result) {
-				if r.NoveltyScore < 0.05 {
-					t.Errorf("expected novelty score >= 0.05 at boundary, got %f", r.NoveltyScore)
-				}
-			},
-		},
-		{
-			name:       "P2.2: novelty score at midpoint is 1.0",
-			embedder:   okEmbedder(),
-			querier:    querierWithSimilarity(0.45), // distance = 0.55 ≈ midpoint of [0.15, 0.95]
-			llm:        okLLM(goodRubricJSON()),
-			wantPassed: true,
-			checkResult: func(t *testing.T, r *model.Stage2Result) {
-				if r.NoveltyScore < 0.95 {
-					t.Errorf("expected novelty score near 1.0 at midpoint, got %f", r.NoveltyScore)
-				}
-			},
-		},
-		{
-			name:     "P2.3: composite score is weighted not flat average",
-			embedder: okEmbedder(),
-			querier:  querierWithSimilarity(0.50),
+			name: "composite score is weighted not flat average",
 			llm: okLLM(`{
 				"scores": {
 					"problem_specificity": 5,
@@ -480,7 +292,7 @@ func TestStage2Scorer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scorer := NewStage2Scorer(tt.embedder, tt.querier, tt.llm, testConfig(), testLogger())
+			scorer := NewStage2Scorer(tt.llm, testConfig(), testLogger())
 			result, err := scorer.Score(context.Background(), testSession(), []byte("session content"))
 
 			if tt.wantErr {

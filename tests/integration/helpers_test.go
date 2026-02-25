@@ -122,14 +122,6 @@ func (e *predictableEmbedder) deterministicVector(text string) []float32 {
 
 // --- Mock SkillQuerier (for Stage2) ---
 
-type mockQuerier struct {
-	sim float64
-}
-
-func (m *mockQuerier) QueryNearest(_ context.Context, _ []float32, _ string) (*model.SkillQueryResult, error) {
-	return &model.SkillQueryResult{CosineSim: m.sim}, nil
-}
-
 // --- Mock HumanReviewWriter ---
 
 type mockReviewWriter struct {

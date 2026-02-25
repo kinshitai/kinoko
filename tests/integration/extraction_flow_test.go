@@ -25,7 +25,7 @@ func TestFullExtractionFlow(t *testing.T) {
 	reviewer := &mockReviewWriter{}
 
 	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.50}, llm, defaultExtractionConfig(), testLogger())
+	s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	indexer := storage.NewSQLiteIndexer(store)
@@ -114,9 +114,8 @@ func TestRejectionFlows(t *testing.T) {
 		ctx := context.Background()
 
 		s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-		embedder := newPredictableEmbedder(3)
 		llm := &predictableLLM{rubricResponse: goodRubricJSON(), criticResponse: extractVerdictJSON()}
-		s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+		s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 		s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 		pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
@@ -152,14 +151,13 @@ func TestRejectionFlows(t *testing.T) {
 		store := newTestStore(t)
 		ctx := context.Background()
 
-		embedder := newPredictableEmbedder(3)
 		llm := &predictableLLM{
 			rubricResponse: goodRubricJSON(),
 			criticResponse: rejectVerdictJSON(),
 		}
 
 		s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-		s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+		s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 		s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 		pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
@@ -189,43 +187,9 @@ func TestRejectionFlows(t *testing.T) {
 	})
 }
 
-func TestEmbeddingFailureDegradation(t *testing.T) {
+func TestInjectionDegradedModeNoEmbedder(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
-
-	embedder := newPredictableEmbedder(3)
-	embedder.failAfter = -1
-
-	llm := &predictableLLM{
-		rubricResponse: goodRubricJSON(),
-		criticResponse: extractVerdictJSON(),
-	}
-
-	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
-	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
-
-	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
-		Stage1: s1, Stage2: s2, Stage3: s3, Committer: noopCommitter{}, Log: testLogger(),
-	})
-
-	session := goodSession("sess-err-1", "test-lib")
-	result, err := pipeline.Extract(ctx, session, []byte("fix database issue"))
-
-	if err != nil {
-		t.Fatalf("pipeline returned error: %v", err)
-	}
-	if result.Status != model.StatusError {
-		t.Errorf("status = %q, want error", result.Status)
-	}
-	if result.Status == model.StatusError && result.Error == "" {
-		t.Error("expected error message in result")
-	}
-
-	results, _ := store.Query(ctx, storage.SkillQuery{LibraryIDs: []string{"test-lib"}, Limit: 10})
-	if len(results) != 0 {
-		t.Errorf("expected 0 skills after failure, got %d", len(results))
-	}
 
 	sk := &model.SkillRecord{
 		ID: "skill-fallback", Name: "fix-db", Version: 1, LibraryID: "test-lib",
@@ -283,7 +247,7 @@ func TestConcurrentExtractions(t *testing.T) {
 			}
 
 			s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-			s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+			s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 			s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 			indexer := storage.NewSQLiteIndexer(store)

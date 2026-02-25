@@ -69,7 +69,7 @@ func s3testSession() model.SessionRecord {
 
 func passingStage2() *model.Stage2Result {
 	return &model.Stage2Result{
-		Passed: true, EmbeddingDistance: 0.55, NoveltyScore: 0.85,
+		Passed: true,
 		RubricScores: model.QualityScores{
 			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,

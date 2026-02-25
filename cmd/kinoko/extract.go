@@ -115,18 +115,11 @@ func runExtract(cmd *cobra.Command, args []string) error {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	// Server client for embeddings, skill querying, sessions, reviews.
+	// Server URL for novelty checking.
 	serverURL := cfg.ServerURL()
 	if extractAPIURL != "" {
 		serverURL = extractAPIURL
 	}
-	serverClient := apiclient.New(serverURL)
-
-	// Embedder via server HTTP API.
-	embedder := apiclient.NewHTTPEmbedder(serverClient, cfg.Embedding.GetDims())
-
-	// Skill querier via server HTTP API.
-	querier := apiclient.NewHTTPQuerier(serverClient)
 
 	// Initialize LLM client — Stage2 and Stage3 need it.
 	creds, err := llm.ResolveCredentials(cfg.LLM)
@@ -146,7 +139,7 @@ func runExtract(cmd *cobra.Command, args []string) error {
 
 	// Build pipeline stages
 	stage1 := extraction.NewStage1Filter(cfg.Extraction, logger)
-	stage2 := extraction.NewStage2Scorer(embedder, querier, llmClient, cfg.Extraction, logger)
+	stage2 := extraction.NewStage2Scorer(llmClient, cfg.Extraction, logger)
 	stage3 := extraction.NewStage3Critic(llmClient, cfg.Extraction, logger)
 
 	// Novelty checker via server API.

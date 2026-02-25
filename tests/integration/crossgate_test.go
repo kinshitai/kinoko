@@ -42,7 +42,7 @@ func TestG1G2_CredentialRedactionBeforeCommit(t *testing.T) {
 	}
 
 	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+	s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	// Track what gets committed.
@@ -181,7 +181,7 @@ func TestG1G3_ExtractDiscoverClone(t *testing.T) {
 	}
 
 	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+	s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	indexer := storage.NewSQLiteIndexer(store)
@@ -257,7 +257,7 @@ func TestFullPipeline_SessionToClientDiscovery(t *testing.T) {
 	}
 
 	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+	s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	indexer := storage.NewSQLiteIndexer(store)
@@ -318,7 +318,6 @@ Tests passed. Solution verified.`
 func TestEdge_EmptySessionLog(t *testing.T) {
 	_ = newTestStore(t)
 	ctx := context.Background()
-	embedder := newPredictableEmbedder(3)
 
 	llm := &predictableLLM{
 		rubricResponse: goodRubricJSON(),
@@ -326,7 +325,7 @@ func TestEdge_EmptySessionLog(t *testing.T) {
 	}
 
 	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+	s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
@@ -369,7 +368,6 @@ postgres://root:pass@db:5432/prod`
 	// Feed redacted content through extraction — should reject.
 	_ = newTestStore(t)
 	ctx := context.Background()
-	embedder := newPredictableEmbedder(3)
 
 	llm := &predictableLLM{
 		rubricResponse: goodRubricJSON(),
@@ -377,7 +375,7 @@ postgres://root:pass@db:5432/prod`
 	}
 
 	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+	s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
@@ -429,7 +427,7 @@ func TestEdge_ConcurrentSameSkillExtraction(t *testing.T) {
 				criticResponse: extractVerdictJSON(),
 			}
 			s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-			s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+			s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 			s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 			pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
 				Stage1: s1, Stage2: s2, Stage3: s3,
@@ -477,7 +475,6 @@ func TestEdge_LargeSessionLog(t *testing.T) {
 
 	_ = newTestStore(t)
 	ctx := context.Background()
-	embedder := newPredictableEmbedder(3)
 
 	llm := &predictableLLM{
 		rubricResponse: goodRubricJSON(),
@@ -485,7 +482,7 @@ func TestEdge_LargeSessionLog(t *testing.T) {
 	}
 
 	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+	s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{

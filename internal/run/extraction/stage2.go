@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math"
 
 	"github.com/kinoko-dev/kinoko/internal/run/llm"
 	"github.com/kinoko-dev/kinoko/internal/run/llmutil"
@@ -47,98 +46,32 @@ func init() {
 	}
 }
 
-// Stage2Scorer runs embedding novelty + structured rubric scoring.
+// Stage2Scorer runs structured rubric scoring.
 type Stage2Scorer interface {
 	Score(ctx context.Context, session model.SessionRecord, content []byte) (*model.Stage2Result, error)
 }
 
 type stage2Scorer struct {
-	embedder model.Embedder
-	querier  model.SkillQuerier
-	llm      llm.LLMClient
-	minDist  float64
-	maxDist  float64
-	log      *slog.Logger
+	llm llm.LLMClient
+	log *slog.Logger
 }
 
 // NewStage2Scorer creates a Stage2Scorer from dependencies and config.
 func NewStage2Scorer(
-	embedder model.Embedder,
-	querier model.SkillQuerier,
 	llmClient llm.LLMClient,
 	cfg config.ExtractionConfig,
 	log *slog.Logger,
 ) Stage2Scorer {
 	return &stage2Scorer{
-		embedder: embedder,
-		querier:  querier,
-		llm:      llmClient,
-		minDist:  cfg.NoveltyMinDistance,
-		maxDist:  cfg.NoveltyMaxDistance,
-		log:      log,
+		llm: llmClient,
+		log: log,
 	}
 }
 
 func (s *stage2Scorer) Score(ctx context.Context, session model.SessionRecord, content []byte) (*model.Stage2Result, error) {
 	result := &model.Stage2Result{}
 
-	// Classifier 1: Embedding Novelty
-	emb, err := s.embedder.Embed(ctx, string(content))
-	if err != nil {
-		return nil, fmt.Errorf("stage2: embed content: %w", err)
-	}
-
-	nearest, err := s.querier.QueryNearest(ctx, emb, session.LibraryID)
-	if err != nil {
-		return nil, fmt.Errorf("stage2: query skill store: %w", err)
-	}
-
-	var distance float64
-	if nearest == nil {
-		// No existing skills — maximum novelty.
-		distance = 1.0
-	} else {
-		// CosineSim is in [0,1] for normalized embeddings; distance = 1 - similarity.
-		distance = 1.0 - nearest.CosineSim
-	}
-
-	result.EmbeddingDistance = distance
-	if nearest != nil {
-		result.NearestSkillName = nearest.SkillName
-	}
-	// Novelty score: 0 at boundaries, 1 at midpoint of valid range.
-	if distance < s.minDist {
-		result.NoveltyScore = 0
-		result.Reason = fmt.Sprintf("too similar to existing skill (distance %.3f < min %.3f)", distance, s.minDist)
-		s.log.Info("stage2 reject: novelty too low", "session_id", session.ID, "distance", distance)
-		return result, nil
-	}
-	if distance > s.maxDist {
-		result.NoveltyScore = 0
-		result.Reason = fmt.Sprintf("too unrelated to existing skills (distance %.3f > max %.3f)", distance, s.maxDist)
-		s.log.Info("stage2 reject: novelty too high", "session_id", session.ID, "distance", distance)
-		return result, nil
-	}
-
-	// Normalize novelty into [0,1] within the valid range using a linear ramp
-	// from boundaries to midpoint (triangle function). Boundaries get a small
-	// epsilon floor so that edge-of-range sessions still carry a nonzero score.
-	mid := (s.minDist + s.maxDist) / 2
-	halfRange := (s.maxDist - s.minDist) / 2
-	if halfRange > 0 {
-		raw := 1.0 - math.Abs(distance-mid)/halfRange
-		// Floor at 0.05 so boundary distances are not zero.
-		if raw < 0.05 {
-			raw = 0.05
-		}
-		result.NoveltyScore = raw
-	} else {
-		result.NoveltyScore = 1.0
-	}
-
-	s.log.Info("stage2 novelty pass", "session_id", session.ID, "distance", distance, "novelty_score", result.NoveltyScore)
-
-	// Classifier 2: Structured Rubric Scoring via LLM
+	// Structured Rubric Scoring via LLM
 	prompt := buildRubricPrompt(content)
 	resp, err := s.llm.Complete(ctx, prompt)
 	if err != nil {

@@ -47,7 +47,6 @@ func TestPipelineWorkerConcurrentResults(t *testing.T) {
 
 	for i := 0; i < n; i++ {
 		go func(idx int) {
-			embedder := newPredictableEmbedder(3)
 			// Each gets a unique pattern to avoid duplicate skill names.
 			pattern := fmt.Sprintf("FIX/Backend/Issue%d", idx)
 			llm := &predictableLLM{
@@ -59,7 +58,7 @@ func TestPipelineWorkerConcurrentResults(t *testing.T) {
 			}
 
 			s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-			s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+			s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 			s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 			pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
@@ -279,7 +278,6 @@ func TestImportDuplicateSession(t *testing.T) {
 func TestImportInvalidSessionLog(t *testing.T) {
 	_ = newTestStore(t)
 	ctx := context.Background()
-	embedder := newPredictableEmbedder(3)
 
 	llm := &predictableLLM{
 		rubricResponse: goodRubricJSON(),
@@ -287,7 +285,7 @@ func TestImportInvalidSessionLog(t *testing.T) {
 	}
 
 	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+	s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
@@ -556,7 +554,7 @@ func TestExtractThenInject(t *testing.T) {
 	}
 
 	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+	s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	indexer := storage.NewSQLiteIndexer(store)
@@ -997,13 +995,12 @@ func TestBug_SamplingCounterRace(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			embedder := newPredictableEmbedder(3)
 			llm := &predictableLLM{
 				rubricResponse: goodRubricJSON(),
 				criticResponse: extractVerdictJSON(),
 			}
 			s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-			s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+			s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 			s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 			pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{
 				Stage1: s1, Stage2: s2, Stage3: s3,
@@ -1040,14 +1037,13 @@ func TestWorkerPoolWithRealPipeline(t *testing.T) {
 	defer queueStore.Close()
 	q := queue.NewQueue(queueStore, tmpDir, cfg, testLogger())
 
-	embedder := newPredictableEmbedder(3)
 	llm := &predictableLLM{
 		rubricResponse: goodRubricJSON(),
 		criticResponse: extractVerdictJSON(),
 	}
 
 	s1 := extraction.NewStage1Filter(defaultExtractionConfig(), testLogger())
-	s2 := extraction.NewStage2Scorer(embedder, &mockQuerier{sim: 0.5}, llm, defaultExtractionConfig(), testLogger())
+	s2 := extraction.NewStage2Scorer(llm, defaultExtractionConfig(), testLogger())
 	s3 := extraction.NewStage3Critic(llm, defaultExtractionConfig(), testLogger())
 
 	pipeline, _ := extraction.NewPipeline(extraction.PipelineConfig{

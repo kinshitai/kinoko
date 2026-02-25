@@ -135,31 +135,6 @@ func TestValidate_BadMaxErrorRate(t *testing.T) {
 	}
 }
 
-func TestValidate_BadNoveltyMin(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.Extraction.NoveltyMinDistance = -0.1
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected error for negative novelty_min_distance")
-	}
-}
-
-func TestValidate_BadNoveltyMax(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.Extraction.NoveltyMaxDistance = 1.5
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected error for novelty_max_distance > 1")
-	}
-}
-
-func TestValidate_NoveltyMinGtMax(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.Extraction.NoveltyMinDistance = 0.9
-	cfg.Extraction.NoveltyMaxDistance = 0.1
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected error for novelty min > max")
-	}
-}
-
 func TestValidate_BadVersionSimilarity(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Extraction.VersionSimilarityThreshold = -0.1

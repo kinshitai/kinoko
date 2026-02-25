@@ -228,7 +228,7 @@ kinoko extract <session-log> [flags]
 
 1. **Parse** — reads the session log and extracts metadata
 2. **Stage 1 (Filter)** — fast heuristic check, rejects trivial sessions
-3. **Stage 2 (Scorer)** — embedding similarity + LLM scoring for novelty and quality
+3. **Stage 2 (Scorer) — LLM rubric scoring for quality assessment
 4. **Stage 3 (Critic)** — LLM evaluates the candidate skill (substitution test, hard reject triggers, SKILL.md generation)
 5. **Novelty check** — queries the server to ensure the skill isn't a duplicate
 6. **Git push** — commits the skill to the library (skipped with `--dry-run`)
