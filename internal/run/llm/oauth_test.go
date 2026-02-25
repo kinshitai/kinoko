@@ -67,7 +67,7 @@ func TestClaudeCodeOAuth(t *testing.T) {
 		// Create expired credentials
 		creds := map[string]interface{}{
 			"accessToken":  "sk-ant-oat01-expired-token",
-			"refreshToken": "sk-ant-refresh-expired-token", 
+			"refreshToken": "sk-ant-refresh-expired-token",
 			"expiresAt":    time.Now().Unix() - 3600, // expired 1 hour ago
 		}
 
@@ -465,7 +465,7 @@ func TestOAuthIntegration(t *testing.T) {
 		t.Error("loadClaudeCodeOAuth should not return stub error after implementation")
 	}
 
-	_, err = loadCodexOAuth() 
+	_, err = loadCodexOAuth()
 	if err != nil && err.Error() == "Codex OAuth reader not implemented yet" {
 		t.Error("loadCodexOAuth should not return stub error after implementation")
 	}
@@ -473,12 +473,12 @@ func TestOAuthIntegration(t *testing.T) {
 	// Both functions should return errors for missing files, not implementation errors
 	_, claudeErr := loadClaudeCodeOAuth()
 	_, codexErr := loadCodexOAuth()
-	
+
 	if claudeErr != nil && claudeErr.Error() == "Claude Code OAuth reader not implemented yet" {
 		t.Error("Claude Code OAuth reader should be implemented")
 	}
-	
+
 	if codexErr != nil && codexErr.Error() == "Codex OAuth reader not implemented yet" {
-		t.Error("Codex OAuth reader should be implemented")  
+		t.Error("Codex OAuth reader should be implemented")
 	}
 }

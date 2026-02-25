@@ -178,7 +178,7 @@ func loadClaudeCodeOAuthWithHome(homeDir string) (*Credentials, error) {
 	}
 
 	credPath := filepath.Join(homeDir, ".claude", ".credentials.json")
-	
+
 	data, err := os.ReadFile(credPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -231,7 +231,7 @@ func loadCodexOAuthWithHome(homeDir string) (*Credentials, error) {
 	}
 
 	credPath := filepath.Join(homeDir, ".codex", "auth.json")
-	
+
 	data, err := os.ReadFile(credPath)
 	if err != nil {
 		if os.IsNotExist(err) {
