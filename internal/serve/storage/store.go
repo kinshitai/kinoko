@@ -28,8 +28,7 @@ const skillColumns = `id, name, description, version, parent_id, library_id, cat
 	q_problem_specificity, q_solution_completeness, q_context_portability,
 	q_reasoning_transparency, q_technical_accuracy, q_verification_evidence,
 	q_innovation_level, q_composite_score, q_critic_confidence,
-	injection_count, last_injected_at, success_correlation, decay_score,
-	source_session_id, extracted_by, file_path, created_at, updated_at`
+	extracted_by, file_path, created_at, updated_at`
 
 // SkillStore is an alias for model.SkillStore.
 type SkillStore = model.SkillStore

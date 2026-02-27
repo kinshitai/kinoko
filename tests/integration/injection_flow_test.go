@@ -74,6 +74,7 @@ func TestFullInjectionFlow(t *testing.T) {
 }
 
 func TestDeadSkillFiltering(t *testing.T) {
+	t.Skip("TODO(#89): decay filtering is now client-side — server no longer has decay_score column")
 	store := newTestStore(t)
 	ctx := context.Background()
 	embedder := newPredictableEmbedder(3)

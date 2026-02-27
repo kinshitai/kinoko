@@ -176,13 +176,14 @@ func TestHTTPQuerier_QueryNearest_EmptyLibraryID(t *testing.T) {
 
 		json.NewEncoder(w).Encode(discoverResponse{
 			Skills: []struct {
-				Repo        string  `json:"repo"`
-				Name        string  `json:"name"`
-				Description string  `json:"description"`
-				Score       float64 `json:"score"`
-				CloneURL    string  `json:"clone_url"`
+				Repo           string  `json:"repo"`
+				Name           string  `json:"name"`
+				Description    string  `json:"description"`
+				PatternOverlap float64 `json:"pattern_overlap"`
+				CosineSim      float64 `json:"cosine_sim"`
+				CloneURL       string  `json:"clone_url"`
 			}{
-				{Name: "global-skill", Score: 0.85},
+				{Name: "global-skill", PatternOverlap: 0.85, CosineSim: 0.85},
 			},
 		})
 	}))
@@ -205,11 +206,12 @@ func TestHTTPSkillStore_Query_EmptyResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(discoverResponse{
 			Skills: []struct {
-				Repo        string  `json:"repo"`
-				Name        string  `json:"name"`
-				Description string  `json:"description"`
-				Score       float64 `json:"score"`
-				CloneURL    string  `json:"clone_url"`
+				Repo           string  `json:"repo"`
+				Name           string  `json:"name"`
+				Description    string  `json:"description"`
+				PatternOverlap float64 `json:"pattern_overlap"`
+				CosineSim      float64 `json:"cosine_sim"`
+				CloneURL       string  `json:"clone_url"`
 			}{},
 		})
 	}))
@@ -242,13 +244,14 @@ func TestHTTPSkillStore_Query_WithPatternsAndMinQuality(t *testing.T) {
 
 		json.NewEncoder(w).Encode(discoverResponse{
 			Skills: []struct {
-				Repo        string  `json:"repo"`
-				Name        string  `json:"name"`
-				Description string  `json:"description"`
-				Score       float64 `json:"score"`
-				CloneURL    string  `json:"clone_url"`
+				Repo           string  `json:"repo"`
+				Name           string  `json:"name"`
+				Description    string  `json:"description"`
+				PatternOverlap float64 `json:"pattern_overlap"`
+				CosineSim      float64 `json:"cosine_sim"`
+				CloneURL       string  `json:"clone_url"`
 			}{
-				{Repo: "test-lib/web-skill", Name: "web-skill", Score: 0.9},
+				{Repo: "test-lib/web-skill", Name: "web-skill", PatternOverlap: 0.9, CosineSim: 0.9},
 			},
 		})
 	}))
@@ -279,13 +282,14 @@ func TestHTTPSkillStore_Query_RepoSingleChar(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(discoverResponse{
 			Skills: []struct {
-				Repo        string  `json:"repo"`
-				Name        string  `json:"name"`
-				Description string  `json:"description"`
-				Score       float64 `json:"score"`
-				CloneURL    string  `json:"clone_url"`
+				Repo           string  `json:"repo"`
+				Name           string  `json:"name"`
+				Description    string  `json:"description"`
+				PatternOverlap float64 `json:"pattern_overlap"`
+				CosineSim      float64 `json:"cosine_sim"`
+				CloneURL       string  `json:"clone_url"`
 			}{
-				{Repo: "a", Name: "single-char-repo", Score: 0.8}, // Single character repo
+				{Repo: "a", Name: "single-char-repo", PatternOverlap: 0.8, CosineSim: 0.8}, // Single character repo
 			},
 		})
 	}))
@@ -312,13 +316,14 @@ func TestHTTPSkillStore_Query_EmptyRepo(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(discoverResponse{
 			Skills: []struct {
-				Repo        string  `json:"repo"`
-				Name        string  `json:"name"`
-				Description string  `json:"description"`
-				Score       float64 `json:"score"`
-				CloneURL    string  `json:"clone_url"`
+				Repo           string  `json:"repo"`
+				Name           string  `json:"name"`
+				Description    string  `json:"description"`
+				PatternOverlap float64 `json:"pattern_overlap"`
+				CosineSim      float64 `json:"cosine_sim"`
+				CloneURL       string  `json:"clone_url"`
 			}{
-				{Repo: "", Name: "empty-repo-skill", Score: 0.6}, // Empty repo
+				{Repo: "", Name: "empty-repo-skill", PatternOverlap: 0.6, CosineSim: 0.6}, // Empty repo
 			},
 		})
 	}))
@@ -368,13 +373,14 @@ func TestDiscoverClient_Discover_CombinedParameters(t *testing.T) {
 
 		json.NewEncoder(w).Encode(discoverResponse{
 			Skills: []struct {
-				Repo        string  `json:"repo"`
-				Name        string  `json:"name"`
-				Description string  `json:"description"`
-				Score       float64 `json:"score"`
-				CloneURL    string  `json:"clone_url"`
+				Repo           string  `json:"repo"`
+				Name           string  `json:"name"`
+				Description    string  `json:"description"`
+				PatternOverlap float64 `json:"pattern_overlap"`
+				CosineSim      float64 `json:"cosine_sim"`
+				CloneURL       string  `json:"clone_url"`
 			}{
-				{Name: "comprehensive-skill", Score: 0.95, Description: "All params used"},
+				{Name: "comprehensive-skill", PatternOverlap: 0.95, CosineSim: 0.95, Description: "All params used"},
 			},
 		})
 	}))

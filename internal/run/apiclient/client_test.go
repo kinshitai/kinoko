@@ -94,13 +94,14 @@ func TestHTTPSkillStore_Query(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(discoverResponse{
 			Skills: []struct {
-				Repo        string  `json:"repo"`
-				Name        string  `json:"name"`
-				Description string  `json:"description"`
-				Score       float64 `json:"score"`
-				CloneURL    string  `json:"clone_url"`
+				Repo           string  `json:"repo"`
+				Name           string  `json:"name"`
+				Description    string  `json:"description"`
+				PatternOverlap float64 `json:"pattern_overlap"`
+				CosineSim      float64 `json:"cosine_sim"`
+				CloneURL       string  `json:"clone_url"`
 			}{
-				{Repo: "lib/test-skill", Name: "test-skill", Score: 0.95},
+				{Repo: "lib/test-skill", Name: "test-skill", PatternOverlap: 0.95, CosineSim: 0.95},
 			},
 		})
 	}))
@@ -123,13 +124,14 @@ func TestHTTPQuerier_QueryNearest(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(discoverResponse{
 			Skills: []struct {
-				Repo        string  `json:"repo"`
-				Name        string  `json:"name"`
-				Description string  `json:"description"`
-				Score       float64 `json:"score"`
-				CloneURL    string  `json:"clone_url"`
+				Repo           string  `json:"repo"`
+				Name           string  `json:"name"`
+				Description    string  `json:"description"`
+				PatternOverlap float64 `json:"pattern_overlap"`
+				CosineSim      float64 `json:"cosine_sim"`
+				CloneURL       string  `json:"clone_url"`
 			}{
-				{Name: "nearest-skill", Score: 0.92},
+				{Name: "nearest-skill", PatternOverlap: 0.92, CosineSim: 0.92},
 			},
 		})
 	}))
@@ -151,11 +153,12 @@ func TestHTTPQuerier_QueryNearest(t *testing.T) {
 func TestHTTPQuerier_QueryNearest_NoResults(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(discoverResponse{Skills: []struct {
-			Repo        string  `json:"repo"`
-			Name        string  `json:"name"`
-			Description string  `json:"description"`
-			Score       float64 `json:"score"`
-			CloneURL    string  `json:"clone_url"`
+			Repo           string  `json:"repo"`
+			Name           string  `json:"name"`
+			Description    string  `json:"description"`
+			PatternOverlap float64 `json:"pattern_overlap"`
+			CosineSim      float64 `json:"cosine_sim"`
+			CloneURL       string  `json:"clone_url"`
 		}{}})
 	}))
 	defer srv.Close()
@@ -251,13 +254,14 @@ func TestDiscoverClient_PromptOnly(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(discoverResponse{
 			Skills: []struct {
-				Repo        string  `json:"repo"`
-				Name        string  `json:"name"`
-				Description string  `json:"description"`
-				Score       float64 `json:"score"`
-				CloneURL    string  `json:"clone_url"`
+				Repo           string  `json:"repo"`
+				Name           string  `json:"name"`
+				Description    string  `json:"description"`
+				PatternOverlap float64 `json:"pattern_overlap"`
+				CosineSim      float64 `json:"cosine_sim"`
+				CloneURL       string  `json:"clone_url"`
 			}{
-				{Name: "prompt-skill", Score: 0.88, Description: "Found via prompt"},
+				{Name: "prompt-skill", PatternOverlap: 0.88, CosineSim: 0.88, Description: "Found via prompt"},
 			},
 		})
 	}))
@@ -297,13 +301,14 @@ func TestDiscoverClient_EmbeddingOnly(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(discoverResponse{
 			Skills: []struct {
-				Repo        string  `json:"repo"`
-				Name        string  `json:"name"`
-				Description string  `json:"description"`
-				Score       float64 `json:"score"`
-				CloneURL    string  `json:"clone_url"`
+				Repo           string  `json:"repo"`
+				Name           string  `json:"name"`
+				Description    string  `json:"description"`
+				PatternOverlap float64 `json:"pattern_overlap"`
+				CosineSim      float64 `json:"cosine_sim"`
+				CloneURL       string  `json:"clone_url"`
 			}{
-				{Name: "embedding-skill", Score: 0.92, Description: "Found via embedding"},
+				{Name: "embedding-skill", PatternOverlap: 0.92, CosineSim: 0.92, Description: "Found via embedding"},
 			},
 		})
 	}))
@@ -343,13 +348,14 @@ func TestDiscoverClient_PatternsOnly(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(discoverResponse{
 			Skills: []struct {
-				Repo        string  `json:"repo"`
-				Name        string  `json:"name"`
-				Description string  `json:"description"`
-				Score       float64 `json:"score"`
-				CloneURL    string  `json:"clone_url"`
+				Repo           string  `json:"repo"`
+				Name           string  `json:"name"`
+				Description    string  `json:"description"`
+				PatternOverlap float64 `json:"pattern_overlap"`
+				CosineSim      float64 `json:"cosine_sim"`
+				CloneURL       string  `json:"clone_url"`
 			}{
-				{Name: "pattern-skill", Score: 0.85, Description: "Found via patterns"},
+				{Name: "pattern-skill", PatternOverlap: 0.85, CosineSim: 0.85, Description: "Found via patterns"},
 			},
 		})
 	}))
@@ -391,11 +397,12 @@ func TestDiscoverClient_AllEmpty_Returns400(t *testing.T) {
 		// Should not reach here in this test
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(discoverResponse{Skills: []struct {
-			Repo        string  `json:"repo"`
-			Name        string  `json:"name"`
-			Description string  `json:"description"`
-			Score       float64 `json:"score"`
-			CloneURL    string  `json:"clone_url"`
+			Repo           string  `json:"repo"`
+			Name           string  `json:"name"`
+			Description    string  `json:"description"`
+			PatternOverlap float64 `json:"pattern_overlap"`
+			CosineSim      float64 `json:"cosine_sim"`
+			CloneURL       string  `json:"clone_url"`
 		}{}})
 	}))
 	defer srv.Close()

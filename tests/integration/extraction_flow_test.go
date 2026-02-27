@@ -91,12 +91,6 @@ func TestFullExtractionFlow(t *testing.T) {
 	if dbSkill.Quality.ProblemSpecificity != 4 {
 		t.Errorf("problem_specificity = %d, want 4", dbSkill.Quality.ProblemSpecificity)
 	}
-	if dbSkill.DecayScore != 1.0 {
-		t.Errorf("initial decay = %f, want 1.0", dbSkill.DecayScore)
-	}
-	if dbSkill.SourceSessionID != "sess-e2e-001" {
-		t.Errorf("source_session = %q", dbSkill.SourceSessionID)
-	}
 	if len(dbSkill.Patterns) == 0 {
 		t.Error("expected patterns in DB")
 	}
@@ -200,7 +194,6 @@ func TestInjectionDegradedModeNoEmbedder(t *testing.T) {
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
 		},
-		DecayScore:  1.0,
 		ExtractedBy: "test",
 		FilePath:    "skills/fix-db/SKILL.md",
 	}

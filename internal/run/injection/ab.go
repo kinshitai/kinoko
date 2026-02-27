@@ -102,7 +102,7 @@ func (ab *ABInjector) Inject(ctx context.Context, req model.InjectionRequest) (*
 				MatchScore:     sk.CompositeScore,
 				PatternOverlap: sk.PatternOverlap,
 				CosineSim:      sk.CosineSim,
-				HistoricalRate: sk.HistoricalRate,
+				HistoricalRate: sk.HistoricalRate, // populated by injector (may be 0)
 				InjectedAt:     now,
 				ABGroup:        string(group),
 				Delivered:      delivered,

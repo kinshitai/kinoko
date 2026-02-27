@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"context"
 	"math"
 	"testing"
 	"time"
@@ -67,27 +66,5 @@ func TestCosineSimilarity_EdgeCases(t *testing.T) {
 	}
 	if v := cosineSimilarity([]float32{1, 0, 0}, []float32{-1, 0, 0}); math.Abs(v+1.0) > 0.001 {
 		t.Errorf("opposite = %f, want -1", v)
-	}
-}
-
-func TestUpdateUsage_NoCorrelation(t *testing.T) {
-	s := testStore(t)
-	ctx := context.Background()
-
-	sk := testSkill("id-usage", "usage-skill", "default")
-	if err := s.Put(ctx, sk, nil); err != nil {
-		t.Fatalf("put: %v", err)
-	}
-
-	if err := s.UpdateUsage(ctx, "id-usage", "success"); err != nil {
-		t.Fatalf("update usage: %v", err)
-	}
-
-	got, err := s.Get(ctx, "id-usage")
-	if err != nil {
-		t.Fatalf("get: %v", err)
-	}
-	if got.InjectionCount != 1 {
-		t.Errorf("injection_count = %d, want 1", got.InjectionCount)
 	}
 }

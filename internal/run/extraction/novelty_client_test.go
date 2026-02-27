@@ -19,7 +19,7 @@ func TestNoveltyClient_Novel(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		// Return discover response with low similarity (novel content)
-		w.Write([]byte(`{"skills":[{"name":"existing-skill","score":0.1}]}`))
+		w.Write([]byte(`{"skills":[{"name":"existing-skill","pattern_overlap":0.1,"cosine_sim":0.1}]}`))
 	}))
 	defer srv.Close()
 
@@ -29,8 +29,9 @@ func TestNoveltyClient_Novel(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !res.Novel {
-		t.Error("expected novel=true (score 0.1 < threshold 0.7)")
+		t.Error("expected novel=true (combined score < threshold 0.7)")
 	}
+	// Combined: 0.6*0.1 + 0.4*0.1 = 0.1
 	if res.Score != 0.1 {
 		t.Errorf("expected score 0.1, got %f", res.Score)
 	}
@@ -40,7 +41,7 @@ func TestNoveltyClient_NotNovel(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		// Return discover response with high similarity (not novel)
-		w.Write([]byte(`{"skills":[{"name":"existing-skill","score":0.92}]}`))
+		w.Write([]byte(`{"skills":[{"name":"existing-skill","pattern_overlap":0.95,"cosine_sim":0.88}]}`))
 	}))
 	defer srv.Close()
 
@@ -50,7 +51,8 @@ func TestNoveltyClient_NotNovel(t *testing.T) {
 		t.Fatal(err)
 	}
 	if res.Novel {
-		t.Error("expected novel=false (score 0.92 > threshold 0.7)")
+		// Combined: 0.6*0.95 + 0.4*0.88 = 0.922
+		t.Error("expected novel=false (combined score 0.922 > threshold 0.7)")
 	}
 	if len(res.Similar) != 1 {
 		t.Fatalf("expected 1 similar, got %d", len(res.Similar))

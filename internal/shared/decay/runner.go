@@ -1,4 +1,5 @@
 // Package decay implements skill decay based on half-life degradation.
+// TODO(#89): Wire to client-side storage. Server no longer provides ListByDecay/UpdateDecay.
 package decay
 
 import (

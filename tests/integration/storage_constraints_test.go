@@ -53,15 +53,10 @@ func TestMultipleSkillsQueryOrdering(t *testing.T) {
 		t.Fatalf("got %d results, want 3", len(results))
 	}
 	for i := 1; i < len(results); i++ {
-		if results[i].CompositeScore > results[i-1].CompositeScore {
+		if results[i].PatternOverlap > results[i-1].PatternOverlap {
 			t.Errorf("results not sorted: [%d].score=%f > [%d].score=%f",
-				i, results[i].CompositeScore, i-1, results[i-1].CompositeScore)
+				i, results[i].PatternOverlap, i-1, results[i-1].PatternOverlap)
 		}
-	}
-	best := results[0]
-	worst := results[len(results)-1]
-	if best.HistoricalRate <= worst.HistoricalRate {
-		t.Errorf("best historical rate %.2f should exceed worst %.2f", best.HistoricalRate, worst.HistoricalRate)
 	}
 }
 

@@ -37,11 +37,12 @@ type discoverRequest struct {
 
 type discoverResponse struct {
 	Skills []struct {
-		Repo        string  `json:"repo"`
-		Name        string  `json:"name"`
-		Description string  `json:"description"`
-		Score       float64 `json:"score"`
-		CloneURL    string  `json:"clone_url"`
+		Repo           string  `json:"repo"`
+		Name           string  `json:"name"`
+		Description    string  `json:"description"`
+		PatternOverlap float64 `json:"pattern_overlap"`
+		CosineSim      float64 `json:"cosine_sim"`
+		CloneURL       string  `json:"clone_url"`
 	} `json:"skills"`
 }
 
@@ -102,7 +103,8 @@ func (s *HTTPSkillStore) Query(ctx context.Context, q model.SkillQuery) ([]model
 				Name:      name,
 				LibraryID: libraryID,
 			},
-			CompositeScore: skill.Score,
+			PatternOverlap: skill.PatternOverlap,
+			CosineSim:      skill.CosineSim,
 		})
 	}
 

@@ -15,11 +15,6 @@ CREATE TABLE IF NOT EXISTS skills (
     q_innovation_level        INTEGER NOT NULL CHECK (q_innovation_level BETWEEN 0 AND 5),
     q_composite_score         REAL NOT NULL,
     q_critic_confidence       REAL NOT NULL CHECK (q_critic_confidence BETWEEN 0.0 AND 1.0),
-    injection_count       INTEGER NOT NULL DEFAULT 0,
-    last_injected_at      TIMESTAMP,
-    success_correlation   REAL NOT NULL DEFAULT 0.0,
-    decay_score           REAL NOT NULL DEFAULT 1.0,
-    source_session_id     TEXT,
     extracted_by          TEXT NOT NULL,
     file_path             TEXT NOT NULL,
     created_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -41,6 +36,5 @@ CREATE TABLE IF NOT EXISTS skill_embeddings (
 );
 
 CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category);
-CREATE INDEX IF NOT EXISTS idx_skills_decay ON skills(decay_score);
 CREATE INDEX IF NOT EXISTS idx_skills_library ON skills(library_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_skills_name_library ON skills(name, library_id);

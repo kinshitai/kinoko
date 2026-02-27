@@ -24,9 +24,6 @@ const maxPatterns = 3
 // defaultMaxSkills is the fallback when InjectionRequest.MaxSkills <= 0.
 const defaultMaxSkills = 3
 
-// defaultMinDecay filters out skills at or below the deprecation threshold (§5.5).
-const defaultMinDecay = 0.05
-
 // defaultCandidateLimit bounds the number of rows loaded from the store.
 const defaultCandidateLimit = 50
 
@@ -106,7 +103,6 @@ func (inj *injector) Inject(ctx context.Context, req model.InjectionRequest) (*m
 		Embedding:  promptEmbedding,
 		LibraryIDs: req.LibraryIDs,
 		MinQuality: 0,
-		MinDecay:   defaultMinDecay,
 		Limit:      defaultCandidateLimit,
 	}
 
@@ -122,23 +118,20 @@ func (inj *injector) Inject(ctx context.Context, req model.InjectionRequest) (*m
 		}, nil
 	}
 
-	// Step 4: Re-rank in degraded mode; otherwise use store's composite.
-	if degraded {
-		for i := range candidates {
-			c := &candidates[i]
-			c.CompositeScore = 0.7*c.PatternOverlap + 0.3*c.HistoricalRate
+	// Step 4: Client-side ranking from raw signals.
+	// Server returns raw pattern_overlap and cosine_sim. Client ranks locally.
+	// TODO(#89): Add local behavioral data (injection count, success) from .kinoko/ files.
+	slices.SortFunc(candidates, func(a, b model.ScoredSkill) int {
+		scoreA := 0.6*a.PatternOverlap + 0.4*a.CosineSim
+		scoreB := 0.6*b.PatternOverlap + 0.4*b.CosineSim
+		if scoreA > scoreB {
+			return -1
 		}
-		slices.SortFunc(candidates, func(a, b model.ScoredSkill) int {
-			if a.CompositeScore > b.CompositeScore {
-				return -1
-			}
-			if a.CompositeScore < b.CompositeScore {
-				return 1
-			}
-			return 0
-		})
-	}
-	// In normal mode the store already sorted by composite — no recomputation needed.
+		if scoreA < scoreB {
+			return 1
+		}
+		return 0
+	})
 
 	// Step 5: Limit to MaxSkills.
 	if len(candidates) > maxSkills {
@@ -149,12 +142,13 @@ func (inj *injector) Inject(ctx context.Context, req model.InjectionRequest) (*m
 	now := time.Now().UTC()
 	skills := make([]model.InjectedSkill, len(candidates))
 	for i, c := range candidates {
+		localScore := 0.6*c.PatternOverlap + 0.4*c.CosineSim
 		skills[i] = model.InjectedSkill{
 			SkillID:        c.Skill.ID,
 			PatternOverlap: c.PatternOverlap,
 			CosineSim:      c.CosineSim,
-			HistoricalRate: c.HistoricalRate,
-			CompositeScore: c.CompositeScore,
+			HistoricalRate: 0, // TODO(#89): populate from .kinoko/ local files
+			CompositeScore: localScore,
 			RankPosition:   i + 1,
 		}
 
@@ -165,10 +159,10 @@ func (inj *injector) Inject(ctx context.Context, req model.InjectionRequest) (*m
 				SessionID:      req.SessionID,
 				SkillID:        c.Skill.ID,
 				RankPosition:   i + 1,
-				MatchScore:     c.CompositeScore,
+				MatchScore:     localScore,
 				PatternOverlap: c.PatternOverlap,
 				CosineSim:      c.CosineSim,
-				HistoricalRate: c.HistoricalRate,
+				HistoricalRate: 0, // TODO(#89): populate from .kinoko/ local files
 				InjectedAt:     now,
 			}
 			if writeErr := inj.eventWriter.WriteInjectionEvent(ctx, ev); writeErr != nil {

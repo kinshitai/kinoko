@@ -41,7 +41,6 @@ func testSkill(id, name, lib string) *model.SkillRecord {
 			CompositeScore:        3.5,
 			CriticConfidence:      0.8,
 		},
-		DecayScore:  1.0,
 		ExtractedBy: "test-v1",
 		FilePath:    "skills/" + name + "/SKILL.md",
 		Patterns:    []string{"FIX/Backend/DatabaseConnection"},
@@ -73,9 +72,6 @@ func TestPutAndGet(t *testing.T) {
 	}
 	if len(got.Embedding) != 3 {
 		t.Errorf("embedding len = %d, want 3", len(got.Embedding))
-	}
-	if got.DecayScore != 1.0 {
-		t.Errorf("decay = %f, want 1.0", got.DecayScore)
 	}
 }
 
@@ -200,37 +196,13 @@ func TestQueryMinQuality(t *testing.T) {
 	}
 }
 
-func TestQueryMinDecay(t *testing.T) {
-	s := testStore(t)
-	ctx := context.Background()
-
-	sk := testSkill("id-1", "fix-db-conn", "default")
-	sk.DecayScore = 0.01
-	if err := s.Put(ctx, sk, nil); err != nil {
-		t.Fatalf("put: %v", err)
-	}
-
-	results, err := s.Query(ctx, SkillQuery{
-		LibraryIDs: []string{"default"},
-		MinDecay:   0.1,
-		Limit:      10,
-	})
-	if err != nil {
-		t.Fatalf("query: %v", err)
-	}
-	if len(results) != 0 {
-		t.Errorf("expected 0 results for min decay filter, got %d", len(results))
-	}
-}
-
-func TestQueryCompositeScoreOrdering(t *testing.T) {
+func TestQueryRelevanceOrdering(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 
 	a := testSkill("id-a", "skill-a", "default")
 	a.Patterns = []string{"FIX/Backend/DatabaseConnection"}
 	a.Embedding = nil
-	a.SuccessCorrelation = 0.5
 	if err := s.Put(ctx, a, nil); err != nil {
 		t.Fatalf("put a: %v", err)
 	}
@@ -238,7 +210,6 @@ func TestQueryCompositeScoreOrdering(t *testing.T) {
 	b := testSkill("id-b", "skill-b", "default")
 	b.Patterns = []string{"BUILD/Frontend/ComponentDesign"}
 	b.Embedding = []float32{1, 0, 0}
-	b.SuccessCorrelation = -0.5
 	if err := s.Put(ctx, b, nil); err != nil {
 		t.Fatalf("put b: %v", err)
 	}
@@ -255,8 +226,9 @@ func TestQueryCompositeScoreOrdering(t *testing.T) {
 	if len(results) != 2 {
 		t.Fatalf("results = %d, want 2", len(results))
 	}
-	if results[0].CompositeScore < results[1].CompositeScore {
-		t.Error("results not sorted by composite score descending")
+	// Results should be sorted by relevance (pattern overlap) descending
+	if results[0].PatternOverlap < results[1].PatternOverlap {
+		t.Error("results not sorted by pattern overlap descending")
 	}
 }
 
@@ -277,146 +249,6 @@ func TestQueryLimit(t *testing.T) {
 	}
 	if len(results) != 2 {
 		t.Errorf("results = %d, want 2", len(results))
-	}
-}
-
-func TestUpdateUsage(t *testing.T) {
-	s := testStore(t)
-	ctx := context.Background()
-
-	sk := testSkill("id-1", "fix-db-conn", "default")
-	if err := s.Put(ctx, sk, nil); err != nil {
-		t.Fatalf("put: %v", err)
-	}
-
-	if err := s.UpdateUsage(ctx, "id-1", ""); err != nil {
-		t.Fatalf("update usage: %v", err)
-	}
-
-	got, err := s.Get(ctx, "id-1")
-	if err != nil {
-		t.Fatalf("get: %v", err)
-	}
-	if got.InjectionCount != 1 {
-		t.Errorf("injection_count = %d, want 1", got.InjectionCount)
-	}
-	if got.LastInjectedAt.IsZero() {
-		t.Error("last_injected_at should be set")
-	}
-}
-
-func TestUpdateDecay(t *testing.T) {
-	s := testStore(t)
-	ctx := context.Background()
-
-	sk := testSkill("id-1", "fix-db-conn", "default")
-	if err := s.Put(ctx, sk, nil); err != nil {
-		t.Fatalf("put: %v", err)
-	}
-
-	if err := s.UpdateDecay(ctx, "id-1", 0.42); err != nil {
-		t.Fatalf("update decay: %v", err)
-	}
-
-	got, err := s.Get(ctx, "id-1")
-	if err != nil {
-		t.Fatalf("get: %v", err)
-	}
-	if math.Abs(got.DecayScore-0.42) > 0.001 {
-		t.Errorf("decay = %f, want 0.42", got.DecayScore)
-	}
-}
-
-func TestListByDecay(t *testing.T) {
-	s := testStore(t)
-	ctx := context.Background()
-
-	for _, d := range []struct {
-		id    string
-		name  string
-		decay float64
-	}{
-		{"id-a", "skill-a", 0.9},
-		{"id-b", "skill-b", 0.1},
-		{"id-c", "skill-c", 0.5},
-	} {
-		sk := testSkill(d.id, d.name, "default")
-		sk.DecayScore = d.decay
-		if err := s.Put(ctx, sk, nil); err != nil {
-			t.Fatalf("put %s: %v", d.id, err)
-		}
-	}
-
-	results, err := s.ListByDecay(ctx, "default", 10)
-	if err != nil {
-		t.Fatalf("list by decay: %v", err)
-	}
-	if len(results) != 3 {
-		t.Fatalf("results = %d, want 3", len(results))
-	}
-	if results[0].DecayScore > results[1].DecayScore || results[1].DecayScore > results[2].DecayScore {
-		t.Errorf("not sorted ascending: %f, %f, %f", results[0].DecayScore, results[1].DecayScore, results[2].DecayScore)
-	}
-}
-
-func TestListByDecayLimit(t *testing.T) {
-	s := testStore(t)
-	ctx := context.Background()
-
-	for i := 0; i < 5; i++ {
-		sk := testSkill(fmt.Sprintf("id-%d", i), fmt.Sprintf("skill-%d", i), "default")
-		sk.DecayScore = float64(i) * 0.2
-		if err := s.Put(ctx, sk, nil); err != nil {
-			t.Fatalf("put %d: %v", i, err)
-		}
-	}
-
-	results, err := s.ListByDecay(ctx, "default", 2)
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(results) != 2 {
-		t.Errorf("results = %d, want 2", len(results))
-	}
-}
-
-func TestListByDecayZeroLimitReturnsAll(t *testing.T) {
-	s := testStore(t)
-	ctx := context.Background()
-
-	for i := 0; i < 5; i++ {
-		sk := testSkill(fmt.Sprintf("id-nolim-%d", i), fmt.Sprintf("skill-nolim-%d", i), "default")
-		sk.DecayScore = float64(i) * 0.2
-		if err := s.Put(ctx, sk, nil); err != nil {
-			t.Fatalf("put %d: %v", i, err)
-		}
-	}
-
-	// limit=0 should return all rows, not zero rows.
-	results, err := s.ListByDecay(ctx, "default", 0)
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(results) != 5 {
-		t.Errorf("limit=0 returned %d rows, want 5 (all)", len(results))
-	}
-}
-
-func TestListByDecayLibraryFilter(t *testing.T) {
-	s := testStore(t)
-	ctx := context.Background()
-
-	sk1 := testSkill("id-1", "skill-a", "lib-a")
-	sk2 := testSkill("id-2", "skill-b", "lib-b")
-	s.Put(ctx, sk1, nil)
-	s.Put(ctx, sk2, nil)
-
-	results, err := s.ListByDecay(ctx, "lib-a", 10)
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(results) != 1 {
-		t.Errorf("results = %d, want 1", len(results))
 	}
 }
 
