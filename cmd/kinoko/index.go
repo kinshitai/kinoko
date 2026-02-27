@@ -154,7 +154,6 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		Patterns:    parsed.Tags,
 		ExtractedBy: "kinoko-index",
 		FilePath:    skillPath,
-		DecayScore:  1.0,
 	}
 
 	// Parse quality scores from frontmatter if present.

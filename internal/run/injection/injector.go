@@ -122,8 +122,8 @@ func (inj *injector) Inject(ctx context.Context, req model.InjectionRequest) (*m
 	// Server returns raw pattern_overlap and cosine_sim. Client ranks locally.
 	// TODO(#89): Add local behavioral data (injection count, success) from .kinoko/ files.
 	slices.SortFunc(candidates, func(a, b model.ScoredSkill) int {
-		scoreA := 0.6*a.PatternOverlap + 0.4*a.CosineSim
-		scoreB := 0.6*b.PatternOverlap + 0.4*b.CosineSim
+		scoreA := model.RelevanceScore(a.PatternOverlap, a.CosineSim)
+		scoreB := model.RelevanceScore(b.PatternOverlap, b.CosineSim)
 		if scoreA > scoreB {
 			return -1
 		}
@@ -142,7 +142,7 @@ func (inj *injector) Inject(ctx context.Context, req model.InjectionRequest) (*m
 	now := time.Now().UTC()
 	skills := make([]model.InjectedSkill, len(candidates))
 	for i, c := range candidates {
-		localScore := 0.6*c.PatternOverlap + 0.4*c.CosineSim
+		localScore := model.RelevanceScore(c.PatternOverlap, c.CosineSim)
 		skills[i] = model.InjectedSkill{
 			SkillID:        c.Skill.ID,
 			PatternOverlap: c.PatternOverlap,

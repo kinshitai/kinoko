@@ -364,29 +364,6 @@ func TestPipelineSkillFields(t *testing.T) {
 	if s.UpdatedAt.IsZero() {
 		t.Error("UpdatedAt is zero")
 	}
-	if s.DecayScore != 1.0 {
-		t.Errorf("DecayScore = %f, want 1.0 (new skills must be fully active)", s.DecayScore)
-	}
-}
-
-func TestPipelineNewSkillDecayScore(t *testing.T) {
-	p, _ := NewPipeline(PipelineConfig{
-		Stage1:    &mockStage1{result: passStage1()},
-		Stage2:    &mockStage2{result: passStage2()},
-		Stage3:    &mockStage3{result: passStage3()},
-		Committer: &stubCommitter{}, Log: testLog(),
-	})
-
-	result, err := p.Extract(context.Background(), pipelineTestSession(), []byte("content"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Skill == nil {
-		t.Fatal("expected skill")
-	}
-	if result.Skill.DecayScore != 1.0 {
-		t.Errorf("DecayScore = %f, want 1.0; new skills with 0.0 are invisible to MinDecay filters", result.Skill.DecayScore)
-	}
 }
 
 func TestPipelineSessionID(t *testing.T) {

@@ -1,3 +1,7 @@
+-- Migration note: existing databases from pre-v0.x may contain extra columns
+-- (e.g. decay_score, injection_count, last_injected_at, success_correlation,
+-- source_session_id). SQLite ignores unused columns gracefully, so no
+-- explicit migration is needed.
 CREATE TABLE IF NOT EXISTS skills (
     id                    TEXT PRIMARY KEY,
     name                  TEXT NOT NULL,

@@ -191,8 +191,8 @@ func (s *SQLiteStore) Query(ctx context.Context, q SkillQuery) ([]ScoredSkill, e
 	}
 
 	slices.SortFunc(results, func(a, b ScoredSkill) int {
-		relA := 0.6*a.PatternOverlap + 0.4*a.CosineSim
-		relB := 0.6*b.PatternOverlap + 0.4*b.CosineSim
+		relA := model.RelevanceScore(a.PatternOverlap, a.CosineSim)
+		relB := model.RelevanceScore(b.PatternOverlap, b.CosineSim)
 		if relA > relB {
 			return -1
 		}

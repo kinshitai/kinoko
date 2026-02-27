@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
 // NoveltyResult holds the server response for a novelty check.
@@ -113,7 +115,7 @@ func (c *NoveltyClient) Check(ctx context.Context, content string) (*NoveltyResu
 
 	for _, skill := range discoverResp.Skills {
 		// TODO: threshold may need recalibration after switching from composite to raw signals
-		score := 0.6*skill.PatternOverlap + 0.4*skill.CosineSim
+		score := model.RelevanceScore(skill.PatternOverlap, skill.CosineSim)
 		if score > maxScore {
 			maxScore = score
 		}
