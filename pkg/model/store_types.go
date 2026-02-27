@@ -18,9 +18,6 @@ type SkillStore interface {
 	Get(ctx context.Context, id string) (*SkillRecord, error)
 	GetLatestByName(ctx context.Context, name string, libraryID string) (*SkillRecord, error)
 	Query(ctx context.Context, q SkillQuery) ([]ScoredSkill, error)
-	UpdateUsage(ctx context.Context, id string, outcome string) error
-	UpdateDecay(ctx context.Context, id string, decayScore float64) error
-	ListByDecay(ctx context.Context, libraryID string, limit int) ([]SkillRecord, error)
 }
 
 // SkillQuery defines query parameters for skill search.
@@ -29,7 +26,6 @@ type SkillQuery struct {
 	Embedding  []float32
 	LibraryIDs []string
 	MinQuality float64
-	MinDecay   float64
 	Limit      int
 }
 
@@ -38,8 +34,6 @@ type ScoredSkill struct {
 	Skill          SkillRecord
 	PatternOverlap float64
 	CosineSim      float64
-	HistoricalRate float64
-	CompositeScore float64
 }
 
 // InjectionEventRecord maps to the injection_events table.

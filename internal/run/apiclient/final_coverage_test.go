@@ -97,13 +97,14 @@ func TestHTTPSkillStore_Query_ComplexRepoName(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(discoverResponse{
 			Skills: []struct {
-				Repo        string  `json:"repo"`
-				Name        string  `json:"name"`
-				Description string  `json:"description"`
-				Score       float64 `json:"score"`
-				CloneURL    string  `json:"clone_url"`
+				Repo           string  `json:"repo"`
+				Name           string  `json:"name"`
+				Description    string  `json:"description"`
+				PatternOverlap float64 `json:"pattern_overlap"`
+				CosineSim      float64 `json:"cosine_sim"`
+				CloneURL       string  `json:"clone_url"`
 			}{
-				{Repo: "org/suborg/skill-name", Name: "skill-name", Score: 0.9}, // Complex repo path
+				{Repo: "org/suborg/skill-name", Name: "skill-name", PatternOverlap: 0.9, CosineSim: 0.9}, // Complex repo path
 			},
 		})
 	}))

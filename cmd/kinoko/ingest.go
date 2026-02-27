@@ -259,9 +259,8 @@ func runIngest(cmd *cobra.Command, args []string) error {
 			CompositeScore:        0.6,
 			CriticConfidence:      0.5,
 		},
-		DecayScore: 1.0,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
 	// Novelty check BEFORE commit — gate duplicates.

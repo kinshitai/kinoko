@@ -23,7 +23,6 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(extractCmd)
-	rootCmd.AddCommand(decayCmd)
 	rootCmd.AddCommand(statsCmd)
 	rootCmd.AddCommand(importCmd)
 	rootCmd.AddCommand(queueCmd)

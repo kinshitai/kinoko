@@ -205,22 +205,6 @@ func TestSetEmbedEngine(t *testing.T) {
 	}
 }
 
-// T3: handleListByDecay with nil store (error path)
-func TestHandleListByDecay_StoreError(t *testing.T) {
-	// store is nil → will panic or error; use a server with nil store
-	// Actually store.ListByDecay will panic on nil. Let's use a real store and test happy path,
-	// then for error we need a store that returns error. We'll test with nil store causing panic recovery...
-	// Better: just test the endpoint works with a valid store.
-	store := newTestStore(t)
-	srv := New(Config{Port: 0, Store: store})
-	req := httptest.NewRequest("GET", "/api/v1/skills/decay", nil)
-	w := httptest.NewRecorder()
-	srv.httpServer.Handler.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
 // T3: Rate limit (429) — semaphore size 1, fill it, next request gets 429
 func TestDiscoverPOST_RateLimit429(t *testing.T) {
 	store := newTestStore(t)

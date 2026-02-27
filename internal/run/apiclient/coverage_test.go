@@ -84,13 +84,14 @@ func TestHTTPSkillStore_Query_RepoNoSlash(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(discoverResponse{
 			Skills: []struct {
-				Repo        string  `json:"repo"`
-				Name        string  `json:"name"`
-				Description string  `json:"description"`
-				Score       float64 `json:"score"`
-				CloneURL    string  `json:"clone_url"`
+				Repo           string  `json:"repo"`
+				Name           string  `json:"name"`
+				Description    string  `json:"description"`
+				PatternOverlap float64 `json:"pattern_overlap"`
+				CosineSim      float64 `json:"cosine_sim"`
+				CloneURL       string  `json:"clone_url"`
 			}{
-				{Repo: "noslash", Name: "fallback-name", Score: 0.7},
+				{Repo: "noslash", Name: "fallback-name", PatternOverlap: 0.7, CosineSim: 0.7},
 			},
 		})
 	}))
@@ -155,29 +156,6 @@ func TestHTTPEmbedder_EmbedBatch_ServerError(t *testing.T) {
 	}
 }
 
-// ── SkillReader/SkillWriter (decay) happy + error via httptest ──
-
-func TestHTTPDecayClient_UpdateDecay_ServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "write failed"})
-	}))
-	defer srv.Close()
-
-	dc := NewHTTPDecayClient(New(srv.URL))
-	err := dc.UpdateDecay(context.Background(), "s1", 0.5)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	apiErr, ok := err.(*APIError)
-	if !ok {
-		t.Fatalf("expected *APIError, got %T", err)
-	}
-	if apiErr.StatusCode != 500 {
-		t.Errorf("expected 500, got %d", apiErr.StatusCode)
-	}
-}
-
 // ── doJSON: non-JSON error body falls back to raw text ──
 
 func TestDoJSON_NonJSONErrorBody(t *testing.T) {
@@ -216,13 +194,14 @@ func TestHTTPSkillStore_Query_WithEmbedding(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(discoverResponse{
 			Skills: []struct {
-				Repo        string  `json:"repo"`
-				Name        string  `json:"name"`
-				Description string  `json:"description"`
-				Score       float64 `json:"score"`
-				CloneURL    string  `json:"clone_url"`
+				Repo           string  `json:"repo"`
+				Name           string  `json:"name"`
+				Description    string  `json:"description"`
+				PatternOverlap float64 `json:"pattern_overlap"`
+				CosineSim      float64 `json:"cosine_sim"`
+				CloneURL       string  `json:"clone_url"`
 			}{
-				{Repo: "mylib/myskill", Name: "myskill", Score: 0.99},
+				{Repo: "mylib/myskill", Name: "myskill", PatternOverlap: 0.99, CosineSim: 0.99},
 			},
 		})
 	}))

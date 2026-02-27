@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
 // NoveltyResult holds the server response for a novelty check.
@@ -56,11 +58,12 @@ type discoverRequest struct {
 
 type discoverResponse struct {
 	Skills []struct {
-		Repo        string  `json:"repo"`
-		Name        string  `json:"name"`
-		Description string  `json:"description"`
-		Score       float64 `json:"score"`
-		CloneURL    string  `json:"clone_url"`
+		Repo           string  `json:"repo"`
+		Name           string  `json:"name"`
+		Description    string  `json:"description"`
+		PatternOverlap float64 `json:"pattern_overlap"`
+		CosineSim      float64 `json:"cosine_sim"`
+		CloneURL       string  `json:"clone_url"`
 	} `json:"skills"`
 }
 
@@ -111,12 +114,14 @@ func (c *NoveltyClient) Check(ctx context.Context, content string) (*NoveltyResu
 	var similar []SimilarSkill
 
 	for _, skill := range discoverResp.Skills {
-		if skill.Score > maxScore {
-			maxScore = skill.Score
+		// TODO: threshold may need recalibration after switching from composite to raw signals
+		score := model.RelevanceScore(skill.PatternOverlap, skill.CosineSim)
+		if score > maxScore {
+			maxScore = score
 		}
 		similar = append(similar, SimilarSkill{
 			Name:  skill.Name,
-			Score: skill.Score,
+			Score: score,
 		})
 	}
 

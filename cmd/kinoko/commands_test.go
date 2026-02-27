@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"testing"
 
 	"github.com/kinoko-dev/kinoko/internal/run/extraction"
@@ -20,26 +19,6 @@ func TestExtractCmdArgs(t *testing.T) {
 	}
 	if err := cmd.Args(cmd, []string{"a", "b"}); err == nil {
 		t.Error("expected error with 2 args")
-	}
-}
-
-func TestDecayCmdFlags(t *testing.T) {
-	cmd := decayCmd
-	f := cmd.Flags()
-
-	// --dry-run flag exists
-	dryRun := f.Lookup("dry-run")
-	if dryRun == nil {
-		t.Fatal("--dry-run flag not found")
-	}
-	if dryRun.DefValue != "false" {
-		t.Errorf("--dry-run default = %s, want false", dryRun.DefValue)
-	}
-
-	// --library flag exists
-	lib := f.Lookup("library")
-	if lib == nil {
-		t.Fatal("--library flag not found")
 	}
 }
 
@@ -87,19 +66,11 @@ tool_call: exec go build ./...
 	}
 }
 
-func TestNoopDecayWriter(t *testing.T) {
-	w := &noopDecayWriter{}
-	if err := w.UpdateDecay(context.TODO(), "test", 0.5); err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
 func TestRootCmdHasAllCommands(t *testing.T) {
 	want := map[string]bool{
 		"serve":   false,
 		"init":    false,
 		"extract": false,
-		"decay":   false,
 		"stats":   false,
 		"import":  false,
 		"queue":   false,

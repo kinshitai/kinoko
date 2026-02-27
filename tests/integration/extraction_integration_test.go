@@ -19,7 +19,6 @@ import (
 	"github.com/kinoko-dev/kinoko/internal/run/queue"
 	"github.com/kinoko-dev/kinoko/internal/run/worker"
 	"github.com/kinoko-dev/kinoko/internal/serve/storage"
-	"github.com/kinoko-dev/kinoko/internal/shared/decay"
 	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
@@ -98,7 +97,7 @@ func TestPipelineWorkerConcurrentResults(t *testing.T) {
 	}
 	t.Logf("Concurrent extraction: %d extracted, %d skills in DB", extracted, len(skills))
 	for _, s := range skills {
-		if s.CompositeScore == 0 {
+		if s.PatternOverlap == 0 && s.CosineSim == 0 {
 			t.Errorf("skill %s has zero composite score — data corruption", s.Skill.ID)
 		}
 	}
@@ -410,7 +409,6 @@ func TestBug_UnboundedINClause(t *testing.T) {
 				InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
 			},
 			Embedding:   embedder.deterministicVector(fmt.Sprintf("skill %d", i)),
-			DecayScore:  1.0,
 			ExtractedBy: "test",
 			FilePath:    fmt.Sprintf("skills/skill-%04d/SKILL.md", i),
 		}
@@ -456,7 +454,6 @@ func TestInjectNoEmbeddingService(t *testing.T) {
 			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
 		},
-		DecayScore:  1.0,
 		ExtractedBy: "test",
 		FilePath:    "skills/fix-db-noem/SKILL.md",
 	}
@@ -509,7 +506,6 @@ func TestInjectMissingSkillFile(t *testing.T) {
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
 		},
 		Embedding:   embedder.deterministicVector("ghost skill"),
-		DecayScore:  1.0,
 		ExtractedBy: "test",
 		FilePath:    filepath.Join(tmpDir, "nonexistent/SKILL.md"),
 	}
@@ -606,97 +602,7 @@ func TestExtractThenInject(t *testing.T) {
 	}
 }
 
-// =============================================================================
-// P12: Create skill → run decay → verify updated scores in injection ranking
-// =============================================================================
-
-func TestExtractDecayInjectRanking(t *testing.T) {
-	store := newTestStore(t)
-	ctx := context.Background()
-	embedder := newPredictableEmbedder(3)
-
-	now := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
-
-	// Seed two skills: one fresh, one old.
-	fresh := &model.SkillRecord{
-		ID: "skill-fresh", Name: "fresh-skill", Version: 1, LibraryID: "test-lib",
-		Category: model.CategoryTactical,
-		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: model.QualityScores{
-			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
-			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
-			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
-		},
-		Embedding:   embedder.deterministicVector("fresh skill"),
-		DecayScore:  1.0,
-		ExtractedBy: "test",
-		FilePath:    "skills/fresh/SKILL.md",
-	}
-	old := &model.SkillRecord{
-		ID: "skill-old", Name: "old-skill", Version: 1, LibraryID: "test-lib",
-		Category: model.CategoryTactical,
-		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: model.QualityScores{
-			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
-			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
-			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
-		},
-		Embedding:   embedder.deterministicVector("old skill"),
-		DecayScore:  1.0,
-		ExtractedBy: "test",
-		FilePath:    "skills/old/SKILL.md",
-	}
-
-	store.Put(ctx, fresh, nil)
-	store.Put(ctx, old, nil)
-
-	// Set last_injected_at: fresh = 1 day ago, old = 90 days ago (1 half-life for tactical).
-	store.DB().Exec("UPDATE skills SET last_injected_at = ? WHERE id = ?", now.AddDate(0, 0, -1), "skill-fresh")
-	store.DB().Exec("UPDATE skills SET last_injected_at = ? WHERE id = ?", now.AddDate(0, 0, -90), "skill-old")
-
-	// Run decay.
-	decayCfg := decay.DefaultConfig()
-	runner, _ := decay.NewRunner(store, store, decayCfg, testLogger())
-	runner.SetNow(func() time.Time { return now })
-	_, err := runner.RunCycle(ctx, "test-lib")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Verify decay scores changed.
-	freshSkill, _ := store.Get(ctx, "skill-fresh")
-	oldSkill, _ := store.Get(ctx, "skill-old")
-
-	if freshSkill.DecayScore <= oldSkill.DecayScore {
-		t.Errorf("fresh decay (%f) should be > old decay (%f)", freshSkill.DecayScore, oldSkill.DecayScore)
-	}
-
-	// Inject — fresh skill should rank higher because of higher decay.
-	llm := &predictableLLM{
-		classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"}),
-	}
-	inj := injection.New(embedder, store, llm, nil, testLogger())
-
-	resp, err := inj.Inject(ctx, model.InjectionRequest{
-		Prompt:     "fix database connection",
-		LibraryIDs: []string{"test-lib"},
-		MaxSkills:  5,
-		SessionID:  "sess-rank",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(resp.Skills) < 2 {
-		t.Fatalf("expected 2 skills, got %d", len(resp.Skills))
-	}
-
-	// With same quality but different decay, fresh should rank higher.
-	if resp.Skills[0].SkillID != "skill-fresh" {
-		t.Errorf("expected fresh skill ranked first, got %s (decay fresh=%f, old=%f)",
-			resp.Skills[0].SkillID, freshSkill.DecayScore, oldSkill.DecayScore)
-	}
-}
+// P12: Removed — decay is now client-side (#89). Server no longer provides ListByDecay/UpdateDecay.
 
 // =============================================================================
 // P13: Create skill → delete SKILL.md → system handles gracefully
@@ -728,7 +634,6 @@ func TestSkillFileDeletedGraceful(t *testing.T) {
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
 		},
 		Embedding:   embedder.deterministicVector("deletable skill"),
-		DecayScore:  1.0,
 		ExtractedBy: "test",
 		FilePath:    skillFile,
 	}
@@ -917,67 +822,7 @@ func TestGracefulShutdownDuringExtraction(t *testing.T) {
 	}
 }
 
-// =============================================================================
-// P16: Serve with scheduler running decay — verify scores change over time
-// =============================================================================
-
-func TestSchedulerDecayModifiesScores(t *testing.T) {
-	store := newTestStore(t)
-	ctx := context.Background()
-
-	now := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
-
-	// Seed a skill that should decay.
-	sk := &model.SkillRecord{
-		ID: "skill-sched-decay", Name: "decaying-skill", Version: 1, LibraryID: "test-lib",
-		Category: model.CategoryTactical,
-		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: model.QualityScores{
-			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
-			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
-			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
-		},
-		DecayScore:  1.0,
-		ExtractedBy: "test",
-		FilePath:    "skills/decaying/SKILL.md",
-	}
-	store.Put(ctx, sk, nil)
-	store.DB().Exec("UPDATE skills SET last_injected_at = ? WHERE id = ?",
-		now.AddDate(0, 0, -180), "skill-sched-decay")
-
-	// Run decay directly (simulating what scheduler's cron does).
-	decayCfg := decay.DefaultConfig()
-	runner, _ := decay.NewRunner(store, store, decayCfg, testLogger())
-	runner.SetNow(func() time.Time { return now })
-
-	// Check score before.
-	before, _ := store.Get(ctx, "skill-sched-decay")
-	if before.DecayScore != 1.0 {
-		t.Fatalf("initial decay = %f, want 1.0", before.DecayScore)
-	}
-
-	// Run decay.
-	result, err := runner.RunCycle(ctx, "test-lib")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if result.Processed != 1 {
-		t.Errorf("processed = %d, want 1", result.Processed)
-	}
-
-	// Check score after — should be lower.
-	after, _ := store.Get(ctx, "skill-sched-decay")
-	if after.DecayScore >= 1.0 {
-		t.Errorf("decay score after cycle = %f, should be < 1.0", after.DecayScore)
-	}
-	if after.DecayScore <= 0 {
-		t.Errorf("decay score = %f, should not be zero for 180-day-old tactical skill", after.DecayScore)
-	}
-
-	// 180 days / 90 day half-life = 2 half-lives → ~0.25
-	assertApprox(t, after.DecayScore, 0.25, 0.05, "decay after 180 days")
-}
+// P16: Removed — decay is now client-side (#89). Server no longer provides ListByDecay/UpdateDecay.
 
 // =============================================================================
 // P17: Bug — Pipeline sampling counters race (TECH-DEBT D.1)
@@ -1104,7 +949,7 @@ func TestWorkerPoolWithRealPipeline(t *testing.T) {
 	} else {
 		t.Logf("Successfully extracted %d skill(s) through worker pool + real pipeline", len(skills))
 		for _, s := range skills {
-			if s.CompositeScore == 0 {
+			if s.PatternOverlap == 0 && s.CosineSim == 0 {
 				t.Errorf("skill %s has zero composite — data issue", s.Skill.ID)
 			}
 		}
@@ -1131,7 +976,6 @@ func TestInjectWithFailingEmbedder(t *testing.T) {
 			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
 		},
 		Embedding:   embedder.deterministicVector("fix db"),
-		DecayScore:  1.0,
 		ExtractedBy: "test",
 		FilePath:    "skills/fix-db/SKILL.md",
 	}
@@ -1163,67 +1007,7 @@ func TestInjectWithFailingEmbedder(t *testing.T) {
 	}
 }
 
-// =============================================================================
-// P21: Cross-system — extract, decay to zero, verify filtered from injection
-// =============================================================================
-
-func TestExtractDecayToZeroFiltered(t *testing.T) {
-	store := newTestStore(t)
-	ctx := context.Background()
-	embedder := newPredictableEmbedder(3)
-	now := time.Date(2026, 2, 15, 12, 0, 0, 0, time.UTC)
-
-	sk := &model.SkillRecord{
-		ID: "skill-decay-zero", Name: "doomed-skill", Version: 1, LibraryID: "test-lib",
-		Category: model.CategoryTactical,
-		Patterns: []string{"FIX/Backend/DatabaseConnection"},
-		Quality: model.QualityScores{
-			ProblemSpecificity: 4, SolutionCompleteness: 4, ContextPortability: 3,
-			ReasoningTransparency: 3, TechnicalAccuracy: 4, VerificationEvidence: 3,
-			InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
-		},
-		Embedding:   embedder.deterministicVector("doomed skill"),
-		DecayScore:  1.0,
-		ExtractedBy: "test",
-		FilePath:    "skills/doomed/SKILL.md",
-	}
-	store.Put(ctx, sk, nil)
-
-	// Set last_injected_at to 900 days ago (10 half-lives for tactical = 90 days).
-	store.DB().Exec("UPDATE skills SET last_injected_at = ? WHERE id = ?",
-		now.AddDate(0, 0, -900), "skill-decay-zero")
-
-	// Run decay.
-	runner, _ := decay.NewRunner(store, store, decay.DefaultConfig(), testLogger())
-	runner.SetNow(func() time.Time { return now })
-	result, _ := runner.RunCycle(ctx, "test-lib")
-
-	if result.Deprecated < 1 {
-		t.Errorf("expected skill to be deprecated, deprecated count = %d", result.Deprecated)
-	}
-
-	// Verify it's filtered from injection.
-	llm := &predictableLLM{
-		classifyResponse: classifyJSON("FIX", "Backend", []string{"FIX/Backend/DatabaseConnection"}),
-	}
-	inj := injection.New(embedder, store, llm, nil, testLogger())
-
-	resp, err := inj.Inject(ctx, model.InjectionRequest{
-		Prompt:     "fix database connection",
-		LibraryIDs: []string{"test-lib"},
-		MaxSkills:  5,
-		SessionID:  "sess-decay-zero",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, s := range resp.Skills {
-		if s.SkillID == "skill-decay-zero" {
-			t.Error("deprecated skill (decay=0) should not appear in injection results")
-		}
-	}
-}
+// P21: Removed — decay is now client-side (#89). Server no longer provides ListByDecay/UpdateDecay.
 
 // =============================================================================
 // P22: Context cancellation propagation through worker pool
@@ -1312,7 +1096,6 @@ func TestInjectionMatchScoreOrdering(t *testing.T) {
 				InnovationLevel: 3, CompositeScore: 3.5, CriticConfidence: 0.8,
 			},
 			Embedding:   embedder.deterministicVector(name),
-			DecayScore:  1.0,
 			ExtractedBy: "test",
 			FilePath:    fmt.Sprintf("skills/%s/SKILL.md", name),
 		}
@@ -1340,9 +1123,9 @@ func TestInjectionMatchScoreOrdering(t *testing.T) {
 
 	// Verify composite scores are monotonically decreasing.
 	for i := 1; i < len(resp.Skills); i++ {
-		if resp.Skills[i].CompositeScore > resp.Skills[i-1].CompositeScore {
+		if resp.Skills[i].PatternOverlap > resp.Skills[i-1].PatternOverlap {
 			t.Errorf("scores not sorted: [%d]=%f > [%d]=%f",
-				i, resp.Skills[i].CompositeScore, i-1, resp.Skills[i-1].CompositeScore)
+				i, resp.Skills[i].PatternOverlap, i-1, resp.Skills[i-1].PatternOverlap)
 		}
 	}
 }

@@ -60,11 +60,6 @@ func (m *mockStore) Query(_ context.Context, q model.SkillQuery) ([]model.Scored
 	m.lastQ = q
 	return m.results, m.err
 }
-func (m *mockStore) UpdateUsage(_ context.Context, _ string, _ string) error  { return nil }
-func (m *mockStore) UpdateDecay(_ context.Context, _ string, _ float64) error { return nil }
-func (m *mockStore) ListByDecay(_ context.Context, _ string, _ int) ([]model.SkillRecord, error) {
-	return nil, nil
-}
 
 type mockEventWriter struct {
 	events []model.InjectionEventRecord
@@ -86,17 +81,14 @@ func classifyJSON(intent, domain string, patterns []string) string {
 	return string(b)
 }
 
-func makeSkill(id string, patterns []string, successCorr float64) model.ScoredSkill {
+func makeSkill(id string, patterns []string, _ float64) model.ScoredSkill {
 	return model.ScoredSkill{
 		Skill: model.SkillRecord{
-			ID:                 id,
-			Patterns:           patterns,
-			SuccessCorrelation: successCorr,
+			ID:       id,
+			Patterns: patterns,
 		},
 		PatternOverlap: 0.5,
 		CosineSim:      0.8,
-		HistoricalRate: 0.7,
-		CompositeScore: 0.5*0.5 + 0.3*0.8 + 0.2*0.7, // store-computed
 	}
 }
 
@@ -133,14 +125,12 @@ func TestFullFlow(t *testing.T) {
 	if len(resp.Skills) != 2 {
 		t.Errorf("got %d skills, want 2", len(resp.Skills))
 	}
-	// In normal mode, store's composite is used as-is.
-	if resp.Skills[0].CompositeScore != makeSkill("", nil, 0).CompositeScore {
-		t.Errorf("composite should match store-computed value")
+	// Verify client-computed composite from raw signals.
+	wantComposite := 0.6*0.5 + 0.4*0.8 // 0.6*pattern + 0.4*cosine from makeSkill
+	if !approxEqual(resp.Skills[0].CompositeScore, wantComposite) {
+		t.Errorf("composite = %f, want %f", resp.Skills[0].CompositeScore, wantComposite)
 	}
-	// Verify query uses MinDecay and Limit.
-	if store.lastQ.MinDecay != defaultMinDecay {
-		t.Errorf("MinDecay = %f, want %f", store.lastQ.MinDecay, defaultMinDecay)
-	}
+	// Verify query uses Limit.
 	if store.lastQ.Limit != defaultCandidateLimit {
 		t.Errorf("Limit = %d, want %d", store.lastQ.Limit, defaultCandidateLimit)
 	}
@@ -234,9 +224,9 @@ func TestEmbeddingFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Degraded weights: 0.7*pattern + 0.3*historical.
+	// Client computes composite from raw signals.
 	s := resp.Skills[0]
-	want := 0.7*0.5 + 0.3*0.7 // from makeSkill defaults
+	want := 0.6*0.5 + 0.4*0.8 // from makeSkill defaults
 	if !approxEqual(s.CompositeScore, want) {
 		t.Errorf("composite = %f, want %f (degraded)", s.CompositeScore, want)
 	}
@@ -255,7 +245,7 @@ func TestNilEmbedder(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := resp.Skills[0]
-	want := 0.7*0.5 + 0.3*0.7
+	want := 0.6*0.5 + 0.4*0.8
 	if !approxEqual(s.CompositeScore, want) {
 		t.Errorf("composite = %f, want %f (nil embedder)", s.CompositeScore, want)
 	}
@@ -305,9 +295,9 @@ func TestMaxSkillsLimiting(t *testing.T) {
 	emb := &mockEmbedder{result: []float32{0.1}}
 	skills := make([]model.ScoredSkill, 10)
 	for i := range skills {
-		skills[i] = makeSkill(fmt.Sprintf("s%d", i), nil, float64(i)*0.1)
+		skills[i] = makeSkill(fmt.Sprintf("s%d", i), nil, 0)
 		skills[i].PatternOverlap = float64(10-i) * 0.1
-		skills[i].CompositeScore = float64(10-i) * 0.1
+		skills[i].CosineSim = float64(10-i) * 0.1
 	}
 	store := &mockStore{results: skills}
 
@@ -328,11 +318,13 @@ func TestLibraryPriorityOrdering(t *testing.T) {
 	llm := &mockLLM{response: classifyJSON("BUILD", "Backend", []string{"BUILD/Backend/APIDesign"})}
 	emb := &mockEmbedder{result: []float32{0.1}}
 
-	s1 := makeSkill("low", nil, -0.5)
-	s1.CompositeScore = 0.1
+	s1 := makeSkill("low", nil, 0)
+	s1.PatternOverlap = 0.1
+	s1.CosineSim = 0.1
 
-	s2 := makeSkill("high", nil, 0.9)
-	s2.CompositeScore = 0.9
+	s2 := makeSkill("high", nil, 0)
+	s2.PatternOverlap = 0.9
+	s2.CosineSim = 0.9
 
 	// Store returns sorted — high first.
 	store := &mockStore{results: []model.ScoredSkill{s2, s1}}

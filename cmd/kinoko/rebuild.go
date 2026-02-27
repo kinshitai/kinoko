@@ -180,7 +180,6 @@ func runRebuild(cmd *cobra.Command, args []string) error {
 			Patterns:    parsed.Tags,
 			ExtractedBy: "kinoko-rebuild",
 			FilePath:    skillPath,
-			DecayScore:  1.0,
 		}
 
 		if parsed.Quality != nil {

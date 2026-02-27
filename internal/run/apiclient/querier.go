@@ -40,7 +40,7 @@ func (q *HTTPQuerier) QueryNearest(ctx context.Context, embedding []float32, lib
 	}
 	best := resp.Skills[0]
 	return &model.SkillQueryResult{
-		CosineSim: best.Score, // Using composite score as similarity
+		CosineSim: best.CosineSim,
 		SkillName: best.Name,
 	}, nil
 }

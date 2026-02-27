@@ -392,7 +392,6 @@ func (p *Pipeline) publish(run *extractionRun) (*model.ExtractionResult, error) 
 		SourceSessionID: run.session.ID,
 		ExtractedBy:     p.extractor,
 		FilePath:        fmt.Sprintf("skills/%s/v%d/SKILL.md", skillName, skillVersion),
-		DecayScore:      1.0,
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}

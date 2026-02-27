@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/kinoko-dev/kinoko/pkg/model"
 )
@@ -22,15 +21,13 @@ type scanner interface {
 // scanSkillFrom scans a skill from any scanner (Row or Rows).
 func scanSkillFrom(sc scanner) (*model.SkillRecord, error) {
 	var s model.SkillRecord
-	var parentID, sourceSessionID sql.NullString
-	var lastInjected sql.NullTime
+	var parentID sql.NullString
 	err := sc.Scan(
 		&s.ID, &s.Name, &s.Description, &s.Version, &parentID, &s.LibraryID, &s.Category,
 		&s.Quality.ProblemSpecificity, &s.Quality.SolutionCompleteness, &s.Quality.ContextPortability,
 		&s.Quality.ReasoningTransparency, &s.Quality.TechnicalAccuracy, &s.Quality.VerificationEvidence,
 		&s.Quality.InnovationLevel, &s.Quality.CompositeScore, &s.Quality.CriticConfidence,
-		&s.InjectionCount, &lastInjected, &s.SuccessCorrelation, &s.DecayScore,
-		&sourceSessionID, &s.ExtractedBy, &s.FilePath, &s.CreatedAt, &s.UpdatedAt,
+		&s.ExtractedBy, &s.FilePath, &s.CreatedAt, &s.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -40,12 +37,6 @@ func scanSkillFrom(sc scanner) (*model.SkillRecord, error) {
 	}
 	if parentID.Valid {
 		s.ParentID = parentID.String
-	}
-	if sourceSessionID.Valid {
-		s.SourceSessionID = sourceSessionID.String
-	}
-	if lastInjected.Valid {
-		s.LastInjectedAt = lastInjected.Time
 	}
 	return &s, nil
 }
@@ -130,11 +121,6 @@ func (s *SQLiteStore) Query(ctx context.Context, q SkillQuery) ([]ScoredSkill, e
 		where = append(where, "q_composite_score >= ?")
 		args = append(args, q.MinQuality)
 	}
-	if q.MinDecay > 0 {
-		where = append(where, "decay_score >= ?")
-		args = append(args, q.MinDecay)
-	}
-
 	query := `SELECT ` + skillColumns + ` FROM skills WHERE ` + strings.Join(where, " AND ") //nolint:gosec // parameterized query, columns are not user input
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -197,24 +183,20 @@ func (s *SQLiteStore) Query(ctx context.Context, q SkillQuery) ([]ScoredSkill, e
 			cosineSim = cosineSimilarity(q.Embedding, skill.Embedding)
 		}
 
-		historicalRate := (skill.SuccessCorrelation + 1.0) / 2.0
-
-		composite := 0.5*patternOverlap + 0.3*cosineSim + 0.2*historicalRate
-
 		results = append(results, ScoredSkill{
 			Skill:          *skill,
 			PatternOverlap: patternOverlap,
 			CosineSim:      cosineSim,
-			HistoricalRate: historicalRate,
-			CompositeScore: composite,
 		})
 	}
 
 	slices.SortFunc(results, func(a, b ScoredSkill) int {
-		if a.CompositeScore > b.CompositeScore {
+		relA := model.RelevanceScore(a.PatternOverlap, a.CosineSim)
+		relB := model.RelevanceScore(b.PatternOverlap, b.CosineSim)
+		if relA > relB {
 			return -1
 		}
-		if a.CompositeScore < b.CompositeScore {
+		if relA < relB {
 			return 1
 		}
 		return 0
@@ -225,61 +207,6 @@ func (s *SQLiteStore) Query(ctx context.Context, q SkillQuery) ([]ScoredSkill, e
 	}
 
 	return results, nil
-}
-
-func (s *SQLiteStore) UpdateUsage(ctx context.Context, id string, outcome string) error {
-	now := time.Now().UTC()
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE skills SET
-			injection_count = injection_count + 1,
-			last_injected_at = ?,
-			updated_at = ?
-		WHERE id = ?`, now, now, id)
-	if err != nil {
-		return fmt.Errorf("update usage: %w", err)
-	}
-
-	return nil
-}
-
-func (s *SQLiteStore) UpdateDecay(ctx context.Context, id string, decayScore float64) error {
-	now := time.Now().UTC()
-	res, err := s.db.ExecContext(ctx, `UPDATE skills SET decay_score = ?, updated_at = ? WHERE id = ?`, decayScore, now, id)
-	if err != nil {
-		return fmt.Errorf("update decay: %w", err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("update decay rows affected: %w", err)
-	}
-	if n == 0 {
-		return model.ErrNotFound
-	}
-	return nil
-}
-
-func (s *SQLiteStore) ListByDecay(ctx context.Context, libraryID string, limit int) ([]model.SkillRecord, error) {
-	query := `SELECT ` + skillColumns + ` FROM skills WHERE library_id = ? ORDER BY decay_score ASC`
-	args := []any{libraryID}
-	if limit > 0 {
-		query += ` LIMIT ?`
-		args = append(args, limit)
-	}
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list by decay: %w", err)
-	}
-	defer rows.Close()
-
-	var skills []model.SkillRecord
-	for rows.Next() {
-		skill, err := scanSkillFrom(rows)
-		if err != nil {
-			return nil, err
-		}
-		skills = append(skills, *skill)
-	}
-	return skills, rows.Err()
 }
 
 func (s *SQLiteStore) loadPatterns(ctx context.Context, skillID string) ([]string, error) {

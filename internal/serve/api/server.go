@@ -58,11 +58,12 @@ type DiscoverRequest struct {
 
 // SkillMatch is a single discovery result.
 type SkillMatch struct {
-	Repo        string  `json:"repo"`
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	Score       float64 `json:"score"`
-	CloneURL    string  `json:"clone_url"`
+	Repo           string  `json:"repo"`
+	Name           string  `json:"name"`
+	Description    string  `json:"description"`
+	PatternOverlap float64 `json:"pattern_overlap"`
+	CosineSim      float64 `json:"cosine_sim"`
+	CloneURL       string  `json:"clone_url"`
 }
 
 // DiscoverResponse is the JSON response for discovery.
@@ -104,9 +105,6 @@ func New(cfg Config) *Server {
 	mux.HandleFunc("POST /api/v1/discover", s.handleDiscover)
 	mux.HandleFunc("POST /api/v1/embed", s.handleEmbed)
 	mux.HandleFunc("POST /api/v1/ingest", s.handleIngest)
-	mux.HandleFunc("GET /api/v1/skills/decay", s.handleListByDecay)
-	mux.HandleFunc("PATCH /api/v1/skills/{id}/decay", s.handleUpdateDecay)
-
 	// Novelty endpoint removed in API consolidation
 
 	s.httpServer = &http.Server{
@@ -253,11 +251,12 @@ func (s *Server) discoverWithQuery(w http.ResponseWriter, r *http.Request, req D
 			cloneURL = s.sshURL + "/" + result.Skill.LibraryID + "/" + result.Skill.Name
 		}
 		skills = append(skills, SkillMatch{
-			Repo:        result.Skill.LibraryID + "/" + result.Skill.Name,
-			Name:        result.Skill.Name,
-			Description: result.Skill.Description,
-			Score:       result.CompositeScore,
-			CloneURL:    cloneURL,
+			Repo:           result.Skill.LibraryID + "/" + result.Skill.Name,
+			Name:           result.Skill.Name,
+			Description:    result.Skill.Description,
+			PatternOverlap: result.PatternOverlap,
+			CosineSim:      result.CosineSim,
+			CloneURL:       cloneURL,
 		})
 	}
 

@@ -60,9 +60,8 @@ func (idx *SQLiteIndexer) IndexSkill(ctx context.Context, skill *model.SkillReco
 			q_problem_specificity, q_solution_completeness, q_context_portability,
 			q_reasoning_transparency, q_technical_accuracy, q_verification_evidence,
 			q_innovation_level, q_composite_score, q_critic_confidence,
-			injection_count, last_injected_at, success_correlation, decay_score,
-			source_session_id, extracted_by, file_path, created_at, updated_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			extracted_by, file_path, created_at, updated_at
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(name, library_id) DO UPDATE SET
 			id = excluded.id,
 			description = excluded.description,
@@ -79,11 +78,6 @@ func (idx *SQLiteIndexer) IndexSkill(ctx context.Context, skill *model.SkillReco
 			q_innovation_level = excluded.q_innovation_level,
 			q_composite_score = excluded.q_composite_score,
 			q_critic_confidence = excluded.q_critic_confidence,
-			injection_count = excluded.injection_count,
-			last_injected_at = excluded.last_injected_at,
-			success_correlation = excluded.success_correlation,
-			decay_score = excluded.decay_score,
-			source_session_id = excluded.source_session_id,
 			extracted_by = excluded.extracted_by,
 			file_path = excluded.file_path,
 			updated_at = excluded.updated_at`,
@@ -91,8 +85,7 @@ func (idx *SQLiteIndexer) IndexSkill(ctx context.Context, skill *model.SkillReco
 		skill.Quality.ProblemSpecificity, skill.Quality.SolutionCompleteness, skill.Quality.ContextPortability,
 		skill.Quality.ReasoningTransparency, skill.Quality.TechnicalAccuracy, skill.Quality.VerificationEvidence,
 		skill.Quality.InnovationLevel, skill.Quality.CompositeScore, skill.Quality.CriticConfidence,
-		skill.InjectionCount, nullTime(skill.LastInjectedAt), skill.SuccessCorrelation, skill.DecayScore,
-		nullString(skill.SourceSessionID), skill.ExtractedBy, skill.FilePath, createdAt, updatedAt,
+		skill.ExtractedBy, skill.FilePath, createdAt, updatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert skill: %w", err)

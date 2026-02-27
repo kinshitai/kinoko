@@ -17,12 +17,14 @@ type SkillRecord struct {
 
 	Embedding []float32 `db:"-"`
 
-	InjectionCount     int       `db:"injection_count"`
-	LastInjectedAt     time.Time `db:"last_injected_at"`
-	SuccessCorrelation float64   `db:"success_correlation"`
-	DecayScore         float64   `db:"decay_score"`
+	// These fields no longer have corresponding DB columns (removed in server-boundary cleanup).
+	// Kept for in-memory use by the decay package until #89 rewires scoring.
+	InjectionCount     int       `db:"-"`
+	LastInjectedAt     time.Time `db:"-"`
+	SuccessCorrelation float64   `db:"-"`
+	DecayScore         float64   `db:"-"`
 
-	SourceSessionID string    `db:"source_session_id"`
+	SourceSessionID string    `db:"-"`
 	ExtractedBy     string    `db:"extracted_by"`
 	CreatedAt       time.Time `db:"created_at"`
 	UpdatedAt       time.Time `db:"updated_at"`
