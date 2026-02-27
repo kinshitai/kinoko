@@ -1,27 +1,29 @@
 # Architecture
 
-This is the canonical architecture document. Every PR, spec, and design decision must align with it.
+> Canonical architecture document. Every PR, spec, and design decision must align with this.
 
 ## Overview
 
 Kinoko has two binaries and one communication channel:
 
-- **`kinoko serve`** — Server
-- **`kinoko run`** — Client
-- **Git** — The only communication path between them
+| Component | Binary | Role |
+|-----------|--------|------|
+| **Server** | `kinoko serve` | Git hosting, search index, embeddings |
+| **Client** | `kinoko run` | Extraction, injection, local ranking |
+| **Git** | — | The *only* communication path between them |
 
 ## Server (`kinoko serve`)
 
-Git server + search index. Stores skill repos, indexes SKILL.md into SQLite, tracks git stats (last commit, contributors, clones). Two endpoints: `POST /api/v1/discover` (search with raw signals) and `POST /api/v1/embed` (embeddings). Post-receive hook re-indexes on push. No computation, no mutation, no client awareness.
+The server is pure infrastructure: git repos, a search index, and an embedding engine. It has no concept of sessions, clients, or behavioral data.
 
-**What the server does:**
-- Hosts git repos (Soft Serve)
-- Indexes SKILL.md on push (post-receive hook)
-- Returns raw search signals on discover (pattern overlap, cosine similarity, quality scores, git stats)
-- Computes embeddings on request
-- Health endpoint
+**Does:**
+- Host git repos (Soft Serve)
+- Index SKILL.md on push (post-receive hook)
+- Return raw search signals on discover (pattern overlap, cosine similarity, quality scores, git stats)
+- Compute embeddings on request
+- Serve a health endpoint
 
-**What the server does NOT do:**
+**Does not:**
 - Compute scores, decay, or rankings
 - Store sessions, injection events, or per-client behavior
 - Expose mutation endpoints (no PATCH, no PUT)
@@ -29,35 +31,35 @@ Git server + search index. Stores skill repos, indexes SKILL.md into SQLite, tra
 
 ## Client (`kinoko run`)
 
-Runs alongside your agent. Extracts skills from sessions → commits SKILL.md → pushes to server via git. At injection time, asks server for matches, gets raw signals, combines with personal usage data, ranks locally. Computes decay from git metadata (freshness, activity). Personal experience stored in gitignored `.kinoko/` files inside cloned repos — never pushed.
+The client runs alongside your agent. It extracts skills from sessions, commits SKILL.md, pushes to the server via git. At injection time it queries the server for raw signals, combines them with local usage data, and ranks locally.
 
-**What the client does:**
+**Does:**
 - Extract skills from session logs (3-stage pipeline)
-- Commit SKILL.md to git, push to server
+- Commit SKILL.md to git and push to server
 - Query server for raw signals, rank locally
 - Track personal usage in `.kinoko/local.json` (gitignored)
 - Compute decay from git metadata (commit dates, activity)
 
-**What the client does NOT do:**
-- Write to server except via git push
+**Does not:**
+- Write to server except via `git push`
 - Share session data with the server
 - Push `.kinoko/` files
 
-## Git
+## Git as the Communication Path
 
-Only write path. Only communication channel between client and server. Client pushes skills, server indexes on receive.
+Git is the only write path between client and server. Client pushes skills; server indexes on receive. No HTTP mutations. No side channels.
 
 ## The Boundary
 
-Server never sees sessions or per-client behavior. Client never writes to server except git push. Shared knowledge flows through git. Personal experience stays local.
+Server never sees sessions or per-client behavior. Client never writes to server except via `git push`. Shared knowledge flows through git. Personal experience stays local.
 
-**Key principles:**
+**Principles:**
 - No HTTP mutation endpoints on server. Ever.
 - No client-side SQLite for skill metadata — gitignored files in cloned repos are the personal layer.
 - Server returns raw data. Client decides.
 - Per-client behavioral data (injection count, success, preferences) stays in gitignored `.kinoko/` files.
 - Global signals (git activity, clone counts, contributors) come from the server's git stats.
-- Decay is client-computed from git metadata, not a server concept.
+- Decay is client-computed from git metadata — not a server concept.
 - Absence of local data ≠ penalty. Personal data is additive boost only.
 
 ## Filesystem Layout

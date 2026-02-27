@@ -63,8 +63,7 @@ That's it. `serve` manages git repos and the discovery API. `run` extracts knowl
 │  │                                              │   │
 │  │  Soft Serve (git) ← pre-receive (cred scan) │   │
 │  │                   ← post-receive (indexing)  │   │
-│  │  API (/health, /discover, /embed, /ingest,   │
-│  │       /skills/decay)                         │   │
+│  │  API (/health, /discover, /embed, /ingest)   │   │
 │  └──────────────────────────────────────────────┘   │
 │                                  ↓                  │
 │  Injection → classify prompt → query skills → inject│
@@ -91,7 +90,7 @@ When a session starts, Kinoko classifies the prompt, queries the skill index, an
 
 ### Background Workers
 
-SQLite-backed job queue with atomic claim, backpressure, and retry scheduling. Configurable worker pool with graceful shutdown. Scheduler runs decay cycles and sweeps stale claims.
+SQLite-backed job queue with atomic claim, backpressure, and retry scheduling. Configurable worker pool with graceful shutdown. Scheduler sweeps stale claims.
 
 ### Decay
 
