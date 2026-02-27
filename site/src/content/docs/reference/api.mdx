@@ -16,8 +16,6 @@ Kinoko's HTTP API runs on port **23233** by default (configurable). All endpoint
 | `POST` | `/api/v1/discover` | Unified discovery (prompt/embedding/patterns) |
 | `POST` | `/api/v1/embed` | Generate text embeddings |
 | `POST` | `/api/v1/ingest` | Submit a session for extraction |
-| `GET` | `/api/v1/skills/decay` | List skills by decay score |
-| `PATCH` | `/api/v1/skills/{id}/decay` | Update skill decay score |
 
 ---
 
@@ -132,44 +130,6 @@ Submit a session log for extraction processing. This is typically called by the 
 <Aside type="note">
 Client extraction now uses a local queue instead of pushing directly via this endpoint. The ingest endpoint is primarily used by server-side hooks for processing pushed skills.
 </Aside>
-
----
-
-## `GET /api/v1/skills/decay`
-
-List skills ordered by decay score. Used by the server scheduler to identify skills that may need attention or removal.
-
-**Response:**
-```json
-{
-  "skills": [
-    {
-      "id": "outdated-react-patterns",
-      "name": "outdated-react-patterns",
-      "repo": "default", 
-      "decay_score": 0.95,
-      "last_used": "2026-01-15T10:30:00Z",
-      "created": "2025-11-20T14:22:00Z"
-    }
-  ]
-}
-```
-
----
-
-## `PATCH /api/v1/skills/{id}/decay`
-
-Update the decay score for a specific skill. Used by the scheduler to manage skill freshness.
-
-**Request:**
-```json
-{
-  "decay_score": 0.3,
-  "last_used": "2026-02-17T15:45:00Z"
-}
-```
-
-**Response:** `200 OK` on successful update.
 
 ---
 

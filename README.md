@@ -117,7 +117,6 @@ Category-specific half-lives (foundational: 365d, tactical: 90d, contextual: 180
 | `kinoko scan <file>` | Scan for credentials |
 | `kinoko scan --dir <path>` | Scan a directory recursively |
 | `kinoko index <repo-path>` | Re-index a git repo into SQLite |
-| `kinoko decay` | Run a decay cycle |
 | `kinoko stats` | Print pipeline metrics |
 
 > See `kinoko --help` for all commands and `kinoko queue --help` for queue sub-commands (flush, list, retry, stats).
@@ -130,8 +129,6 @@ Category-specific half-lives (foundational: 365d, tactical: 90d, contextual: 180
 | `POST` | `/api/v1/discover` | Find skills matching a prompt |
 | `POST` | `/api/v1/embed` | Generate embeddings for text |
 | `POST` | `/api/v1/ingest` | Submit a markdown skill through the quality critic |
-| `GET` | `/api/v1/skills/decay` | List skills ordered by decay score |
-| `PATCH` | `/api/v1/skills/{id}/decay` | Update a skill's decay metadata |
 
 ## Documentation
 
