@@ -131,7 +131,7 @@ Category-specific half-lives (foundational: 365d, tactical: 90d, contextual: 180
 
 ## Documentation
 
-- [Architecture overview](docs/architecture.md) — system design, data flow, and package map
+- [Architecture overview](ARCHITECTURE.md) — system design, data flow, and package map
 - [kinoko.tech](https://kinoko.tech) (WIP) — full docs site, source in [`site/`](site/)
 
 ## Contributing
