@@ -63,7 +63,7 @@ Kinoko has two operational modes that share configuration but run independently:
 The shared infrastructure server, started with `kinoko serve`. It runs:
 
 - **Soft Serve git server** (`gitserver/`) — SSH-accessible git hosting for skill repos. Includes post-receive hooks that trigger indexing and credential scanning.
-- **HTTP API** (`api/`) — Discovery, ingestion, embedding, health, and decay endpoints.
+- **HTTP API** (`api/`) — Discovery, ingestion, embedding, and health endpoints.
 - **SQLite store** (`storage/`) — Indexed skill metadata, embeddings, and quality scores. Derived from git — the git repos are the source of truth.
 - **Embedding engine** (`embedding/`) — OpenAI API or local ONNX models for computing vector embeddings.
 
@@ -72,7 +72,7 @@ The shared infrastructure server, started with `kinoko serve`. It runs:
 The local agent daemon, started with `kinoko run`. It runs:
 
 - **Worker pool** (`worker/`) — Processes session logs from the local queue.
-- **Scheduler** (`worker/`) — Periodic decay cycles, stale sweep, stats.
+- **Scheduler** (`worker/`) — Periodic stale sweep, stats.
 - **Extraction pipeline** (`extraction/`) — 3-stage skill extraction (see below).
 - **Injection** (`injection/`) — Classifies prompts, queries the server, and builds injection prompts.
 - **Job queue** (`queue/`) — Local SQLite queue for pending session log files.
@@ -151,7 +151,6 @@ After extraction, skills go through:
 | `kinoko pull [repo]` | Clone or update skill repos; `--all` syncs everything |
 | `kinoko match <query>` | Find skills matching a text query |
 | `kinoko scan [file]` | Scan files for credentials and secrets |
-| `kinoko decay` | Run one decay cycle over a library |
 | `kinoko stats` | Print client pipeline metrics |
 | `kinoko import` | Bulk import skills |
 | `kinoko queue` | Manage the local job queue |
@@ -167,8 +166,6 @@ The HTTP API server listens on port `server.port + 2` by default (23233 when ser
 | `POST` | `/api/v1/discover` | Skill discovery — accepts prompt, embedding, patterns, library_ids, min_quality, top_k |
 | `POST` | `/api/v1/embed` | Compute embedding for text |
 | `POST` | `/api/v1/ingest` | Trigger indexing for a repo (async); used by post-receive hooks |
-| `GET` | `/api/v1/skills/decay` | List skills ordered by decay score |
-| `PATCH` | `/api/v1/skills/{id}/decay` | Update a skill's decay score |
 
 ### Discovery Request
 
