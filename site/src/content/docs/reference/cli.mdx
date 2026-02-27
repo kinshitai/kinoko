@@ -20,7 +20,6 @@ AVAILABLE COMMANDS:
   import    Import session logs into the extraction queue
   ingest    Import a markdown file as a skill through the quality critic
   match     Find skills matching a query
-  decay     Run one decay cycle
   scan      Scan files for credentials and secrets
   index     Index a skill repo into SQLite
   pull      Clone or update skill repositories
@@ -421,39 +420,6 @@ kinoko match "deployment strategies" --api-url http://kinoko.internal:23233
   3. retry-with-backoff (score: 0.651)
      Implement exponential backoff for transient failures...
 ─────────────────────────
-```
-
----
-
-## `kinoko decay`
-
-Run one decay cycle over all skills in a library.
-
-```bash
-kinoko decay [flags]
-```
-
-**Flags:**
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--config` | string | `""` | Config file path |
-| `--library` | string | first configured | Library ID to process |
-| `--dry-run` | bool | `false` | Print what would change without writing |
-
-**Example:**
-```bash
-kinoko decay --library my-team
-kinoko decay --dry-run
-```
-
-**Output:**
-```
-Decay cycle complete for library "local"
-  Processed:  42
-  Demoted:    8
-  Deprecated: 3
-  Rescued:    2
 ```
 
 ---

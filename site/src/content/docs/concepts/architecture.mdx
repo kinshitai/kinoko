@@ -109,7 +109,6 @@ The server is pure infrastructure. It doesn't run extraction — it hosts data, 
 - **Embedding engine** (ONNX, `bge-small-en-v1.5`) — all embedding runs server-side, clients stay pure Go
 - **Discovery API** — `POST /api/v1/discover` unified endpoint for skill discovery (prompt/embedding/patterns)
 - **Health API** — `GET /api/v1/health` server status and skill count
-- **Decay API** — `GET /api/v1/skills/decay` and `PATCH /api/v1/skills/{id}/decay` for skill lifecycle management
 - **Pre-receive hook** — credential scanning, rejects pushes with secrets
 - **Post-receive hook** — parses SKILL.md, embeds content, indexes into SQLite
 - **SQLite + vec extension** — derived cache for fast vector search; git is the write path
