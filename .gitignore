@@ -35,3 +35,4 @@ coverage.out
 combined.cov
 REVIEW*.md
 cover*.out
+rfcs/
