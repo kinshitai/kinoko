@@ -29,6 +29,9 @@ coverage.out
 # Internal docs (reviews, audits, reports)
 internal-docs/
 
+# RFCs
+rfcs/
+
 # Go test artifacts
 *.test
 coverage.out
