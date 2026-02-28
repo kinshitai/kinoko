@@ -40,7 +40,7 @@ rfcs/                  Design RFCs
 scripts/               Git hooks and tooling
 ```
 
-For a detailed walkthrough, see [docs/architecture.md](docs/architecture.md).
+For a detailed walkthrough, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Building and Testing
 
