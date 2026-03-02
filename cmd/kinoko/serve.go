@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -153,6 +154,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logger.Warn("failed to install git hooks", "error", err)
 	} else {
 		logger.Info("git hooks installed", "data_dir", cfg.Server.DataDir)
+	}
+
+	// Auto-register client SSH public key if it exists (solo bootstrap).
+	clientPubKeyPath := cfg.Client.GetSSHKeyPath() + ".pub"
+	if pubKeyData, readErr := os.ReadFile(clientPubKeyPath); readErr == nil {
+		server.SetAdditionalKeys([]string{strings.TrimSpace(string(pubKeyData))})
+		logger.Info("Client SSH key registered for git server access", "path", clientPubKeyPath)
+	} else {
+		logger.Info("No client SSH public key found, skipping auto-registration",
+			"path", clientPubKeyPath)
 	}
 
 	if err := server.Start(); err != nil {
