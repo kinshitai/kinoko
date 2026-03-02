@@ -191,14 +191,38 @@ func runServe(cmd *cobra.Command, args []string) error {
 	apiPort := cfg.Server.GetAPIPort()
 	// Build indexFn that reuses the store and embedder for post-receive hook triggers.
 	indexFn := buildIndexFn(cfg.Server.DataDir, logger)
+	// Build registerFn closure: CreateUser → AddUserPubkey → ListRepos → AddCollab for each.
+	registerFn := func(ctx context.Context, pubkey, username string) error {
+		if err := server.CreateUser(username); err != nil {
+			return fmt.Errorf("create user: %w", err)
+		}
+		if err := server.AddUserPubkey(username, pubkey); err != nil {
+			return fmt.Errorf("add pubkey: %w", err)
+		}
+		repos, err := server.ListRepos()
+		if err != nil {
+			return fmt.Errorf("list repos: %w", err)
+		}
+		for _, repo := range repos {
+			if err := server.AddCollab(repo, username, "read-write"); err != nil {
+				logger.Warn("failed to add collab", "repo", repo, "username", username, "error", err)
+				// Continue — don't fail the whole registration for one repo.
+			}
+		}
+		logger.Info("User registered via API", "username", username, "repos", len(repos))
+		return nil
+	}
+
 	apiSrv := api.New(api.Config{
-		Host:     cfg.Server.Host,
-		Port:     apiPort,
-		Store:    store,
-		Embedder: apiEmbedder,
-		SSHURL:   connInfo.SSHUrl,
-		Logger:   logger,
-		IndexFn:  indexFn,
+		Host:              cfg.Server.Host,
+		Port:              apiPort,
+		Store:             store,
+		Embedder:          apiEmbedder,
+		SSHURL:            connInfo.SSHUrl,
+		Logger:            logger,
+		IndexFn:           indexFn,
+		RegisterFn:        registerFn,
+		RegistrationToken: cfg.Server.RegistrationToken,
 	})
 	// Wire embedding engine for /api/v1/embed endpoint.
 	// Built with -tags embedding: real ONNX engine. Without: nil (503).

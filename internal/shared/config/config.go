@@ -116,10 +116,11 @@ type DecayConfig struct {
 
 // ServerConfig contains server-related configuration
 type ServerConfig struct {
-	Host    string `yaml:"host"`
-	Port    int    `yaml:"port"`
-	APIPort int    `yaml:"apiPort,omitempty"` // P2-5: HTTP API port, defaults to Port+2 (Port+1 is Soft Serve HTTP)
-	DataDir string `yaml:"dataDir"`
+	Host              string `yaml:"host"`
+	Port              int    `yaml:"port"`
+	APIPort           int    `yaml:"apiPort,omitempty"` // P2-5: HTTP API port, defaults to Port+2 (Port+1 is Soft Serve HTTP)
+	DataDir           string `yaml:"dataDir"`
+	RegistrationToken string `yaml:"registrationToken,omitempty"` // If set, POST /api/v1/register requires Bearer token
 }
 
 // GetAPIPort returns the configured API port, defaulting to Port+2.

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -184,6 +185,23 @@ func initClientMode(_ *cobra.Command, serverURL string) error {
 		return fmt.Errorf("cannot reach server: %w", err)
 	}
 	fmt.Printf("✓ Server reachable at %s\n", apiURL)
+
+	// Auto-register client SSH key with the server if it exists.
+	kinokoDir := filepath.Join(homeDir, ".kinoko")
+	pubKeyPath := filepath.Join(kinokoDir, "id_ed25519.pub")
+	if pubKeyData, readErr := os.ReadFile(pubKeyPath); readErr == nil {
+		hostname, _ := os.Hostname()
+		if hostname == "" {
+			hostname = "unknown"
+		}
+		regCtx, regCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer regCancel()
+		if regErr := c.RegisterKey(regCtx, strings.TrimSpace(string(pubKeyData)), hostname, ""); regErr != nil {
+			slog.Warn("Failed to register SSH key with server (non-fatal)", "error", regErr)
+		} else {
+			fmt.Println("✓ SSH key registered with server")
+		}
+	}
 
 	configPath := client.DefaultConfigPath()
 	if err := client.SaveClientConfig(configPath, client.ClientSection{

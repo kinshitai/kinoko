@@ -338,6 +338,51 @@ func (s *Server) GetCloneURL(name string) string {
 	return fmt.Sprintf("ssh://%s:%d/%s", s.config.Server.Host, s.config.Server.Port, name)
 }
 
+// CreateUser creates a Soft Serve user. Idempotent: "already exists" is treated as success.
+func (s *Server) CreateUser(username string) error {
+	output, err := s.runSSHCommand("user", "create", username)
+	if err != nil {
+		// Treat "already exists" as success for idempotency.
+		if strings.Contains(output, "already exists") {
+			s.logger.Debug("User already exists", "username", username)
+			return nil
+		}
+		return fmt.Errorf("failed to create user %s: %w\nOutput: %s", username, err, output)
+	}
+	s.logger.Info("User created", "username", username)
+	return nil
+}
+
+// AddUserPubkey adds an SSH public key to a Soft Serve user.
+// Idempotent: if the key is already registered, the error is ignored.
+func (s *Server) AddUserPubkey(username, pubkey string) error {
+	output, err := s.runSSHCommand("user", "add-pubkey", username, pubkey)
+	if err != nil {
+		if strings.Contains(output, "already exists") || strings.Contains(output, "already been added") {
+			s.logger.Debug("Pubkey already registered", "username", username)
+			return nil
+		}
+		return fmt.Errorf("failed to add pubkey for user %s: %w\nOutput: %s", username, err, output)
+	}
+	s.logger.Info("Pubkey added to user", "username", username)
+	return nil
+}
+
+// AddCollab adds a user as a collaborator to a repository with the given access level.
+// Idempotent: if the user is already a collaborator, the error is ignored.
+func (s *Server) AddCollab(repo, username, level string) error {
+	output, err := s.runSSHCommand("repo", "collab", "add", repo, username, "-l", level)
+	if err != nil {
+		if strings.Contains(output, "already") {
+			s.logger.Debug("User already a collaborator", "repo", repo, "username", username)
+			return nil
+		}
+		return fmt.Errorf("failed to add collab %s to %s: %w\nOutput: %s", username, repo, err, output)
+	}
+	s.logger.Info("Collaborator added", "repo", repo, "username", username, "level", level)
+	return nil
+}
+
 // GetConnectionInfo returns the SSH connection information for clients
 func (s *Server) GetConnectionInfo() ConnectionInfo {
 	return ConnectionInfo{

@@ -24,25 +24,29 @@ var (
 
 // Server is the HTTP API server for discovery and ingestion.
 type Server struct {
-	httpServer  *http.Server
-	store       *storage.SQLiteStore
-	embedder    embedding.Embedder
-	sshURL      string // SSH clone base URL
-	logger      *slog.Logger
-	indexFn     func(ctx context.Context, repo, rev string) error
-	discoverSem chan struct{} // P1-7: semaphore to limit concurrent discover requests
-	embedEngine embedding.Engine
+	httpServer        *http.Server
+	store             *storage.SQLiteStore
+	embedder          embedding.Embedder
+	sshURL            string // SSH clone base URL
+	logger            *slog.Logger
+	indexFn           func(ctx context.Context, repo, rev string) error
+	discoverSem       chan struct{} // P1-7: semaphore to limit concurrent discover requests
+	embedEngine       embedding.Engine
+	registerFn        RegisterFn // callback for POST /api/v1/register
+	registrationToken string     // if set, register requires Bearer auth
 }
 
 // Config configures the API server.
 type Config struct {
-	Host     string
-	Port     int
-	Store    *storage.SQLiteStore
-	Embedder embedding.Embedder
-	SSHURL   string // e.g. "ssh://localhost:23231"
-	Logger   *slog.Logger
-	IndexFn  func(ctx context.Context, repo, rev string) error
+	Host              string
+	Port              int
+	Store             *storage.SQLiteStore
+	Embedder          embedding.Embedder
+	SSHURL            string // e.g. "ssh://localhost:23231"
+	Logger            *slog.Logger
+	IndexFn           func(ctx context.Context, repo, rev string) error
+	RegisterFn        RegisterFn // callback for SSH key registration
+	RegistrationToken string     // if set, POST /api/v1/register requires Bearer token
 }
 
 // DiscoverRequest is the JSON body for POST /api/v1/discover.
@@ -92,12 +96,14 @@ func New(cfg Config) *Server {
 	// Port 0 means "let the OS pick a free port" (useful for tests).
 	// The default 23233 is applied at the CLI layer (serve.go).
 	s := &Server{
-		store:       cfg.Store,
-		embedder:    cfg.Embedder,
-		sshURL:      cfg.SSHURL,
-		logger:      cfg.Logger,
-		indexFn:     cfg.IndexFn,
-		discoverSem: make(chan struct{}, 10), // P1-7: max 10 concurrent discover requests
+		store:             cfg.Store,
+		embedder:          cfg.Embedder,
+		sshURL:            cfg.SSHURL,
+		logger:            cfg.Logger,
+		indexFn:           cfg.IndexFn,
+		discoverSem:       make(chan struct{}, 10), // P1-7: max 10 concurrent discover requests
+		registerFn:        cfg.RegisterFn,
+		registrationToken: cfg.RegistrationToken,
 	}
 
 	mux := http.NewServeMux()
@@ -105,6 +111,7 @@ func New(cfg Config) *Server {
 	mux.HandleFunc("POST /api/v1/discover", s.handleDiscover)
 	mux.HandleFunc("POST /api/v1/embed", s.handleEmbed)
 	mux.HandleFunc("POST /api/v1/ingest", s.handleIngest)
+	mux.HandleFunc("POST /api/v1/register", s.handleRegister)
 	// Novelty endpoint removed in API consolidation
 
 	s.httpServer = &http.Server{
