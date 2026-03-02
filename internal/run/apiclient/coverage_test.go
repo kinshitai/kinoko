@@ -3,6 +3,7 @@ package apiclient
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -48,7 +49,7 @@ func TestAPIError_Error(t *testing.T) {
 // ── repoLock mutex behavior ──
 
 func TestGitPushCommitter_RepoLock(t *testing.T) {
-	g := NewGitPushCommitter("git@example.com:repo.git", t.TempDir(), nil)
+	g := NewGitPushCommitter("git@example.com:repo.git", t.TempDir(), "", slog.Default())
 
 	// Same key must return the same mutex.
 	m1 := g.repoLock("/path/a")

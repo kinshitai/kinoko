@@ -20,9 +20,10 @@ var safeIDPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 // GitPushCommitter implements model.SkillCommitter by writing SKILL.md files
 // into a local git clone and pushing over SSH.
 type GitPushCommitter struct {
-	sshURL  string
-	dataDir string
-	log     *slog.Logger
+	sshURL     string
+	dataDir    string
+	sshKeyPath string
+	log        *slog.Logger
 
 	mu     sync.Mutex             // protects repoMu map
 	repoMu map[string]*sync.Mutex // per-repo locks
@@ -31,12 +32,22 @@ type GitPushCommitter struct {
 // NewGitPushCommitter creates a new GitPushCommitter.
 // sshURL is the SSH clone URL for the skill library repo.
 // dataDir is the local directory for git workdirs.
-func NewGitPushCommitter(sshURL, dataDir string, log *slog.Logger) *GitPushCommitter {
+// sshKeyPath is the path to the SSH private key for git operations (may be empty).
+func NewGitPushCommitter(sshURL, dataDir, sshKeyPath string, log *slog.Logger) *GitPushCommitter {
+	if log == nil {
+		log = slog.Default()
+	}
+	if sshKeyPath != "" {
+		if _, err := os.Stat(sshKeyPath); err != nil {
+			log.Warn("SSH key file not found, git push may fail", "path", sshKeyPath, "error", err)
+		}
+	}
 	return &GitPushCommitter{
-		sshURL:  sshURL,
-		dataDir: dataDir,
-		log:     log,
-		repoMu:  make(map[string]*sync.Mutex),
+		sshURL:     sshURL,
+		dataDir:    dataDir,
+		sshKeyPath: sshKeyPath,
+		log:        log,
+		repoMu:     make(map[string]*sync.Mutex),
 	}
 }
 
@@ -119,6 +130,20 @@ func (g *GitPushCommitter) CommitSkill(ctx context.Context, libraryID string, sk
 	return hash, nil
 }
 
+// sshEnv returns environment variables to configure SSH for git operations.
+// If no SSH key path is set, returns nil.
+func (g *GitPushCommitter) sshEnv() []string {
+	if g.sshKeyPath == "" {
+		return nil
+	}
+	// IdentitiesOnly=yes prevents SSH agent fallback — we want to use
+	// exactly the configured key, not whatever the agent happens to offer.
+	// The path is single-quoted to handle spaces in directory names.
+	return []string{
+		fmt.Sprintf("GIT_SSH_COMMAND=ssh -i '%s' -o StrictHostKeyChecking=no -o IdentitiesOnly=yes", g.sshKeyPath),
+	}
+}
+
 func (g *GitPushCommitter) ensureRepo(ctx context.Context, repoDir string) error {
 	if _, err := os.Stat(filepath.Join(repoDir, ".git")); err == nil {
 		// Repo exists, pull latest.
@@ -130,6 +155,7 @@ func (g *GitPushCommitter) ensureRepo(ctx context.Context, repoDir string) error
 	}
 	cmd := exec.CommandContext(ctx, "git", "clone", g.sshURL, repoDir) //nolint:gosec // sshURL is set at construction, not user input
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = append(cmd.Env, g.sshEnv()...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s: %w", string(out), err)
@@ -141,6 +167,7 @@ func (g *GitPushCommitter) gitCmd(ctx context.Context, dir string, args ...strin
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = append(cmd.Env, g.sshEnv()...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
@@ -152,6 +179,7 @@ func (g *GitPushCommitter) gitOutput(ctx context.Context, dir string, args ...st
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = append(cmd.Env, g.sshEnv()...)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err

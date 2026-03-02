@@ -175,7 +175,7 @@ func TestHTTPQuerier_QueryNearest_NoResults(t *testing.T) {
 
 func TestGitPushCommitter_PathTraversal(t *testing.T) {
 	log := slog.Default()
-	g := NewGitPushCommitter("git@example.com:repo.git", t.TempDir(), log)
+	g := NewGitPushCommitter("git@example.com:repo.git", t.TempDir(), "", log)
 
 	cases := []struct {
 		name    string

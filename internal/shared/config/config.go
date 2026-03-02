@@ -29,7 +29,8 @@ type Config struct {
 
 // ClientConfig holds settings for kinoko run (client mode).
 type ClientConfig struct {
-	QueueDSN string `yaml:"queue_dsn"` // Path to local queue SQLite DB (default: ~/.kinoko/queue.db)
+	QueueDSN   string `yaml:"queue_dsn"`    // Path to local queue SQLite DB (default: ~/.kinoko/queue.db)
+	SSHKeyPath string `yaml:"ssh_key_path"` // Path to SSH private key for git push (default: ~/.kinoko/id_ed25519)
 }
 
 // GetQueueDSN returns the queue DSN, defaulting to ~/.kinoko/queue.db.
@@ -42,6 +43,18 @@ func (c *ClientConfig) GetQueueDSN() string {
 		return "queue.db"
 	}
 	return filepath.Join(home, ".kinoko", "queue.db")
+}
+
+// GetSSHKeyPath returns the SSH key path, defaulting to ~/.kinoko/id_ed25519.
+func (c *ClientConfig) GetSSHKeyPath() string {
+	if c.SSHKeyPath != "" {
+		return c.SSHKeyPath
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "id_ed25519"
+	}
+	return filepath.Join(home, ".kinoko", "id_ed25519")
 }
 
 // ServerURL returns the HTTP base URL for the kinoko serve API.
@@ -294,6 +307,11 @@ func (c *Config) expandPaths() {
 	// Expand client queue DSN
 	if c.Client.QueueDSN != "" && !strings.Contains(c.Client.QueueDSN, "://") {
 		c.Client.QueueDSN = expandPath(c.Client.QueueDSN)
+	}
+
+	// Expand client SSH key path
+	if c.Client.SSHKeyPath != "" {
+		c.Client.SSHKeyPath = expandPath(c.Client.SSHKeyPath)
 	}
 
 	// Expand library paths

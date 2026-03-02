@@ -167,7 +167,7 @@ func TestResolveCredentials_Proxy(t *testing.T) {
 	cfg := config.LLMConfig{}
 	_, err := ResolveCredentials(cfg)
 	if err == nil {
-		t.Errorf("expected error when no credentials found")
+		t.Fatal("expected error when no credentials found")
 	}
 	expected := "no LLM credentials found\n\n  Options:\n  • Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable\n  • Run 'kinoko init' to use the setup wizard\n  • Run 'kinoko doctor' to diagnose credential issues"
 	if err.Error() != expected {
@@ -313,7 +313,7 @@ func TestResolveCredentials_WhitespaceKeys(t *testing.T) {
 
 	_, err := ResolveCredentials(cfg)
 	if err == nil {
-		t.Error("expected error for whitespace-only API key")
+		t.Fatal("expected error for whitespace-only API key")
 	}
 
 	// Whitespace-only setup token should be treated as empty
@@ -323,7 +323,7 @@ func TestResolveCredentials_WhitespaceKeys(t *testing.T) {
 
 	_, err = ResolveCredentials(cfg)
 	if err == nil {
-		t.Error("expected error for whitespace-only setup token")
+		t.Fatal("expected error for whitespace-only setup token")
 	}
 }
 
@@ -395,7 +395,7 @@ func TestResolveCredentials_MissingClaude(t *testing.T) {
 
 	_, err := ResolveCredentials(cfg)
 	if err == nil {
-		t.Error("expected error when no credentials available")
+		t.Fatal("expected error when no credentials available")
 	}
 
 	expectedErr := "no LLM credentials found\n\n  Options:\n  • Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable\n  • Run 'kinoko init' to use the setup wizard\n  • Run 'kinoko doctor' to diagnose credential issues"
@@ -517,4 +517,7 @@ func cleanEnv(t *testing.T) {
 	t.Setenv("KINOKO_API_KEY", "")
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "")
+	// Ensure "claude" CLI is not found on PATH so credential resolution
+	// doesn't fall through to the claude-cli provider.
+	t.Setenv("PATH", "/usr/bin:/bin")
 }

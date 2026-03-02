@@ -593,3 +593,69 @@ defaults:
 		})
 	}
 }
+
+func TestExpandPathsSSHKeyPath(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "kinoko-config-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	configPath := filepath.Join(tempDir, "config.yaml")
+	configContent := `client:
+  ssh_key_path: "~/.kinoko/id_ed25519"
+
+server:
+  host: 127.0.0.1
+  port: 8080
+  dataDir: /tmp
+
+storage:
+  driver: sqlite
+  dsn: /tmp/test.db
+
+libraries:
+  - name: test
+    path: /tmp/skills
+    priority: 100
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	config, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("failed to get home dir: %v", err)
+	}
+
+	expected := filepath.Join(homeDir, ".kinoko", "id_ed25519")
+	if config.Client.SSHKeyPath != expected {
+		t.Errorf("expected SSHKeyPath %q, got %q", expected, config.Client.SSHKeyPath)
+	}
+}
+
+func TestGetSSHKeyPath_Default(t *testing.T) {
+	c := &ClientConfig{}
+	got := c.GetSSHKeyPath()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("cannot determine home dir")
+	}
+	expected := filepath.Join(home, ".kinoko", "id_ed25519")
+	if got != expected {
+		t.Errorf("expected default %q, got %q", expected, got)
+	}
+}
+
+func TestGetSSHKeyPath_Custom(t *testing.T) {
+	c := &ClientConfig{SSHKeyPath: "/custom/path/mykey"}
+	got := c.GetSSHKeyPath()
+	if got != "/custom/path/mykey" {
+		t.Errorf("expected /custom/path/mykey, got %q", got)
+	}
+}
