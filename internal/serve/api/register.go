@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"regexp"
@@ -31,7 +32,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	// Auth gate: if registrationToken is configured, require Bearer token.
 	if s.registrationToken != "" {
 		auth := r.Header.Get("Authorization")
-		if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != s.registrationToken {
+		token := strings.TrimPrefix(auth, "Bearer ")
+		if !strings.HasPrefix(auth, "Bearer ") || subtle.ConstantTimeCompare([]byte(token), []byte(s.registrationToken)) != 1 {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}

@@ -16,7 +16,8 @@ import (
 )
 
 var (
-	connectURL string
+	connectURL        string
+	registrationToken string
 )
 
 var initCmd = &cobra.Command{
@@ -34,6 +35,7 @@ With --connect <url>, connects this machine to a specific Kinoko server
 
 func init() {
 	initCmd.Flags().StringVar(&connectURL, "connect", "", "Kinoko server URL (default: localhost:23231)")
+	initCmd.Flags().StringVar(&registrationToken, "token", "", "Registration token for server authentication")
 }
 
 func initCommand(cmd *cobra.Command, args []string) error {
@@ -193,7 +195,7 @@ func initClientMode(_ *cobra.Command, serverURL string) error {
 		hostname := sanitizeHostname("")
 		regCtx, regCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer regCancel()
-		if regErr := c.RegisterKey(regCtx, strings.TrimSpace(string(pubKeyData)), hostname, ""); regErr != nil {
+		if regErr := c.RegisterKey(regCtx, strings.TrimSpace(string(pubKeyData)), hostname, registrationToken); regErr != nil {
 			slog.Warn("Failed to register SSH key with server (non-fatal)", "error", regErr)
 		} else {
 			fmt.Println("✓ SSH key registered with server")

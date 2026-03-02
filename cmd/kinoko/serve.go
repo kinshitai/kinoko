@@ -203,6 +203,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("list repos: %w", err)
 		}
+		if len(repos) == 0 {
+			logger.Warn("No repos found — user registered but has no repo access yet", "username", username)
+		}
 		for _, repo := range repos {
 			if err := server.AddCollab(repo, username, "read-write"); err != nil {
 				logger.Warn("failed to add collab", "repo", repo, "username", username, "error", err)

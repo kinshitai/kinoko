@@ -52,7 +52,7 @@ func (c *ClientConfig) GetSSHKeyPath() string {
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "id_ed25519"
+		return "" // empty = no SSH key, fall back to system SSH
 	}
 	return filepath.Join(home, ".kinoko", "id_ed25519")
 }
