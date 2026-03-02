@@ -163,7 +163,17 @@ What you just set up is the **solo** configuration — all three components on o
 | `kinoko serve` | Shared infrastructure (git server, API, hooks) |
 | `kinoko run` | Local agent daemon (extraction, injection, decay) |
 
-For **team** use, one machine runs `kinoko serve`, and each team member runs `kinoko init --connect &lt;server-url&gt;` + `kinoko run` locally. See [Architecture](/concepts/architecture/) for details.
+In solo mode, `kinoko serve` automatically registers the local client SSH key — no manual key setup needed.
+
+For **team** use, one machine runs `kinoko serve`, and each team member runs `kinoko init --connect &lt;server-url&gt;` + `kinoko run` locally. The `init --connect` command auto-registers each client's SSH key with the server.
+
+To secure registration in team deployments, set `server.registrationToken` in the server config and pass it during init:
+
+```bash
+kinoko init --connect server-host:23231 --token <registration-token>
+```
+
+See [Architecture](/concepts/architecture/) for details and [Configuration](/reference/config/) for the `registrationToken` option.
 
 ## Next Steps
 
