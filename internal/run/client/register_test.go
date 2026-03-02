@@ -88,3 +88,55 @@ func TestRegisterKey_Unreachable(t *testing.T) {
 		t.Fatal("expected error on unreachable")
 	}
 }
+
+func TestRegisterKey_CancelledContext(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Simulate a slow server — the context should cancel before this returns.
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately.
+
+	c := New(ClientConfig{APIURL: srv.URL})
+	err := c.RegisterKey(ctx, "ssh-ed25519 AAAA", "host", "")
+	if err == nil {
+		t.Fatal("expected error on cancelled context")
+	}
+}
+
+func TestRegisterKey_ErrorBodyIncluded(t *testing.T) {
+	// Verify the error message includes the server's response body.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"registration disabled"}`))
+	}))
+	defer srv.Close()
+
+	c := New(ClientConfig{APIURL: srv.URL})
+	err := c.RegisterKey(context.Background(), "ssh-ed25519 AAAA", "host", "")
+	if err == nil {
+		t.Fatal("expected error on 403")
+	}
+	errMsg := err.Error()
+	if !contains(errMsg, "403") {
+		t.Errorf("error should contain status code 403, got: %s", errMsg)
+	}
+	if !contains(errMsg, "registration disabled") {
+		t.Errorf("error should contain response body, got: %s", errMsg)
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

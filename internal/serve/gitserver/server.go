@@ -342,12 +342,12 @@ func (s *Server) GetCloneURL(name string) string {
 func (s *Server) CreateUser(username string) error {
 	output, err := s.runSSHCommand("user", "create", username)
 	if err != nil {
-		// Treat "already exists" as success for idempotency.
-		if strings.Contains(output, "already exists") {
-			s.logger.Debug("User already exists", "username", username)
+		lower := strings.ToLower(output)
+		if strings.Contains(lower, "already exists") || strings.Contains(lower, "duplicate") {
+			s.logger.Info("User already exists", "username", username)
 			return nil
 		}
-		return fmt.Errorf("failed to create user %s: %w\nOutput: %s", username, err, output)
+		return fmt.Errorf("create user %s: %w (output: %s)", username, err, output)
 	}
 	s.logger.Info("User created", "username", username)
 	return nil
@@ -358,11 +358,12 @@ func (s *Server) CreateUser(username string) error {
 func (s *Server) AddUserPubkey(username, pubkey string) error {
 	output, err := s.runSSHCommand("user", "add-pubkey", username, pubkey)
 	if err != nil {
-		if strings.Contains(output, "already exists") || strings.Contains(output, "already been added") {
-			s.logger.Debug("Pubkey already registered", "username", username)
+		lower := strings.ToLower(output)
+		if strings.Contains(lower, "already exists") || strings.Contains(lower, "already been added") || strings.Contains(lower, "duplicate") {
+			s.logger.Info("Pubkey already registered", "username", username)
 			return nil
 		}
-		return fmt.Errorf("failed to add pubkey for user %s: %w\nOutput: %s", username, err, output)
+		return fmt.Errorf("add pubkey for user %s: %w (output: %s)", username, err, output)
 	}
 	s.logger.Info("Pubkey added to user", "username", username)
 	return nil
@@ -373,11 +374,12 @@ func (s *Server) AddUserPubkey(username, pubkey string) error {
 func (s *Server) AddCollab(repo, username, level string) error {
 	output, err := s.runSSHCommand("repo", "collab", "add", repo, username, "-l", level)
 	if err != nil {
-		if strings.Contains(output, "already") {
-			s.logger.Debug("User already a collaborator", "repo", repo, "username", username)
+		lower := strings.ToLower(output)
+		if strings.Contains(lower, "already exists") || strings.Contains(lower, "already") || strings.Contains(lower, "duplicate") {
+			s.logger.Info("User already a collaborator", "repo", repo, "username", username)
 			return nil
 		}
-		return fmt.Errorf("failed to add collab %s to %s: %w\nOutput: %s", username, repo, err, output)
+		return fmt.Errorf("add collab %s to %s: %w (output: %s)", username, repo, err, output)
 	}
 	s.logger.Info("Collaborator added", "repo", repo, "username", username, "level", level)
 	return nil

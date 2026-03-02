@@ -45,10 +45,11 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate public key: must look like an SSH public key.
+	// Validate public key: must look like an SSH public key with key-type and base64 data.
 	req.PublicKey = strings.TrimSpace(req.PublicKey)
-	if req.PublicKey == "" || !strings.HasPrefix(req.PublicKey, "ssh-") {
-		http.Error(w, `{"error":"invalid public_key: must start with ssh-"}`, http.StatusBadRequest)
+	pubkeyParts := strings.Fields(req.PublicKey)
+	if len(pubkeyParts) < 2 || !strings.HasPrefix(pubkeyParts[0], "ssh-") || len(pubkeyParts[1]) < 20 {
+		http.Error(w, `{"error":"invalid public_key: must be a valid SSH public key (e.g. ssh-ed25519 AAAA...)"}`, http.StatusBadRequest)
 		return
 	}
 

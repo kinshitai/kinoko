@@ -48,3 +48,31 @@ func TestCombineKeys_WhitespaceInKeys(t *testing.T) {
 		t.Errorf("CombineKeys whitespace = %q, want %q", got, want)
 	}
 }
+
+func TestCombineKeys_EmptyAdminKey(t *testing.T) {
+	// Empty admin key with additional keys — the admin is trimmed to "",
+	// so result starts with \n which is messy. Documents current behavior.
+	got := CombineKeys("", []string{"ssh-ed25519 BBBB client@host"})
+	want := "\nssh-ed25519 BBBB client@host"
+	if got != want {
+		t.Errorf("CombineKeys empty admin = %q, want %q", got, want)
+	}
+}
+
+func TestCombineKeys_AllEmptyAdditional(t *testing.T) {
+	// Additional keys that are all whitespace should be skipped.
+	got := CombineKeys("ssh-ed25519 AAAA admin@host", []string{"", "  ", "\n"})
+	want := "ssh-ed25519 AAAA admin@host"
+	if got != want {
+		t.Errorf("CombineKeys all-empty additional = %q, want %q", got, want)
+	}
+}
+
+func TestCombineKeys_NilAdditional(t *testing.T) {
+	// Explicit nil (vs empty slice) — same as no additional keys.
+	got := CombineKeys("ssh-ed25519 AAAA admin@host", nil)
+	want := "ssh-ed25519 AAAA admin@host"
+	if got != want {
+		t.Errorf("CombineKeys nil additional = %q, want %q", got, want)
+	}
+}

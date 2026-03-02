@@ -190,10 +190,7 @@ func initClientMode(_ *cobra.Command, serverURL string) error {
 	kinokoDir := filepath.Join(homeDir, ".kinoko")
 	pubKeyPath := filepath.Join(kinokoDir, "id_ed25519.pub")
 	if pubKeyData, readErr := os.ReadFile(pubKeyPath); readErr == nil {
-		hostname, _ := os.Hostname()
-		if hostname == "" {
-			hostname = "unknown"
-		}
+		hostname := sanitizeHostname("")
 		regCtx, regCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer regCancel()
 		if regErr := c.RegisterKey(regCtx, strings.TrimSpace(string(pubKeyData)), hostname, ""); regErr != nil {
@@ -223,6 +220,23 @@ func initClientMode(_ *cobra.Command, serverURL string) error {
 	fmt.Println()
 
 	return nil
+}
+
+// sanitizeHostname returns a short hostname safe for the register endpoint.
+// It strips domain suffixes (e.g. "my-host.local" → "my-host") and falls back
+// to "kinoko-client" when the result is empty.
+// If raw is empty, os.Hostname() is used.
+func sanitizeHostname(raw string) string {
+	if raw == "" {
+		raw, _ = os.Hostname()
+	}
+	if i := strings.Index(raw, "."); i > 0 {
+		raw = raw[:i]
+	}
+	if raw == "" {
+		return "kinoko-client"
+	}
+	return raw
 }
 
 func printSuccessMessage() {

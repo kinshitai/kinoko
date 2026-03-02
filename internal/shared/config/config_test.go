@@ -659,3 +659,76 @@ func TestGetSSHKeyPath_Custom(t *testing.T) {
 		t.Errorf("expected /custom/path/mykey, got %q", got)
 	}
 }
+
+func TestRegistrationTokenLoading(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "kinoko-config-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	configPath := filepath.Join(tempDir, "config.yaml")
+	configContent := `server:
+  host: 127.0.0.1
+  port: 8080
+  dataDir: /tmp
+  registrationToken: "my-secret-token-123"
+
+storage:
+  driver: sqlite
+  dsn: /tmp/test.db
+
+libraries:
+  - name: test
+    path: /tmp/skills
+    priority: 100
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	config, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	if config.Server.RegistrationToken != "my-secret-token-123" {
+		t.Errorf("expected RegistrationToken %q, got %q", "my-secret-token-123", config.Server.RegistrationToken)
+	}
+}
+
+func TestRegistrationTokenEmpty(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "kinoko-config-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	configPath := filepath.Join(tempDir, "config.yaml")
+	configContent := `server:
+  host: 127.0.0.1
+  port: 8080
+  dataDir: /tmp
+
+storage:
+  driver: sqlite
+  dsn: /tmp/test.db
+
+libraries:
+  - name: test
+    path: /tmp/skills
+    priority: 100
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	config, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	if config.Server.RegistrationToken != "" {
+		t.Errorf("expected empty RegistrationToken, got %q", config.Server.RegistrationToken)
+	}
+}
