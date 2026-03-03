@@ -94,6 +94,14 @@ If you use Claude Code or Codex CLI, Kinoko can automatically reuse your credent
 - **Claude Code:** `~/.claude/.credentials.json`
 - **Codex:** `~/.codex/auth.json`
 
+**Option D: Claude CLI**
+
+If `claude` CLI is installed and logged in, Kinoko uses it automatically — no API key needed:
+```bash
+claude login   # authenticate once
+kinoko extract # just works
+```
+
 **Verify setup:**
 ```bash
 kinoko doctor
@@ -102,7 +110,7 @@ kinoko doctor
 This validates your LLM credentials and tests connectivity.
 
 :::tip[No LLM key? No problem]
-`kinoko run` works without an LLM key in degraded mode — the scheduler and injection still function, only extraction is disabled.
+If you have the `claude` CLI installed and authenticated, no API key configuration is needed — Kinoko auto-detects it as a fallback credential source. Otherwise, `kinoko run` works without an LLM key in degraded mode — the scheduler and injection still function, only extraction is disabled.
 :::
 
 ## 6. Start the Agent Daemon
