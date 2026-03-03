@@ -10,6 +10,8 @@ func NewClient(provider, apiKey, model, baseURL string) (LLMClientV2, error) {
 		return NewOpenAIClient(apiKey, model, baseURL), nil
 	case "anthropic":
 		return NewAnthropicClient(apiKey, model, baseURL), nil
+	case "claude-cli":
+		return NewClaudeCLIClient(model), nil
 	default:
 		return nil, fmt.Errorf("unsupported LLM provider: %s", provider)
 	}
