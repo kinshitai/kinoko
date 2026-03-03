@@ -48,16 +48,18 @@ kinoko init [flags]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--connect` | string | `""` | Connect to a Kinoko server URL (e.g. `localhost:23231`) |
+| `--token` | string | `""` | Registration token for server authentication (used with `--connect`) |
 
 **Creates:**
 - `~/.kinoko/` — workspace root
 - `~/.kinoko/config.yaml` — default configuration
 - `~/.kinoko/cache/` — local skill cache directory
-- Client SSH key for server authentication
+- `~/.kinoko/id_ed25519` — client SSH key for server authentication
 
 **Behavior:**
 - Safe to run multiple times — won't overwrite existing files
-- With `--connect`, configures the workspace as a client of the given server
+- With `--connect`, configures the workspace as a client of the given server and auto-registers the client SSH key
+- With `--connect` and `--token`, includes the token as a Bearer credential when registering the SSH key (required if the server has `server.registrationToken` configured)
 - Without `--connect`, sets up for solo use (localhost)
 - Interactive LLM setup wizard detects existing credentials and guides you through provider selection
 
@@ -131,12 +133,13 @@ kinoko serve [flags]
 
 **What it starts:**
 - **Soft Serve git server** (SSH) — skill repos live here
-- **Discovery API** (HTTP) — `/api/v1/discover`, `/api/v1/health`, `/api/v1/ingest`
+- **Discovery API** (HTTP) — `/api/v1/discover`, `/api/v1/health`, `/api/v1/ingest`, `/api/v1/register`
 - **Git hooks** — credential scanning (pre-receive) and auto-indexing (post-receive)
 - **SQLite indexer** — derived cache from git repos
 
 **Behavior:**
 - Self-bootstraps on first run: creates data dir and admin keypair
+- In solo mode, auto-registers the local client SSH key (`~/.kinoko/id_ed25519.pub`) so no manual key setup is needed
 - Binds to `server.host`:`server.port` from config (default `127.0.0.1:23231`)
 - Handles SIGINT/SIGTERM for graceful shutdown
 - This is **pure infrastructure** — run `kinoko run` separately for the agent daemon

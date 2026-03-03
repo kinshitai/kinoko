@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -15,7 +16,8 @@ import (
 )
 
 var (
-	connectURL string
+	connectURL        string
+	registrationToken string
 )
 
 var initCmd = &cobra.Command{
@@ -33,6 +35,7 @@ With --connect <url>, connects this machine to a specific Kinoko server
 
 func init() {
 	initCmd.Flags().StringVar(&connectURL, "connect", "", "Kinoko server URL (default: localhost:23231)")
+	initCmd.Flags().StringVar(&registrationToken, "token", "", "Registration token for server authentication")
 }
 
 func initCommand(cmd *cobra.Command, args []string) error {
@@ -185,6 +188,20 @@ func initClientMode(_ *cobra.Command, serverURL string) error {
 	}
 	fmt.Printf("✓ Server reachable at %s\n", apiURL)
 
+	// Auto-register client SSH key with the server if it exists.
+	kinokoDir := filepath.Join(homeDir, ".kinoko")
+	pubKeyPath := filepath.Join(kinokoDir, "id_ed25519.pub")
+	if pubKeyData, readErr := os.ReadFile(pubKeyPath); readErr == nil {
+		hostname := sanitizeHostname("")
+		regCtx, regCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer regCancel()
+		if regErr := c.RegisterKey(regCtx, strings.TrimSpace(string(pubKeyData)), hostname, registrationToken); regErr != nil {
+			slog.Warn("Failed to register SSH key with server (non-fatal)", "error", regErr)
+		} else {
+			fmt.Println("✓ SSH key registered with server")
+		}
+	}
+
 	configPath := client.DefaultConfigPath()
 	if err := client.SaveClientConfig(configPath, client.ClientSection{
 		API:          apiURL,
@@ -205,6 +222,23 @@ func initClientMode(_ *cobra.Command, serverURL string) error {
 	fmt.Println()
 
 	return nil
+}
+
+// sanitizeHostname returns a short hostname safe for the register endpoint.
+// It strips domain suffixes (e.g. "my-host.local" → "my-host") and falls back
+// to "kinoko-client" when the result is empty.
+// If raw is empty, os.Hostname() is used.
+func sanitizeHostname(raw string) string {
+	if raw == "" {
+		raw, _ = os.Hostname()
+	}
+	if i := strings.Index(raw, "."); i > 0 {
+		raw = raw[:i]
+	}
+	if raw == "" {
+		return "kinoko-client"
+	}
+	return raw
 }
 
 func printSuccessMessage() {

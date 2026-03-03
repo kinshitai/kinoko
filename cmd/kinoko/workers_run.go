@@ -50,7 +50,7 @@ func buildClientPipeline(cfg *config.Config, serverClient *apiclient.Client, log
 
 	// Git committer via SSH push.
 	sshURL := fmt.Sprintf("ssh://%s:%d", cfg.Server.Host, cfg.Server.Port)
-	committer := apiclient.NewGitPushCommitter(sshURL, cfg.Server.DataDir, logger)
+	committer := apiclient.NewGitPushCommitter(sshURL, cfg.Server.DataDir, cfg.Client.GetSSHKeyPath(), logger)
 
 	// Session writer and reviewer are client-local concerns (not server endpoints)
 	// Sessions are now tracked via git commits; reviews stay local

@@ -22,9 +22,11 @@ server:
   port: 23231
   apiPort: 0           # defaults to port+2
   dataDir: ~/.kinoko/data
+  registrationToken: "" # if set, POST /api/v1/register requires this as Bearer token
 
 client:
   queue_dsn: ~/.kinoko/queue.db
+  ssh_key_path: ~/.kinoko/id_ed25519  # SSH key for git push (auto-detected)
 
 storage:
   driver: sqlite
@@ -96,6 +98,7 @@ Controls the git server started by `kinoko serve`.
 | `port` | int | `23231` | SSH port. Must be 1–65535. |
 | `apiPort` | int | `port+2` | HTTP API port. Defaults to `port+2` (port+1 is Soft Serve HTTP). |
 | `dataDir` | string | `~/.kinoko/data` | Directory for server data. Auto-created. |
+| `registrationToken` | string | `""` | If set, `POST /api/v1/register` requires this value as a Bearer token. Use this to secure client registration in team deployments. |
 
 ### `storage`
 
@@ -111,6 +114,7 @@ Settings for `kinoko run` (client/daemon mode).
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `queue_dsn` | string | `~/.kinoko/queue.db` | Path to the local extraction queue SQLite database. |
+| `ssh_key_path` | string | `~/.kinoko/id_ed25519` | Path to the SSH private key used for git push operations. Falls back to system SSH if empty. |
 
 ### `libraries`
 

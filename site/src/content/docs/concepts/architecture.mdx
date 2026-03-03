@@ -108,6 +108,7 @@ The server is pure infrastructure. It doesn't run extraction — it hosts data, 
 - **Soft Serve git server** (SSH) — the source of truth for all skills
 - **Embedding engine** (ONNX, `bge-small-en-v1.5`) — all embedding runs server-side, clients stay pure Go
 - **Discovery API** — `POST /api/v1/discover` unified endpoint for skill discovery (prompt/embedding/patterns)
+- **Registration API** — `POST /api/v1/register` for client SSH key registration (optionally token-secured)
 - **Health API** — `GET /api/v1/health` server status and skill count
 - **Pre-receive hook** — credential scanning, rejects pushes with secrets
 - **Post-receive hook** — parses SKILL.md, embeds content, indexes into SQLite
@@ -127,8 +128,9 @@ This is where extraction intelligence lives. The heavy LLM calls happen here, di
 
 Sets up the workspace. Run once per machine:
 
-- Creates `~/.kinoko/` with config, cache dir, and client SSH key
-- With `--connect &lt;url&gt;`, configures as a client of a remote server
+- Creates `~/.kinoko/` with config, cache dir, and client SSH key (`id_ed25519`)
+- With `--connect &lt;url&gt;`, configures as a client of a remote server and auto-registers the SSH key
+- With `--connect` and `--token`, authenticates key registration (required when the server has `registrationToken` set)
 - Without `--connect`, defaults to `localhost:23231` for solo use
 
 ## Port Layout
@@ -197,7 +199,13 @@ kinoko init --connect server-host:23231
 kinoko run
 ```
 
-Each developer's `run` daemon extracts knowledge locally (bearing the LLM cost) and pushes to the shared server. Injection pulls from the same shared pool.
+The `init --connect` command registers the client's SSH key with the server automatically. If the server requires token-based registration (via `server.registrationToken`), pass `--token`:
+
+```bash
+kinoko init --connect server-host:23231 --token <registration-token>
+```
+
+Each developer's `run` daemon extracts knowledge locally (bearing the LLM cost) and pushes to the shared server using the client SSH key. Injection pulls from the same shared pool.
 
 ## Degraded Mode
 

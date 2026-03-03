@@ -237,6 +237,38 @@ func (c *Client) pullRepo(dir string) error {
 	return cmd.Run()
 }
 
+// RegisterKey registers a public SSH key with the server.
+// If token is non-empty, it is sent as a Bearer token in the Authorization header.
+func (c *Client) RegisterKey(ctx context.Context, pubKey, name, token string) error {
+	body, err := json.Marshal(map[string]string{
+		"public_key": pubKey,
+		"name":       name,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal register request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", c.apiURL+"/api/v1/register", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("register request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("register failed (%d): %s", resp.StatusCode, string(b))
+	}
+	return nil
+}
+
 // ParseServerURL takes a user-supplied URL (possibly without scheme) and
 // returns a normalized HTTP API URL.
 func ParseServerURL(raw string) (string, error) {

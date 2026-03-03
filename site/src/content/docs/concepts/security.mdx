@@ -61,13 +61,24 @@ After a successful push, the skill is automatically parsed and indexed into SQLi
 
 File paths in skill repos are validated to prevent directory traversal attacks. Paths containing `..`, absolute paths, and symlinks outside the repo boundary are rejected.
 
+## SSH Key Authentication
+
+All git operations between clients and the Soft Serve server use SSH key authentication. Each client generates a unique Ed25519 key pair during `kinoko init` (stored at `~/.kinoko/id_ed25519`).
+
+**Solo mode:** `kinoko serve` auto-registers the local client key on startup — no manual setup needed.
+
+**Team mode:** `kinoko init --connect <url>` registers the client's public key with the server via `POST /api/v1/register`. To prevent unauthorized registrations, configure `server.registrationToken` in the server config — clients must then pass `--token` during init.
+
+The `GitPushCommitter` uses the client SSH key for all git push operations, ensuring each client is individually authenticated.
+
 ## Defense in Depth
 
 Kinoko's security is layered:
 
-1. **Extraction time** — scanner redacts secrets before skills are written
-2. **Push time** — pre-receive hook rejects any secrets that slip through
-3. **Manual audit** — `kinoko scan --dir` lets you verify your repos at any time
-4. **Git as source of truth** — SQLite is a derived cache, so the security boundary is the git server
+1. **SSH authentication** — every client has a unique key; server controls who can push
+2. **Extraction time** — scanner redacts secrets before skills are written
+3. **Push time** — pre-receive hook rejects any secrets that slip through
+4. **Manual audit** — `kinoko scan --dir` lets you verify your repos at any time
+5. **Git as source of truth** — SQLite is a derived cache, so the security boundary is the git server
 
 No single layer needs to be perfect. Each catches what the others might miss.

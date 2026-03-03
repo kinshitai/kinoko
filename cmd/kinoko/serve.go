@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -155,6 +156,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logger.Info("git hooks installed", "data_dir", cfg.Server.DataDir)
 	}
 
+	// Auto-register client SSH public key if it exists (solo bootstrap).
+	clientPubKeyPath := cfg.Client.GetSSHKeyPath() + ".pub"
+	if pubKeyData, readErr := os.ReadFile(clientPubKeyPath); readErr == nil {
+		server.SetAdditionalKeys([]string{strings.TrimSpace(string(pubKeyData))})
+		logger.Info("Client SSH key registered for git server access", "path", clientPubKeyPath)
+	} else {
+		logger.Info("No client SSH public key found, skipping auto-registration",
+			"path", clientPubKeyPath)
+	}
+
 	if err := server.Start(); err != nil {
 		return fmt.Errorf("failed to start git server: %w", err)
 	}
@@ -180,14 +191,41 @@ func runServe(cmd *cobra.Command, args []string) error {
 	apiPort := cfg.Server.GetAPIPort()
 	// Build indexFn that reuses the store and embedder for post-receive hook triggers.
 	indexFn := buildIndexFn(cfg.Server.DataDir, logger)
+	// Build registerFn closure: CreateUser → AddUserPubkey → ListRepos → AddCollab for each.
+	registerFn := func(ctx context.Context, pubkey, username string) error {
+		if err := server.CreateUser(username); err != nil {
+			return fmt.Errorf("create user: %w", err)
+		}
+		if err := server.AddUserPubkey(username, pubkey); err != nil {
+			return fmt.Errorf("add pubkey: %w", err)
+		}
+		repos, err := server.ListRepos()
+		if err != nil {
+			return fmt.Errorf("list repos: %w", err)
+		}
+		if len(repos) == 0 {
+			logger.Warn("No repos found — user registered but has no repo access yet", "username", username)
+		}
+		for _, repo := range repos {
+			if err := server.AddCollab(repo, username, "read-write"); err != nil {
+				logger.Warn("failed to add collab", "repo", repo, "username", username, "error", err)
+				// Continue — don't fail the whole registration for one repo.
+			}
+		}
+		logger.Info("User registered via API", "username", username, "repos", len(repos))
+		return nil
+	}
+
 	apiSrv := api.New(api.Config{
-		Host:     cfg.Server.Host,
-		Port:     apiPort,
-		Store:    store,
-		Embedder: apiEmbedder,
-		SSHURL:   connInfo.SSHUrl,
-		Logger:   logger,
-		IndexFn:  indexFn,
+		Host:              cfg.Server.Host,
+		Port:              apiPort,
+		Store:             store,
+		Embedder:          apiEmbedder,
+		SSHURL:            connInfo.SSHUrl,
+		Logger:            logger,
+		IndexFn:           indexFn,
+		RegisterFn:        registerFn,
+		RegistrationToken: cfg.Server.RegistrationToken,
 	})
 	// Wire embedding engine for /api/v1/embed endpoint.
 	// Built with -tags embedding: real ONNX engine. Without: nil (503).

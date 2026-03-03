@@ -27,8 +27,30 @@ type Server struct {
 	logger         *slog.Logger
 	softBinary     string
 	adminKeyPath   string
+	additionalKeys []string
 	onSessionStart SessionStartHook
 	onSessionEnd   SessionEndHook
+}
+
+// SetAdditionalKeys registers extra SSH public keys to be included alongside
+// the admin key in SOFT_SERVE_INITIAL_ADMIN_KEYS. This must be called before
+// Start().
+func (s *Server) SetAdditionalKeys(keys []string) {
+	s.additionalKeys = keys
+}
+
+// CombineKeys merges the admin public key with any additional keys into a
+// newline-separated string suitable for SOFT_SERVE_INITIAL_ADMIN_KEYS.
+// Keys are trimmed of surrounding whitespace. Empty additional keys are skipped.
+func CombineKeys(admin string, additional []string) string {
+	result := strings.TrimSpace(admin)
+	for _, k := range additional {
+		k = strings.TrimSpace(k)
+		if k != "" {
+			result += "\n" + k
+		}
+	}
+	return result
 }
 
 // SessionStartHook is called when a new agent session begins to run injection.
@@ -92,11 +114,18 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to read admin public key: %w", err)
 	}
 
+	// Combine admin key with any additional keys (e.g. client SSH key).
+	combinedKeys := CombineKeys(adminPublicKey, s.additionalKeys)
+	s.logger.Info("SSH keys registered",
+		"admin", 1,
+		"additional", len(s.additionalKeys),
+		"total", 1+len(s.additionalKeys))
+
 	// Setup environment variables for Soft Serve
 	env := os.Environ()
 	env = append(env,
 		fmt.Sprintf("SOFT_SERVE_DATA_PATH=%s", s.dataDir),
-		fmt.Sprintf("SOFT_SERVE_INITIAL_ADMIN_KEYS=%s", adminPublicKey),
+		fmt.Sprintf("SOFT_SERVE_INITIAL_ADMIN_KEYS=%s", combinedKeys),
 		fmt.Sprintf("SOFT_SERVE_SSH_LISTEN_ADDR=:%d", s.config.Server.Port),
 		fmt.Sprintf("SOFT_SERVE_HTTP_LISTEN_ADDR=:%d", s.config.Server.Port+1),
 	)
@@ -307,6 +336,53 @@ func (s *Server) DeleteRepo(name string) error {
 // GetCloneURL returns the SSH clone URL for a repository
 func (s *Server) GetCloneURL(name string) string {
 	return fmt.Sprintf("ssh://%s:%d/%s", s.config.Server.Host, s.config.Server.Port, name)
+}
+
+// CreateUser creates a Soft Serve user. Idempotent: "already exists" is treated as success.
+func (s *Server) CreateUser(username string) error {
+	output, err := s.runSSHCommand("user", "create", username)
+	if err != nil {
+		lower := strings.ToLower(output)
+		if strings.Contains(lower, "already exists") || strings.Contains(lower, "duplicate") {
+			s.logger.Info("User already exists", "username", username)
+			return nil
+		}
+		return fmt.Errorf("create user %s: %w (output: %s)", username, err, output)
+	}
+	s.logger.Info("User created", "username", username)
+	return nil
+}
+
+// AddUserPubkey adds an SSH public key to a Soft Serve user.
+// Idempotent: if the key is already registered, the error is ignored.
+func (s *Server) AddUserPubkey(username, pubkey string) error {
+	output, err := s.runSSHCommand("user", "add-pubkey", username, pubkey)
+	if err != nil {
+		lower := strings.ToLower(output)
+		if strings.Contains(lower, "already exists") || strings.Contains(lower, "already been added") || strings.Contains(lower, "duplicate") {
+			s.logger.Info("Pubkey already registered", "username", username)
+			return nil
+		}
+		return fmt.Errorf("add pubkey for user %s: %w (output: %s)", username, err, output)
+	}
+	s.logger.Info("Pubkey added to user", "username", username)
+	return nil
+}
+
+// AddCollab adds a user as a collaborator to a repository with the given access level.
+// Idempotent: if the user is already a collaborator, the error is ignored.
+func (s *Server) AddCollab(repo, username, level string) error {
+	output, err := s.runSSHCommand("repo", "collab", "add", repo, username, "-l", level)
+	if err != nil {
+		lower := strings.ToLower(output)
+		if strings.Contains(lower, "already exists") || strings.Contains(lower, "already") || strings.Contains(lower, "duplicate") {
+			s.logger.Info("User already a collaborator", "repo", repo, "username", username)
+			return nil
+		}
+		return fmt.Errorf("add collab %s to %s: %w (output: %s)", username, repo, err, output)
+	}
+	s.logger.Info("Collaborator added", "repo", repo, "username", username, "level", level)
+	return nil
 }
 
 // GetConnectionInfo returns the SSH connection information for clients

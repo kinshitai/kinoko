@@ -16,6 +16,7 @@ Kinoko's HTTP API runs on port **23233** by default (configurable). All endpoint
 | `POST` | `/api/v1/discover` | Unified discovery (prompt/embedding/patterns) |
 | `POST` | `/api/v1/embed` | Generate text embeddings |
 | `POST` | `/api/v1/ingest` | Submit a session for extraction |
+| `POST` | `/api/v1/register` | Register a client SSH public key |
 
 ---
 
@@ -130,6 +131,48 @@ Submit a session log for extraction processing. This is typically called by the 
 <Aside type="note">
 Client extraction now uses a local queue instead of pushing directly via this endpoint. The ingest endpoint is primarily used by server-side hooks for processing pushed skills.
 </Aside>
+
+---
+
+## `POST /api/v1/register`
+
+Register a client SSH public key with the server. Used by `kinoko init --connect` to grant git push access automatically.
+
+**Request:**
+```json
+{
+  "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...",
+  "name": "my-hostname"
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `public_key` | Yes | SSH public key string (e.g. `ssh-ed25519 AAAA...`) |
+| `name` | Yes | Client identifier — alphanumeric with hyphens, 1–64 chars (typically the hostname) |
+
+**Response:**
+```json
+{
+  "status": "registered",
+  "username": "my-hostname"
+}
+```
+
+**Authentication:**
+
+If the server has `server.registrationToken` configured, requests must include a Bearer token:
+
+```
+Authorization: Bearer <registration-token>
+```
+
+The `--token` flag on `kinoko init --connect` sends this automatically.
+
+**Errors:**
+- `400` — invalid JSON, missing/invalid `public_key`, or invalid `name`
+- `401` — missing or incorrect Bearer token (when `registrationToken` is configured)
+- `501` — registration not configured on the server
 
 ---
 

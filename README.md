@@ -45,8 +45,8 @@ kinoko run --server localhost:23231
 
 That's it. `serve` manages git repos and the discovery API. `run` extracts knowledge from sessions, pushes skills to git, and injects them into future sessions.
 
-**Solo use:** `kinoko serve` + `kinoko run` on the same machine.
-**Team use:** One shared `kinoko serve`, each machine runs `kinoko init --connect <server>` + `kinoko run`.
+**Solo use:** `kinoko serve` + `kinoko run` on the same machine. SSH keys are auto-registered.
+**Team use:** One shared `kinoko serve`, each machine runs `kinoko init --connect <server>` + `kinoko run`. SSH keys are registered automatically during `init --connect`.
 
 ## Architecture
 
@@ -101,7 +101,8 @@ Category-specific half-lives (foundational: 365d, tactical: 90d, contextual: 180
 | Command | Description |
 |---|---|
 | `kinoko init` | Initialize workspace (`~/.kinoko/`), generate SSH key |
-| `kinoko init --connect <url>` | Connect to a remote Kinoko server |
+| `kinoko init --connect <url>` | Connect to a remote Kinoko server and register SSH key |
+| `kinoko init --connect <url> --token <t>` | Connect with registration token authentication |
 | `kinoko serve` | Start git server + discovery API + hooks |
 | `kinoko run` | Start local daemon (workers, scheduler, injection) |
 | `kinoko run --server host:port` | Connect daemon to a specific server |
@@ -128,6 +129,7 @@ Category-specific half-lives (foundational: 365d, tactical: 90d, contextual: 180
 | `POST` | `/api/v1/discover` | Find skills matching a prompt |
 | `POST` | `/api/v1/embed` | Generate embeddings for text |
 | `POST` | `/api/v1/ingest` | Submit a markdown skill through the quality critic |
+| `POST` | `/api/v1/register` | Register a client SSH public key with the server |
 
 ## Documentation
 
