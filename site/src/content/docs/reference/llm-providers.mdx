@@ -121,6 +121,22 @@ Kinoko can reuse credentials from popular CLI tools:
   OAuth tokens expire. If validation fails, re-authenticate with the original CLI tool.
 </Aside>
 
+### Claude CLI
+
+If the `claude` CLI is installed and authenticated, Kinoko can delegate LLM calls to it directly — no API key or OAuth token needed.
+
+```bash
+# Install the Claude CLI (https://docs.anthropic.com/en/docs/claude-cli)
+# Then authenticate:
+claude login
+```
+
+Once `claude` is on your PATH and logged in, `kinoko extract` and other LLM-dependent commands work automatically. This is the lowest-priority credential source (see [Credential Resolution Chain](#credential-resolution-chain) above), so it only activates when no other credentials are configured.
+
+<Aside type="caution">
+  If `claude` is on PATH but not logged in, Kinoko will show a clear error asking you to run `claude login`.
+</Aside>
+
 ## Factory Pattern
 
 Client creation is a single function call:

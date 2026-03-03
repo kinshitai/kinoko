@@ -210,9 +210,13 @@ Controls the 3-stage extraction pipeline.
 
 | Variable | Purpose |
 |---|---|
+| `KINOKO_API_KEY` | Generic API key (provider auto-detected from key prefix) |
+| `ANTHROPIC_API_KEY` | Anthropic API key |
 | `OPENAI_API_KEY` | Fallback API key for both embeddings and LLM |
 | `KINOKO_EMBEDDING_API_KEY` | API key for embedding calls (overrides `OPENAI_API_KEY`) |
 | `KINOKO_LLM_API_KEY` | API key for LLM calls (overrides `OPENAI_API_KEY`) |
+
+If no API key is configured, Kinoko will auto-detect the `claude` CLI on PATH as a fallback credential source (lowest priority).
 
 ## Path Expansion
 

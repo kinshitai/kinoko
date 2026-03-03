@@ -39,7 +39,7 @@ kinoko init
 kinoko serve
 
 # In another terminal — start the local daemon (workers + scheduler + injection)
-export OPENAI_API_KEY=sk-...
+export OPENAI_API_KEY=sk-...  # or skip if `claude` CLI is installed and authenticated
 kinoko run --server localhost:23231
 ```
 
