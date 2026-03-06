@@ -29,11 +29,12 @@ func TestParseSession_ClaudeCodeDispatch(t *testing.T) {
 func TestParseSession_FallbackDispatch(t *testing.T) {
 	// Plain text with timestamps — should fall through to FallbackParser.
 	log := "2024-01-15T10:00:00 Starting session\n2024-01-15T10:05:00 Done\n"
-	_, err := ParseSession(strings.NewReader(log))
-	// With stub FallbackParser, it won't match (CanParse returns false),
-	// so we get ErrUnrecognizedFormat. Once implemented, this will parse.
-	if err != nil && !errors.Is(err, ErrEmptyContent) && !errors.Is(err, ErrUnrecognizedFormat) {
+	rec, err := ParseSession(strings.NewReader(log))
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.DurationMinutes < 4 || rec.DurationMinutes > 6 {
+		t.Fatalf("DurationMinutes = %f, want ~5", rec.DurationMinutes)
 	}
 }
 
