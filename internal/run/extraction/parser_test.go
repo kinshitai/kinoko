@@ -16,15 +16,13 @@ func TestParseSession_EmptyReader(t *testing.T) {
 
 func TestParseSession_ClaudeCodeDispatch(t *testing.T) {
 	// Valid Claude Code JSONL — should dispatch to ClaudeCodeParser.
-	// ClaudeCodeParser is a stub in this commit so it returns ErrMalformedFormat,
-	// but if it were implemented it would parse. We just verify no panic and
-	// that CanParse is being called.
 	line := `{"type":"assistant","timestamp":"2025-01-15T10:00:00Z","message":{"model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"hello"}],"usage":{"input_tokens":10,"output_tokens":5}}}` + "\n"
-	_, err := ParseSession(strings.NewReader(line))
-	// With stub ClaudeCodeParser, it returns ErrMalformedFormat.
-	// Once implemented, this will succeed.
-	if err != nil && !errors.Is(err, ErrMalformedFormat) && !errors.Is(err, ErrUnrecognizedFormat) {
+	rec, err := ParseSession(strings.NewReader(line))
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.AgentModel != "claude-sonnet-4-20250514" {
+		t.Fatalf("AgentModel = %q, want claude-sonnet-4-20250514", rec.AgentModel)
 	}
 }
 
