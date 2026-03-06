@@ -219,6 +219,3 @@ func TestParseSession_LargeInput(t *testing.T) {
 		t.Errorf("ToolCallCount = %d, expected many", rec.ToolCallCount)
 	}
 }
-
-// Ensure unused imports don't cause issues.
-var _ model.SessionRecord

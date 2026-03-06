@@ -12,21 +12,27 @@ import (
 // ClaudeCodeParser parses Claude Code native JSONL session logs.
 type ClaudeCodeParser struct{}
 
+// claudeCodeContent represents a single content block in a Claude Code message.
+type claudeCodeContent struct {
+	Type    string `json:"type"`
+	Name    string `json:"name"`
+	IsError bool   `json:"is_error"`
+}
+
+// claudeCodeUsage holds token counts for a Claude Code message.
+type claudeCodeUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+}
+
 // claudeCodeLine is a lightweight envelope for a single JSONL line.
 type claudeCodeLine struct {
 	Type      string    `json:"type"`
 	Timestamp time.Time `json:"timestamp"`
 	Message   struct {
-		Model   string `json:"model"`
-		Content []struct {
-			Type    string `json:"type"`
-			Name    string `json:"name"`
-			IsError bool   `json:"is_error"`
-		} `json:"content"`
-		Usage struct {
-			InputTokens  int `json:"input_tokens"`
-			OutputTokens int `json:"output_tokens"`
-		} `json:"usage"`
+		Model   string              `json:"model"`
+		Content []claudeCodeContent `json:"content"`
+		Usage   claudeCodeUsage     `json:"usage"`
 	} `json:"message"`
 }
 
@@ -41,6 +47,11 @@ var knownClaudeCodeTypes = map[string]bool{
 }
 
 // CanParse returns true if the header looks like Claude Code JSONL.
+//
+// NOTE: If the first JSONL line exceeds headerSize (4KB), the truncated
+// JSON will fail to unmarshal and CanParse returns false. This is unlikely
+// but possible with very large system prompts. The session would fall
+// through to FallbackParser or ErrUnrecognizedFormat.
 func (p *ClaudeCodeParser) CanParse(header []byte) bool {
 	// Find end of first line.
 	end := len(header)
@@ -91,6 +102,9 @@ func (p *ClaudeCodeParser) Parse(r io.Reader) (*model.SessionRecord, error) {
 			continue // skip malformed lines
 		}
 
+		// Only "assistant" and "user" are counted as messages.
+		// New types added by Claude Code are safely ignored — the parser
+		// extracts what it knows and skips the rest.
 		switch entry.Type {
 		case "assistant", "user":
 			messageCount++

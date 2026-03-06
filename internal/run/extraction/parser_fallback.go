@@ -2,7 +2,6 @@ package extraction
 
 import (
 	"bufio"
-	"bytes"
 	"io"
 	"regexp"
 	"time"
@@ -40,14 +39,6 @@ func (p *FallbackParser) CanParse(header []byte) bool {
 
 // Parse extracts session metadata using regex-based heuristics.
 func (p *FallbackParser) Parse(r io.Reader) (*model.SessionRecord, error) {
-	content, err := io.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
-	if len(content) == 0 {
-		return nil, ErrEmptyContent
-	}
-
 	rec := &model.SessionRecord{}
 
 	var timestamps []time.Time
@@ -55,13 +46,15 @@ func (p *FallbackParser) Parse(r io.Reader) (*model.SessionRecord, error) {
 	errorCount := 0
 	msgCount := 0
 	hasExec := false
+	byteCount := 0
 
-	scanner := bufio.NewScanner(bytes.NewReader(content))
+	scanner := bufio.NewScanner(r)
 	buf := make([]byte, 1024*1024)
 	scanner.Buffer(buf, len(buf))
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
+		byteCount += len(line) + 1
 		msgCount++
 
 		for _, pat := range tsPatterns {
@@ -92,6 +85,14 @@ func (p *FallbackParser) Parse(r io.Reader) (*model.SessionRecord, error) {
 		}
 	}
 
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	if byteCount == 0 {
+		return nil, ErrEmptyContent
+	}
+
 	if len(timestamps) >= 2 {
 		rec.StartedAt = timestamps[0]
 		rec.EndedAt = timestamps[len(timestamps)-1]
@@ -113,7 +114,7 @@ func (p *FallbackParser) Parse(r io.Reader) (*model.SessionRecord, error) {
 		rec.ErrorRate = float64(rec.ErrorCount) / float64(rec.ToolCallCount)
 	}
 
-	rec.TokensUsed = EstimateTokens(content)
+	rec.TokensUsed = byteCount / 4
 
 	return rec, nil
 }

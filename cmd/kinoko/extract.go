@@ -116,7 +116,11 @@ func runExtract(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("parse session log: %w", err)
 	}
-	rec.ID = uuid.Must(uuid.NewV7()).String()
+	id, err := uuid.NewV7()
+	if err != nil {
+		return fmt.Errorf("generate session ID: %w", err)
+	}
+	rec.ID = id.String()
 	rec.LibraryID = libraryID
 	rec.LogPath = logPath
 	session := *rec

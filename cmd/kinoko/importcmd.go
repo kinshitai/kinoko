@@ -121,7 +121,13 @@ func runImport(cmd *cobra.Command, args []string) error {
 			errCount++
 			continue
 		}
-		rec.ID = uuid.Must(uuid.NewV7()).String()
+		id, err := uuid.NewV7()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "skip %s: generate ID: %v\n", p, err)
+			errCount++
+			continue
+		}
+		rec.ID = id.String()
 		rec.LibraryID = libraryID
 		session := *rec
 		if err := queueImpl.Enqueue(cmd.Context(), session, content); err != nil {
