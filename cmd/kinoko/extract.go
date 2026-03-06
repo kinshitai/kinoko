@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"github.com/kinoko-dev/kinoko/internal/run/apiclient"
@@ -110,8 +112,14 @@ func runExtract(cmd *cobra.Command, args []string) error {
 		libraryID = cfg.Libraries[0].Name
 	}
 
-	session := extraction.ParseSessionFromLog(content, libraryID)
-	session.LogPath = logPath
+	rec, err := extraction.ParseSession(bytes.NewReader(content))
+	if err != nil {
+		return fmt.Errorf("parse session log: %w", err)
+	}
+	rec.ID = uuid.Must(uuid.NewV7()).String()
+	rec.LibraryID = libraryID
+	rec.LogPath = logPath
+	session := *rec
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 

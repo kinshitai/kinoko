@@ -8,8 +8,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
-
 	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
@@ -123,27 +121,4 @@ func (p *FallbackParser) Parse(r io.Reader) (*model.SessionRecord, error) {
 // EstimateTokens provides a rough token estimate (~4 chars per token).
 func EstimateTokens(content []byte) int {
 	return len(content) / 4
-}
-
-// ParseSessionFromLog is a compatibility shim for callers not yet migrated
-// to ParseSession. It preserves legacy behavior (10min default for missing
-// timestamps) to avoid breaking callers. Will be removed in the next commit.
-func ParseSessionFromLog(content []byte, libraryID string) model.SessionRecord {
-	p := &FallbackParser{}
-	rec, err := p.Parse(bytes.NewReader(content))
-	if err != nil || rec == nil {
-		rec = &model.SessionRecord{}
-	}
-	rec.ID = uuid.Must(uuid.NewV7()).String()
-	rec.LibraryID = libraryID
-
-	// Legacy behavior: fake 10min duration when no timestamps found.
-	if rec.StartedAt.IsZero() && rec.EndedAt.IsZero() {
-		now := time.Now()
-		rec.StartedAt = now.Add(-10 * time.Minute)
-		rec.EndedAt = now
-		rec.DurationMinutes = rec.EndedAt.Sub(rec.StartedAt).Minutes()
-	}
-
-	return *rec
 }
