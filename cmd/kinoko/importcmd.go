@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"github.com/kinoko-dev/kinoko/internal/run/extraction"
@@ -113,7 +115,21 @@ func runImport(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		session := extraction.ParseSessionFromLog(content, libraryID)
+		rec, parseErr := extraction.ParseSession(bytes.NewReader(content))
+		if parseErr != nil {
+			fmt.Fprintf(os.Stderr, "skip %s: parse error: %v\n", p, parseErr)
+			errCount++
+			continue
+		}
+		id, err := uuid.NewV7()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "skip %s: generate ID: %v\n", p, err)
+			errCount++
+			continue
+		}
+		rec.ID = id.String()
+		rec.LibraryID = libraryID
+		session := *rec
 		if err := queueImpl.Enqueue(cmd.Context(), session, content); err != nil {
 			fmt.Fprintf(os.Stderr, "enqueue %s: %v\n", p, err)
 			errCount++

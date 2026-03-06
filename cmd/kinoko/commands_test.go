@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/kinoko-dev/kinoko/internal/run/extraction"
@@ -35,7 +36,7 @@ func TestStatsCmdExists(t *testing.T) {
 	}
 }
 
-func TestParseSessionFromLog(t *testing.T) {
+func TestParseSession(t *testing.T) {
 	log := []byte(`2025-01-15T10:00:00 Session start model=claude-3-opus
 tool_call: exec ls -la
 tool_call: exec cat file.txt
@@ -44,25 +45,28 @@ error: build failed
 tool_call: exec go build ./...
 2025-01-15T10:15:00 Session end`)
 
-	session := extraction.ParseSessionFromLog(log, "test-lib")
+	rec, err := extraction.ParseSession(bytes.NewReader(log))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
-	if session.LibraryID != "test-lib" {
-		t.Errorf("LibraryID = %q, want test-lib", session.LibraryID)
+	if rec.ID != "" {
+		t.Errorf("ID = %q, want empty (caller stamps it)", rec.ID)
 	}
-	if session.ToolCallCount < 4 {
-		t.Errorf("ToolCallCount = %d, want >= 4", session.ToolCallCount)
+	if rec.ToolCallCount < 4 {
+		t.Errorf("ToolCallCount = %d, want >= 4", rec.ToolCallCount)
 	}
-	if session.ErrorCount < 1 {
-		t.Errorf("ErrorCount = %d, want >= 1", session.ErrorCount)
+	if rec.ErrorCount < 1 {
+		t.Errorf("ErrorCount = %d, want >= 1", rec.ErrorCount)
 	}
-	if !session.HasSuccessfulExec {
+	if !rec.HasSuccessfulExec {
 		t.Error("HasSuccessfulExec = false, want true")
 	}
-	if session.DurationMinutes < 14 || session.DurationMinutes > 16 {
-		t.Errorf("DurationMinutes = %.1f, want ~15", session.DurationMinutes)
+	if rec.DurationMinutes < 14 || rec.DurationMinutes > 16 {
+		t.Errorf("DurationMinutes = %.1f, want ~15", rec.DurationMinutes)
 	}
-	if session.AgentModel != "claude-3-opus" {
-		t.Errorf("AgentModel = %q, want claude-3-opus", session.AgentModel)
+	if rec.AgentModel != "claude-3-opus" {
+		t.Errorf("AgentModel = %q, want claude-3-opus", rec.AgentModel)
 	}
 }
 

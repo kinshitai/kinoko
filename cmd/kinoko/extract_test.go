@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,162 +12,171 @@ import (
 	"github.com/kinoko-dev/kinoko/pkg/model"
 )
 
-// Tests for parseSessionFromLog edge cases — R9 area.
-// Must exist BEFORE moving to internal/extraction/logparser.go.
-
-func TestParseSessionFromLog_Empty(t *testing.T) {
-	s := extraction.ParseSessionFromLog([]byte(""), "lib-1")
-	if s.LibraryID != "lib-1" {
-		t.Errorf("LibraryID = %q", s.LibraryID)
-	}
-	if s.ID == "" {
-		t.Error("ID should be generated")
-	}
-	// With no timestamps, should use defaults
-	if s.DurationMinutes < 0 {
-		t.Errorf("negative duration: %f", s.DurationMinutes)
+func TestParseSession_Empty(t *testing.T) {
+	_, err := extraction.ParseSession(bytes.NewReader(nil))
+	if !errors.Is(err, extraction.ErrEmptyContent) {
+		t.Errorf("expected ErrEmptyContent, got %v", err)
 	}
 }
 
-func TestParseSessionFromLog_NoTimestamps(t *testing.T) {
+func TestParseSession_NoTimestamps(t *testing.T) {
 	content := []byte("Some log without timestamps\ntool_call: exec ls\nerror: oops")
-	s := extraction.ParseSessionFromLog(content, "lib-2")
-	if s.ToolCallCount != 1 {
-		t.Errorf("ToolCallCount = %d, want 1", s.ToolCallCount)
-	}
-	if s.ErrorCount < 1 {
-		t.Errorf("ErrorCount = %d, want >= 1", s.ErrorCount)
-	}
-	// Should use 10min default
-	if s.DurationMinutes < 9 || s.DurationMinutes > 11 {
-		t.Errorf("DurationMinutes = %f, want ~10", s.DurationMinutes)
+	// No timestamps → FallbackParser won't match (CanParse checks for timestamps).
+	// This becomes ErrUnrecognizedFormat.
+	_, err := extraction.ParseSession(bytes.NewReader(content))
+	if !errors.Is(err, extraction.ErrUnrecognizedFormat) {
+		t.Errorf("expected ErrUnrecognizedFormat, got %v", err)
 	}
 }
 
-func TestParseSessionFromLog_MultipleFormats(t *testing.T) {
+func TestParseSession_MultipleFormats(t *testing.T) {
 	content := []byte("2025-06-01 09:00:00 start\n2025-06-01T09:30:00 end")
-	s := extraction.ParseSessionFromLog(content, "lib-3")
-	if s.DurationMinutes < 29 || s.DurationMinutes > 31 {
-		t.Errorf("DurationMinutes = %f, want ~30", s.DurationMinutes)
+	rec, err := extraction.ParseSession(bytes.NewReader(content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.DurationMinutes < 29 || rec.DurationMinutes > 31 {
+		t.Errorf("DurationMinutes = %f, want ~30", rec.DurationMinutes)
 	}
 }
 
-func TestParseSessionFromLog_OnlyOneTimestamp(t *testing.T) {
+func TestParseSession_OnlyOneTimestamp(t *testing.T) {
 	content := []byte("2025-06-01T09:00:00 something happened")
-	s := extraction.ParseSessionFromLog(content, "lib-4")
-	// With only one timestamp, should fallback to defaults (10min)
-	if s.DurationMinutes < 9 || s.DurationMinutes > 11 {
-		t.Errorf("DurationMinutes = %f, want ~10 (fallback)", s.DurationMinutes)
+	rec, err := extraction.ParseSession(bytes.NewReader(content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// With only one timestamp, duration is zero (no lying about it).
+	if rec.DurationMinutes != 0 {
+		t.Errorf("DurationMinutes = %f, want 0", rec.DurationMinutes)
 	}
 }
 
-func TestParseSessionFromLog_ToolCallPatterns(t *testing.T) {
-	content := []byte(`tool_call: something
-function_call: more
-<tool_use>action</tool_use>
-"type": "function"
-<invoke name="test">`)
-	s := extraction.ParseSessionFromLog(content, "lib-5")
-	if s.ToolCallCount < 4 {
-		t.Errorf("ToolCallCount = %d, want >= 4", s.ToolCallCount)
+func TestParseSession_ToolCallPatterns(t *testing.T) {
+	content := []byte("2025-06-01T09:00:00 start\ntool_call: something\nfunction_call: more\n<tool_use>action</tool_use>\n\"type\": \"function\"\n<invoke name=\"test\">")
+	rec, err := extraction.ParseSession(bytes.NewReader(content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.ToolCallCount < 4 {
+		t.Errorf("ToolCallCount = %d, want >= 4", rec.ToolCallCount)
 	}
 }
 
-func TestParseSessionFromLog_ErrorPatterns(t *testing.T) {
-	content := []byte(`normal line
-error: something broke
-ERROR: critical
-traceback (most recent call last):
-panic: runtime error
-FAILED test
-exit status 1`)
-	s := extraction.ParseSessionFromLog(content, "lib-6")
-	if s.ErrorCount < 5 {
-		t.Errorf("ErrorCount = %d, want >= 5", s.ErrorCount)
+func TestParseSession_ErrorPatterns(t *testing.T) {
+	content := []byte("2025-06-01T09:00:00 start\nnormal line\nerror: something broke\nERROR: critical\ntraceback (most recent call last):\npanic: runtime error\nFAILED test\nexit status 1")
+	rec, err := extraction.ParseSession(bytes.NewReader(content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.ErrorCount < 5 {
+		t.Errorf("ErrorCount = %d, want >= 5", rec.ErrorCount)
 	}
 }
 
-func TestParseSessionFromLog_ExecDetection(t *testing.T) {
+func TestParseSession_ExecDetection(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
 		want    bool
 	}{
-		{"tool_call exec", "tool_call: exec ls", true},
-		{"shell_exec", "shell_exec: pwd", true},
-		{"command_output", "command_output: success", true},
-		{`"name":"exec"`, `"name": "exec"`, true},
-		{"no exec", "tool_call: read_file foo.txt", false},
+		{"tool_call exec", "2025-06-01T09:00:00 tool_call: exec ls", true},
+		{"shell_exec", "2025-06-01T09:00:00 shell_exec: pwd", true},
+		{"command_output", "2025-06-01T09:00:00 command_output: success", true},
+		{`"name":"exec"`, `2025-06-01T09:00:00 "name": "exec"`, true},
+		{"no exec", "2025-06-01T09:00:00 tool_call: read_file foo.txt", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := extraction.ParseSessionFromLog([]byte(tt.content), "lib")
-			if s.HasSuccessfulExec != tt.want {
-				t.Errorf("HasSuccessfulExec = %v, want %v", s.HasSuccessfulExec, tt.want)
+			rec, err := extraction.ParseSession(strings.NewReader(tt.content))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if rec.HasSuccessfulExec != tt.want {
+				t.Errorf("HasSuccessfulExec = %v, want %v", rec.HasSuccessfulExec, tt.want)
 			}
 		})
 	}
 }
 
-func TestParseSessionFromLog_ModelDetection(t *testing.T) {
-	content := []byte("Starting session model=gpt-4-turbo\nDoing stuff")
-	s := extraction.ParseSessionFromLog(content, "lib")
-	if s.AgentModel != "gpt-4-turbo" {
-		t.Errorf("AgentModel = %q, want gpt-4-turbo", s.AgentModel)
+func TestParseSession_ModelDetection(t *testing.T) {
+	content := []byte("2025-06-01T09:00:00 Starting session model=gpt-4-turbo\nDoing stuff")
+	rec, err := extraction.ParseSession(bytes.NewReader(content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.AgentModel != "gpt-4-turbo" {
+		t.Errorf("AgentModel = %q, want gpt-4-turbo", rec.AgentModel)
 	}
 }
 
-func TestParseSessionFromLog_TokenEstimate(t *testing.T) {
-	content := make([]byte, 400) // 400 bytes ÷ 4 = 100 tokens
-	for i := range content {
-		content[i] = 'a'
+func TestParseSession_TokenEstimate(t *testing.T) {
+	// 400 bytes of content with a timestamp so FallbackParser matches.
+	content := make([]byte, 0, 430)
+	content = append(content, []byte("2025-06-01T09:00:00 ")...)
+	for i := 0; i < 400; i++ {
+		content = append(content, 'a')
 	}
-	s := extraction.ParseSessionFromLog(content, "lib")
-	if s.TokensUsed != 100 {
-		t.Errorf("TokensUsed = %d, want 100", s.TokensUsed)
+	rec, err := extraction.ParseSession(bytes.NewReader(content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := len(content) / 4
+	if rec.TokensUsed != expected {
+		t.Errorf("TokensUsed = %d, want %d", rec.TokensUsed, expected)
 	}
 }
 
-func TestParseSessionFromLog_NegativeDuration(t *testing.T) {
+func TestParseSession_NegativeDuration(t *testing.T) {
 	// If timestamps are in wrong order, duration should be clamped to 0
 	content := []byte("2025-06-01T10:00:00 end\n2025-06-01T09:00:00 start")
-	s := extraction.ParseSessionFromLog(content, "lib")
-	if s.DurationMinutes < 0 {
-		t.Errorf("DurationMinutes = %f, should not be negative", s.DurationMinutes)
+	rec, err := extraction.ParseSession(bytes.NewReader(content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.DurationMinutes < 0 {
+		t.Errorf("DurationMinutes = %f, should not be negative", rec.DurationMinutes)
 	}
 }
 
-func TestParseSessionFromLog_ErrorRate(t *testing.T) {
-	content := []byte("tool_call: exec a\ntool_call: exec b\nerror: boom\ntool_call: exec c\nerror: crash")
-	s := extraction.ParseSessionFromLog(content, "lib")
-	if s.ToolCallCount == 0 {
+func TestParseSession_ErrorRate(t *testing.T) {
+	content := []byte("2025-06-01T09:00:00 start\ntool_call: exec a\ntool_call: exec b\nerror: boom\ntool_call: exec c\nerror: crash")
+	rec, err := extraction.ParseSession(bytes.NewReader(content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.ToolCallCount == 0 {
 		t.Fatal("no tool calls detected")
 	}
-	expectedRate := float64(s.ErrorCount) / float64(s.ToolCallCount)
-	if s.ErrorRate != expectedRate {
-		t.Errorf("ErrorRate = %f, want %f", s.ErrorRate, expectedRate)
+	expectedRate := float64(rec.ErrorCount) / float64(rec.ToolCallCount)
+	if rec.ErrorRate != expectedRate {
+		t.Errorf("ErrorRate = %f, want %f", rec.ErrorRate, expectedRate)
 	}
 }
 
-func TestParseSessionFromLog_ZeroToolCalls(t *testing.T) {
-	content := []byte("just some text\nno tools here")
-	s := extraction.ParseSessionFromLog(content, "lib")
-	if s.ToolCallCount != 0 {
-		t.Errorf("ToolCallCount = %d, want 0", s.ToolCallCount)
+func TestParseSession_ZeroToolCalls(t *testing.T) {
+	content := []byte("2025-06-01T09:00:00 just some text\nno tools here")
+	rec, err := extraction.ParseSession(bytes.NewReader(content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if s.ErrorRate != 0 {
-		t.Errorf("ErrorRate = %f, want 0 (no tool calls)", s.ErrorRate)
+	if rec.ToolCallCount != 0 {
+		t.Errorf("ToolCallCount = %d, want 0", rec.ToolCallCount)
+	}
+	if rec.ErrorRate != 0 {
+		t.Errorf("ErrorRate = %f, want 0 (no tool calls)", rec.ErrorRate)
 	}
 }
 
-func TestParseSessionFromLog_UUID(t *testing.T) {
-	s1 := extraction.ParseSessionFromLog([]byte("a"), "lib")
-	s2 := extraction.ParseSessionFromLog([]byte("b"), "lib")
-	if s1.ID == s2.ID {
-		t.Error("expected unique IDs")
+func TestParseSession_NoIDGenerated(t *testing.T) {
+	// ParseSession does NOT generate UUIDs — caller stamps them.
+	content := []byte("2025-06-01T09:00:00 hello")
+	rec, err := extraction.ParseSession(bytes.NewReader(content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(s1.ID) != 36 {
-		t.Errorf("ID length = %d, want 36 (UUID format)", len(s1.ID))
+	if rec.ID != "" {
+		t.Errorf("ID = %q, want empty (caller stamps it)", rec.ID)
 	}
 }
 
@@ -192,16 +204,18 @@ func TestExitError(t *testing.T) {
 	}
 }
 
-// Ensure parseSessionFromLog handles large files without crash.
-func TestParseSessionFromLog_LargeInput(t *testing.T) {
-	// Build a 2MB log
-	var lines []byte
+// Ensure ParseSession handles large files without crash.
+func TestParseSession_LargeInput(t *testing.T) {
+	var buf bytes.Buffer
 	ts := time.Now().Format("2006-01-02T15:04:05")
 	for i := 0; i < 20000; i++ {
-		lines = append(lines, []byte(ts+" tool_call: exec something\n")...)
+		buf.WriteString(ts + " tool_call: exec something\n")
 	}
-	s := extraction.ParseSessionFromLog(lines, "lib")
-	if s.ToolCallCount < 10000 {
-		t.Errorf("ToolCallCount = %d, expected many", s.ToolCallCount)
+	rec, err := extraction.ParseSession(&buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.ToolCallCount < 10000 {
+		t.Errorf("ToolCallCount = %d, expected many", rec.ToolCallCount)
 	}
 }
