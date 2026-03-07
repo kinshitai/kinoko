@@ -116,24 +116,26 @@ func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 
 // extractionRun holds mutable state for a single Extract() invocation.
 type extractionRun struct {
-	ctx     context.Context
-	session model.SessionRecord
-	content []byte
-	start   time.Time
-	result  *model.ExtractionResult
-	trace   *debug.RunTrace
-	s1Ms    int64
-	s2Ms    int64
-	s3Ms    int64
+	ctx        context.Context
+	session    model.SessionRecord
+	content    []byte
+	sourceType string // "session" (default) or "convert"
+	start      time.Time
+	result     *model.ExtractionResult
+	trace      *debug.RunTrace
+	s1Ms       int64
+	s2Ms       int64
+	s3Ms       int64
 }
 
 // Extract runs the full extraction pipeline on a session.
 func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, content []byte) (*model.ExtractionResult, error) {
 	run := &extractionRun{
-		ctx:     ctx,
-		session: session,
-		content: content,
-		start:   time.Now(),
+		ctx:        ctx,
+		session:    session,
+		content:    content,
+		sourceType: "session",
+		start:      time.Now(),
 		result: &model.ExtractionResult{
 			SessionID:   session.ID,
 			ProcessedAt: time.Now(),
@@ -148,6 +150,36 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 	if done := p.filter(run); done {
 		return run.result, nil
 	}
+	if done := p.score(run); done {
+		return run.result, nil
+	}
+	if done := p.critique(run); done {
+		return run.result, nil
+	}
+	return p.publish(run)
+}
+
+// ConvertExtract runs the extraction pipeline without Stage 1 filtering.
+// Used for converting existing documents that aren't session logs.
+func (p *Pipeline) ConvertExtract(ctx context.Context, session model.SessionRecord, content []byte) (*model.ExtractionResult, error) {
+	run := &extractionRun{
+		ctx:        ctx,
+		session:    session,
+		content:    content,
+		sourceType: "convert",
+		start:      time.Now(),
+		result: &model.ExtractionResult{
+			SessionID:   session.ID,
+			ProcessedAt: time.Now(),
+		},
+		trace: p.tracer.StartRun(),
+	}
+	run.trace.WriteSession(content)
+
+	p.log.Info("convert pipeline start", "session_id", session.ID)
+	p.prepare(run)
+
+	// Skip Stage 1 — content is not a session log
 	if done := p.score(run); done {
 		return run.result, nil
 	}
@@ -226,7 +258,7 @@ func (p *Pipeline) filter(run *extractionRun) bool {
 func (p *Pipeline) score(run *extractionRun) bool {
 	p.log.Info("stage2 entry", "session_id", run.session.ID)
 	s2Start := time.Now()
-	s2, err := p.stage2.Score(run.ctx, run.session, run.content)
+	s2, err := p.stage2.Score(run.ctx, run.session, run.content, run.sourceType)
 	run.s2Ms = time.Since(s2Start).Milliseconds()
 	if err != nil {
 		run.result.Status = model.StatusError
@@ -288,7 +320,7 @@ func (p *Pipeline) critique(run *extractionRun) bool {
 	s2 := run.result.Stage2
 	p.log.Info("stage3 entry", "session_id", run.session.ID)
 	s3Start := time.Now()
-	s3, err := p.stage3.Evaluate(run.ctx, run.session, run.content, s2)
+	s3, err := p.stage3.Evaluate(run.ctx, run.session, run.content, s2, run.sourceType)
 	run.s3Ms = time.Since(s3Start).Milliseconds()
 	if err != nil {
 		run.result.Status = model.StatusError

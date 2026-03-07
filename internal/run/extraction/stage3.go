@@ -20,7 +20,7 @@ const maxContentBytes = 100 * 1024
 
 // Stage3Critic evaluates a session via LLM and returns an extract/reject verdict.
 type Stage3Critic interface {
-	Evaluate(ctx context.Context, session model.SessionRecord, content []byte, stage2 *model.Stage2Result) (*model.Stage3Result, error)
+	Evaluate(ctx context.Context, session model.SessionRecord, content []byte, stage2 *model.Stage2Result, sourceType string) (*model.Stage3Result, error)
 }
 
 // clockFunc allows injecting a time source for testing.
@@ -73,7 +73,7 @@ func mustNewBreaker(cfg circuitbreaker.Config) *circuitbreaker.Breaker {
 	return b
 }
 
-func (c *stage3Critic) Evaluate(ctx context.Context, session model.SessionRecord, content []byte, stage2 *model.Stage2Result) (*model.Stage3Result, error) {
+func (c *stage3Critic) Evaluate(ctx context.Context, session model.SessionRecord, content []byte, stage2 *model.Stage2Result, sourceType string) (*model.Stage3Result, error) {
 	start := c.clock()
 
 	// Input validation
@@ -107,7 +107,7 @@ func (c *stage3Critic) Evaluate(ctx context.Context, session model.SessionRecord
 	}
 
 	// Build prompt
-	prompt := buildCombinedPrompt(truncated, stage2)
+	prompt := buildCombinedPrompt(truncated, stage2, sourceType)
 
 	// Call LLM with retry
 	retryResult, err := c.callWithRetry(ctx, prompt, session.ID)

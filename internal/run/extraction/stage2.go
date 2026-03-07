@@ -48,7 +48,7 @@ func init() {
 
 // Stage2Scorer runs structured rubric scoring.
 type Stage2Scorer interface {
-	Score(ctx context.Context, session model.SessionRecord, content []byte) (*model.Stage2Result, error)
+	Score(ctx context.Context, session model.SessionRecord, content []byte, sourceType string) (*model.Stage2Result, error)
 }
 
 type stage2Scorer struct {
@@ -68,11 +68,11 @@ func NewStage2Scorer(
 	}
 }
 
-func (s *stage2Scorer) Score(ctx context.Context, session model.SessionRecord, content []byte) (*model.Stage2Result, error) {
+func (s *stage2Scorer) Score(ctx context.Context, session model.SessionRecord, content []byte, sourceType string) (*model.Stage2Result, error) {
 	result := &model.Stage2Result{}
 
 	// Structured Rubric Scoring via LLM
-	prompt := buildRubricPrompt(content)
+	prompt := buildRubricPrompt(content, sourceType)
 	resp, err := s.llm.Complete(ctx, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("stage2: llm rubric call: %w", err)
@@ -198,8 +198,19 @@ func validatePatterns(patterns []string) []string {
 	return valid
 }
 
-func buildRubricPrompt(content []byte) string {
-	return fmt.Sprintf(`Analyze this agent session and respond with ONLY a JSON object (no markdown, no explanation).
+func buildRubricPrompt(content []byte, sourceType string) string {
+	var preamble string
+	contentLabel := "agent session"
+	contentDelimLabel := "Session content"
+	if sourceType == "convert" {
+		preamble = `NOTE: This content was converted from existing documentation, not extracted from an agent session log. There are no tool calls, error traces, or command outputs. Evaluate the knowledge quality based on the prose content itself. Score "verification_evidence" based on whether the document describes tested/proven approaches, not on presence of execution logs.
+
+`
+		contentLabel = "document"
+		contentDelimLabel = "Document content"
+	}
+
+	return fmt.Sprintf(`%sAnalyze this %s and respond with ONLY a JSON object (no markdown, no explanation).
 
 Score each dimension 1-5:
 - problem_specificity: How specific and well-defined is the problem?
@@ -230,6 +241,6 @@ JSON format:
   "patterns": ["PATTERN/..."]
 }
 
-Session content:
-%s`, string(content))
+%s:
+%s`, preamble, contentLabel, contentDelimLabel, string(content))
 }

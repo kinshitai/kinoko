@@ -36,3 +36,6 @@ combined.cov
 REVIEW*.md
 cover*.out
 rfcs/
+
+# Real session fixtures (may contain sensitive data)
+tests/fixtures/claude-code-real-session.jsonl

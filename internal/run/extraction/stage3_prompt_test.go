@@ -20,7 +20,7 @@ func TestBuildCombinedPrompt_ContainsKeySections(t *testing.T) {
 		},
 	}
 
-	prompt := buildCombinedPrompt(content, stage2)
+	prompt := buildCombinedPrompt(content, stage2, "session")
 
 	checks := map[string]string{
 		"Different Project preamble": "DIFFERENT project",
@@ -43,8 +43,8 @@ func TestBuildCombinedPrompt_DelimitersAreUnique(t *testing.T) {
 	content := []byte("test content")
 	stage2 := &model.Stage2Result{Passed: true}
 
-	p1 := buildCombinedPrompt(content, stage2)
-	p2 := buildCombinedPrompt(content, stage2)
+	p1 := buildCombinedPrompt(content, stage2, "session")
+	p2 := buildCombinedPrompt(content, stage2, "session")
 
 	// Extract the nonce from each — they should differ.
 	// Both contain "---BEGIN SESSION " but the nonce part differs.
@@ -68,7 +68,7 @@ func TestBuildCombinedPrompt_SanitizesMatchingDelimiters(t *testing.T) {
 	content := []byte("normal session text with no delimiters")
 	stage2 := &model.Stage2Result{Passed: true}
 
-	prompt := buildCombinedPrompt(content, stage2)
+	prompt := buildCombinedPrompt(content, stage2, "session")
 
 	if !strings.Contains(prompt, "normal session text") {
 		t.Error("content should appear in prompt")
