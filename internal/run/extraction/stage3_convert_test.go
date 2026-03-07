@@ -25,7 +25,7 @@ func TestBuildCombinedPrompt_ConvertMode(t *testing.T) {
 	}
 
 	t.Run("convert mode uses document delimiters", func(t *testing.T) {
-		prompt := buildCombinedPrompt(content, stage2, "convert")
+		prompt := buildCombinedPrompt(content, stage2, SourceTypeConvert)
 
 		if !strings.Contains(prompt, "---BEGIN DOCUMENT") {
 			t.Error("convert prompt should use DOCUMENT delimiter")
@@ -39,7 +39,7 @@ func TestBuildCombinedPrompt_ConvertMode(t *testing.T) {
 	})
 
 	t.Run("convert mode has genre preamble", func(t *testing.T) {
-		prompt := buildCombinedPrompt(content, stage2, "convert")
+		prompt := buildCombinedPrompt(content, stage2, SourceTypeConvert)
 
 		if !strings.Contains(prompt, "converted from existing documentation") {
 			t.Error("convert prompt should contain genre-aware preamble")
@@ -50,7 +50,7 @@ func TestBuildCombinedPrompt_ConvertMode(t *testing.T) {
 	})
 
 	t.Run("session mode uses session delimiters", func(t *testing.T) {
-		prompt := buildCombinedPrompt(content, stage2, "session")
+		prompt := buildCombinedPrompt(content, stage2, SourceTypeSession)
 
 		if !strings.Contains(prompt, "---BEGIN SESSION") {
 			t.Error("session prompt should use SESSION delimiter")
@@ -64,7 +64,7 @@ func TestBuildCombinedPrompt_ConvertMode(t *testing.T) {
 	})
 
 	t.Run("session mode has no convert preamble", func(t *testing.T) {
-		prompt := buildCombinedPrompt(content, stage2, "session")
+		prompt := buildCombinedPrompt(content, stage2, SourceTypeSession)
 
 		if strings.Contains(prompt, "converted from existing documentation") {
 			t.Error("session prompt should NOT contain convert preamble")
@@ -86,7 +86,7 @@ func TestBuildCombinedPrompt_ConvertMode(t *testing.T) {
 	})
 
 	t.Run("content is included in both modes", func(t *testing.T) {
-		for _, st := range []string{"session", "convert"} {
+		for _, st := range []SourceType{SourceTypeSession, SourceTypeConvert} {
 			prompt := buildCombinedPrompt(content, stage2, st)
 			if !strings.Contains(prompt, string(content)) {
 				t.Errorf("sourceType=%q: content not included in prompt", st)

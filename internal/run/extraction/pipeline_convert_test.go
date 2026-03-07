@@ -21,10 +21,10 @@ func (m *mockStage1Panics) Filter(_ model.SessionRecord) *model.Stage1Result {
 type mockStage2WithSourceType struct {
 	result     *model.Stage2Result
 	err        error
-	sourceType string
+	sourceType SourceType
 }
 
-func (m *mockStage2WithSourceType) Score(_ context.Context, _ model.SessionRecord, _ []byte, sourceType string) (*model.Stage2Result, error) {
+func (m *mockStage2WithSourceType) Score(_ context.Context, _ model.SessionRecord, _ []byte, sourceType SourceType, _ string) (*model.Stage2Result, error) {
 	m.sourceType = sourceType
 	return m.result, m.err
 }
@@ -33,10 +33,10 @@ func (m *mockStage2WithSourceType) Score(_ context.Context, _ model.SessionRecor
 type mockStage3WithSourceType struct {
 	result     *model.Stage3Result
 	err        error
-	sourceType string
+	sourceType SourceType
 }
 
-func (m *mockStage3WithSourceType) Evaluate(_ context.Context, _ model.SessionRecord, _ []byte, _ *model.Stage2Result, sourceType string) (*model.Stage3Result, error) {
+func (m *mockStage3WithSourceType) Evaluate(_ context.Context, _ model.SessionRecord, _ []byte, _ *model.Stage2Result, sourceType SourceType, _ string) (*model.Stage3Result, error) {
 	m.sourceType = sourceType
 	return m.result, m.err
 }
@@ -59,7 +59,7 @@ func TestConvertExtract_SkipsStage1(t *testing.T) {
 
 	session := model.SessionRecord{ID: "test-convert-1", LibraryID: "test"}
 	// This should NOT panic because Stage 1 is skipped
-	result, err := p.ConvertExtract(context.Background(), session, []byte("document content"))
+	result, err := p.ConvertExtract(context.Background(), session, []byte("document content"), "")
 	if err != nil {
 		t.Fatalf("ConvertExtract: %v", err)
 	}
@@ -86,16 +86,16 @@ func TestConvertExtract_SourceTypeIsConvert(t *testing.T) {
 	}
 
 	session := model.SessionRecord{ID: "test-convert-2", LibraryID: "test"}
-	_, err = p.ConvertExtract(context.Background(), session, []byte("document content"))
+	_, err = p.ConvertExtract(context.Background(), session, []byte("document content"), "")
 	if err != nil {
 		t.Fatalf("ConvertExtract: %v", err)
 	}
 
-	if s2.sourceType != "convert" {
-		t.Errorf("Stage2 sourceType = %q, want %q", s2.sourceType, "convert")
+	if s2.sourceType != SourceTypeConvert {
+		t.Errorf("Stage2 sourceType = %q, want %q", s2.sourceType, SourceTypeConvert)
 	}
-	if s3.sourceType != "convert" {
-		t.Errorf("Stage3 sourceType = %q, want %q", s3.sourceType, "convert")
+	if s3.sourceType != SourceTypeConvert {
+		t.Errorf("Stage3 sourceType = %q, want %q", s3.sourceType, SourceTypeConvert)
 	}
 }
 
@@ -121,11 +121,11 @@ func TestExtract_SourceTypeIsSession(t *testing.T) {
 		t.Fatalf("Extract: %v", err)
 	}
 
-	if s2.sourceType != "session" {
-		t.Errorf("Stage2 sourceType = %q, want %q", s2.sourceType, "session")
+	if s2.sourceType != SourceTypeSession {
+		t.Errorf("Stage2 sourceType = %q, want %q", s2.sourceType, SourceTypeSession)
 	}
-	if s3.sourceType != "session" {
-		t.Errorf("Stage3 sourceType = %q, want %q", s3.sourceType, "session")
+	if s3.sourceType != SourceTypeSession {
+		t.Errorf("Stage3 sourceType = %q, want %q", s3.sourceType, SourceTypeSession)
 	}
 }
 
@@ -149,7 +149,7 @@ func TestConvertExtract_Stage2Rejection(t *testing.T) {
 	}
 
 	session := model.SessionRecord{ID: "test-convert-reject", LibraryID: "test"}
-	result, err := p.ConvertExtract(context.Background(), session, []byte("low quality content"))
+	result, err := p.ConvertExtract(context.Background(), session, []byte("low quality content"), "")
 	if err != nil {
 		t.Fatalf("ConvertExtract: %v", err)
 	}

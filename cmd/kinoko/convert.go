@@ -31,7 +31,7 @@ that don't penalize the absence of tool calls or execution traces.
 
   kinoko convert my-notes.md
   kinoko convert CLAUDE.md --dry-run
-  kinoko convert guide.md --min-quality 0.7 --taxonomy "BUILD/Backend/APIDesign"`,
+  kinoko convert guide.md --taxonomy "BUILD/Backend/APIDesign"`,
 	Args: cobra.ExactArgs(1),
 	RunE: runConvert,
 }
@@ -41,7 +41,6 @@ var (
 	convertLibrary    string
 	convertAPIURL     string
 	convertDryRun     bool
-	convertMinQuality float64
 	convertTaxonomy   string
 	convertTimeout    time.Duration
 )
@@ -51,7 +50,6 @@ func init() {
 	convertCmd.Flags().StringVar(&convertLibrary, "library", "", "Library ID (default: first configured library)")
 	convertCmd.Flags().StringVar(&convertAPIURL, "api-url", "", "Kinoko API URL override")
 	convertCmd.Flags().BoolVar(&convertDryRun, "dry-run", false, "Run pipeline but skip git commit")
-	convertCmd.Flags().Float64Var(&convertMinQuality, "min-quality", 0, "Minimum composite quality score (default: 0.65)")
 	convertCmd.Flags().StringVar(&convertTaxonomy, "taxonomy", "", "Suggested taxonomy pattern hint (e.g. BUILD/Backend/APIDesign)")
 	convertCmd.Flags().DurationVar(&convertTimeout, "timeout", 5*time.Minute, "Command timeout")
 }
@@ -65,6 +63,15 @@ func runConvert(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	filePath := args[0]
+
+	fi, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("stat file: %w", err)
+	}
+	const maxFileSize = 10 * 1024 * 1024 // 10MB
+	if fi.Size() > maxFileSize {
+		return fmt.Errorf("file too large: %d bytes (max %d)", fi.Size(), maxFileSize)
+	}
 
 	content, err := os.ReadFile(filePath)
 	if err != nil {
@@ -80,22 +87,9 @@ func runConvert(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	// min-quality flag — logged for visibility but quality gating is handled
-	// by the pipeline's rubric scoring (MinimumViable check in Stage 2).
-	if convertMinQuality > 0 {
-		cfg.Extraction.MinConfidence = convertMinQuality
-	}
-
 	libraryID := convertLibrary
 	if libraryID == "" && len(cfg.Libraries) > 0 {
 		libraryID = cfg.Libraries[0].Name
-	}
-
-	// Prepend taxonomy hint to content if provided.
-	pipelineContent := content
-	if convertTaxonomy != "" {
-		hint := fmt.Sprintf("Suggested taxonomy pattern: %s. Use this as a hint but override if content clearly fits elsewhere.\n\n", convertTaxonomy)
-		pipelineContent = append([]byte(hint), content...)
 	}
 
 	// Create a minimal SessionRecord for the pipeline.
@@ -178,18 +172,19 @@ func runConvert(cmd *cobra.Command, args []string) error {
 		SampleRate: 0.01,
 		Extractor:  "cli-convert-v1",
 		ExtCfg:     cfg.Extraction,
+		DryRun:     convertDryRun,
 	})
 	if err != nil {
 		return fmt.Errorf("create pipeline: %w", err)
 	}
 
-	result, err := pipeline.ConvertExtract(ctx, session, pipelineContent)
+	result, err := pipeline.ConvertExtract(ctx, session, content, convertTaxonomy)
 	if err != nil {
 		return fmt.Errorf("conversion failed: %w", err)
 	}
 
-	// Print summary.
-	printConvertSummary(result, filePath, convertDryRun)
+	// Print summary to stderr.
+	printExtractionSummary(result, filePath, convertDryRun)
 
 	// Print JSON for programmatic consumption.
 	out, err := json.MarshalIndent(result, "", "  ")
@@ -206,64 +201,4 @@ func runConvert(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
-}
-
-// printConvertSummary prints a human-readable conversion summary.
-func printConvertSummary(result *model.ExtractionResult, sourcePath string, dryRun bool) {
-	fmt.Println("─── Convert Summary ───")
-	fmt.Printf("  Source:   %s\n", sourcePath)
-	fmt.Printf("  Status:   %s\n", result.Status)
-
-	// Print Stage 2 rubric scores if available.
-	if result.Stage2 != nil {
-		s := result.Stage2.RubricScores
-		fmt.Println()
-		fmt.Println("  Stage 2 Scores:")
-		fmt.Printf("    problem_specificity:    %d\n", s.ProblemSpecificity)
-		fmt.Printf("    solution_completeness:  %d\n", s.SolutionCompleteness)
-		fmt.Printf("    context_portability:    %d\n", s.ContextPortability)
-		fmt.Printf("    reasoning_transparency: %d\n", s.ReasoningTransparency)
-		fmt.Printf("    technical_accuracy:     %d\n", s.TechnicalAccuracy)
-		fmt.Printf("    verification_evidence:  %d\n", s.VerificationEvidence)
-		fmt.Printf("    innovation_level:       %d\n", s.InnovationLevel)
-		fmt.Printf("    composite:              %.2f\n", s.CompositeScore)
-	}
-
-	// Print Stage 3 verdict if available.
-	if result.Stage3 != nil {
-		fmt.Println()
-		fmt.Printf("  Stage 3 Verdict: %s\n", result.Stage3.CriticVerdict)
-		fmt.Printf("    confidence: %.2f\n", result.Stage3.RefinedScores.CriticConfidence)
-		fmt.Printf("    reasoning: %s\n", result.Stage3.CriticReasoning)
-	}
-
-	switch result.Status {
-	case model.StatusExtracted:
-		if result.Skill != nil {
-			fmt.Println()
-			fmt.Printf("  Skill:    %s\n", result.Skill.Name)
-			fmt.Printf("  Version:  %d\n", result.Skill.Version)
-			fmt.Printf("  Quality:  %.2f\n", result.Skill.Quality.CompositeScore)
-		}
-		switch {
-		case dryRun:
-			fmt.Println("  Committed: no (dry-run)")
-		case result.CommitHash != "":
-			fmt.Printf("  Committed: yes (%s)\n", result.CommitHash)
-		default:
-			fmt.Println("  Committed: no")
-		}
-	case model.StatusRejected:
-		switch {
-		case result.Stage2 != nil && !result.Stage2.Passed:
-			fmt.Printf("  Rejected at: Stage 2 — %s\n", result.Stage2.Reason)
-		case result.Stage3 != nil && !result.Stage3.Passed:
-			fmt.Printf("  Rejected at: Stage 3 — %s\n", result.Stage3.CriticReasoning)
-		}
-	case model.StatusError:
-		fmt.Printf("  Error:    %s\n", result.Error)
-	}
-
-	fmt.Printf("  Duration: %dms\n", result.DurationMs)
-	fmt.Println("───────────────────────")
 }

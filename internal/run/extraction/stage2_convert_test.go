@@ -9,7 +9,7 @@ func TestBuildRubricPrompt_ConvertMode(t *testing.T) {
 	content := []byte("some document content about Go testing patterns")
 
 	t.Run("convert mode has genre-aware preamble", func(t *testing.T) {
-		prompt := buildRubricPrompt(content, "convert")
+		prompt := buildRubricPrompt(content, SourceTypeConvert, "")
 
 		if !strings.Contains(prompt, "converted from existing documentation") {
 			t.Error("convert prompt should contain genre-aware preamble")
@@ -29,7 +29,7 @@ func TestBuildRubricPrompt_ConvertMode(t *testing.T) {
 	})
 
 	t.Run("session mode has no preamble", func(t *testing.T) {
-		prompt := buildRubricPrompt(content, "session")
+		prompt := buildRubricPrompt(content, SourceTypeSession, "")
 
 		if strings.Contains(prompt, "converted from existing documentation") {
 			t.Error("session prompt should NOT contain convert preamble")
@@ -43,7 +43,7 @@ func TestBuildRubricPrompt_ConvertMode(t *testing.T) {
 	})
 
 	t.Run("empty sourceType uses session mode", func(t *testing.T) {
-		prompt := buildRubricPrompt(content, "")
+		prompt := buildRubricPrompt(content, "", "")
 
 		if strings.Contains(prompt, "converted from existing documentation") {
 			t.Error("empty sourceType should NOT contain convert preamble")
@@ -54,8 +54,8 @@ func TestBuildRubricPrompt_ConvertMode(t *testing.T) {
 	})
 
 	t.Run("prompt structure is valid", func(t *testing.T) {
-		for _, st := range []string{"session", "convert", ""} {
-			prompt := buildRubricPrompt(content, st)
+		for _, st := range []SourceType{SourceTypeSession, SourceTypeConvert, ""} {
+			prompt := buildRubricPrompt(content, st, "")
 			if !strings.Contains(prompt, "problem_specificity") {
 				t.Errorf("sourceType=%q: missing rubric dimension", st)
 			}

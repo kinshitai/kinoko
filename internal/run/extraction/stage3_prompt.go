@@ -13,10 +13,10 @@ import (
 
 // buildCombinedPrompt builds the Phase B combined critic + extraction prompt.
 // It evaluates the session AND generates SKILL.md in one LLM call.
-func buildCombinedPrompt(content []byte, stage2 *model.Stage2Result, sourceType string) string {
+func buildCombinedPrompt(content []byte, stage2 *model.Stage2Result, sourceType SourceType) string {
 	nonce := generateNonce()
 	delimLabel := "SESSION"
-	if sourceType == "convert" {
+	if sourceType == SourceTypeConvert {
 		delimLabel = "DOCUMENT"
 	}
 	beginDelim := fmt.Sprintf("---BEGIN %s %s---", delimLabel, nonce)
@@ -31,7 +31,7 @@ func buildCombinedPrompt(content []byte, stage2 *model.Stage2Result, sourceType 
 
 	convertPreamble := ""
 	contentTypeLabel := "session"
-	if sourceType == "convert" {
+	if sourceType == SourceTypeConvert {
 		convertPreamble = `
 NOTE: This content is converted from existing documentation, not from an agent session.
 There are no tool calls, command outputs, or execution traces. The content is prose/notes

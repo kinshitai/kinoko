@@ -29,6 +29,14 @@ type HumanReviewWriter interface {
 	InsertReviewSample(ctx context.Context, sessionID string, resultJSON []byte) error
 }
 
+// SourceType identifies how content entered the pipeline.
+type SourceType string
+
+const (
+	SourceTypeSession SourceType = "session"
+	SourceTypeConvert SourceType = "convert"
+)
+
 // Pipeline implements model.Extractor by wiring Stage1 → Stage2 → Stage3 → git commit.
 type Pipeline struct {
 	stage1     Stage1Filter
@@ -45,6 +53,7 @@ type Pipeline struct {
 	tracer     *debug.Tracer           // optional: pipeline debug tracing
 	extractor  string                  // pipeline version identifier
 	extCfg     config.ExtractionConfig // extraction config for trace thresholds
+	dryRun     bool                    // skip git commit when true
 
 	// Stratified sampling counters: maintain ~50/50 extracted vs rejected.
 	// Accessed atomically for concurrency safety.
@@ -68,6 +77,7 @@ type PipelineConfig struct {
 	Extractor  string
 	Tracer     *debug.Tracer
 	ExtCfg     config.ExtractionConfig
+	DryRun     bool
 }
 
 // NewPipeline creates a Pipeline. If RandIntn is nil, crypto/rand is used.
@@ -111,21 +121,23 @@ func NewPipeline(cfg PipelineConfig) (*Pipeline, error) {
 		randIntn:   r,
 		extractor:  ext,
 		extCfg:     cfg.ExtCfg,
+		dryRun:     cfg.DryRun,
 	}, nil
 }
 
 // extractionRun holds mutable state for a single Extract() invocation.
 type extractionRun struct {
-	ctx        context.Context
-	session    model.SessionRecord
-	content    []byte
-	sourceType string // "session" (default) or "convert"
-	start      time.Time
-	result     *model.ExtractionResult
-	trace      *debug.RunTrace
-	s1Ms       int64
-	s2Ms       int64
-	s3Ms       int64
+	ctx          context.Context
+	session      model.SessionRecord
+	content      []byte
+	sourceType   SourceType // SourceTypeSession or SourceTypeConvert
+	taxonomyHint string     // optional taxonomy pattern hint for scoring
+	start        time.Time
+	result       *model.ExtractionResult
+	trace        *debug.RunTrace
+	s1Ms         int64
+	s2Ms         int64
+	s3Ms         int64
 }
 
 // Extract runs the full extraction pipeline on a session.
@@ -134,7 +146,7 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 		ctx:        ctx,
 		session:    session,
 		content:    content,
-		sourceType: "session",
+		sourceType: SourceTypeSession,
 		start:      time.Now(),
 		result: &model.ExtractionResult{
 			SessionID:   session.ID,
@@ -161,13 +173,15 @@ func (p *Pipeline) Extract(ctx context.Context, session model.SessionRecord, con
 
 // ConvertExtract runs the extraction pipeline without Stage 1 filtering.
 // Used for converting existing documents that aren't session logs.
-func (p *Pipeline) ConvertExtract(ctx context.Context, session model.SessionRecord, content []byte) (*model.ExtractionResult, error) {
+// taxonomyHint is an optional taxonomy pattern hint passed to the scorer.
+func (p *Pipeline) ConvertExtract(ctx context.Context, session model.SessionRecord, content []byte, taxonomyHint string) (*model.ExtractionResult, error) {
 	run := &extractionRun{
-		ctx:        ctx,
-		session:    session,
-		content:    content,
-		sourceType: "convert",
-		start:      time.Now(),
+		ctx:          ctx,
+		session:      session,
+		content:      content,
+		sourceType:   SourceTypeConvert,
+		taxonomyHint: taxonomyHint,
+		start:        time.Now(),
 		result: &model.ExtractionResult{
 			SessionID:   session.ID,
 			ProcessedAt: time.Now(),
@@ -258,7 +272,7 @@ func (p *Pipeline) filter(run *extractionRun) bool {
 func (p *Pipeline) score(run *extractionRun) bool {
 	p.log.Info("stage2 entry", "session_id", run.session.ID)
 	s2Start := time.Now()
-	s2, err := p.stage2.Score(run.ctx, run.session, run.content, run.sourceType)
+	s2, err := p.stage2.Score(run.ctx, run.session, run.content, run.sourceType, run.taxonomyHint)
 	run.s2Ms = time.Since(s2Start).Milliseconds()
 	if err != nil {
 		run.result.Status = model.StatusError
@@ -320,7 +334,7 @@ func (p *Pipeline) critique(run *extractionRun) bool {
 	s2 := run.result.Stage2
 	p.log.Info("stage3 entry", "session_id", run.session.ID)
 	s3Start := time.Now()
-	s3, err := p.stage3.Evaluate(run.ctx, run.session, run.content, s2, run.sourceType)
+	s3, err := p.stage3.Evaluate(run.ctx, run.session, run.content, s2, run.sourceType, run.taxonomyHint)
 	run.s3Ms = time.Since(s3Start).Milliseconds()
 	if err != nil {
 		run.result.Status = model.StatusError
@@ -466,27 +480,31 @@ func (p *Pipeline) publish(run *extractionRun) (*model.ExtractionResult, error) 
 	}
 
 	if novel {
-		commitStart := time.Now()
-		commitHash, commitErr := p.committer.CommitSkill(run.ctx, run.session.LibraryID, skill, body)
-		commitMs := time.Since(commitStart).Milliseconds()
-		if commitErr != nil {
-			run.result.Status = model.StatusError
-			run.result.Error = fmt.Sprintf("git commit [session=%s]: %v", run.session.ID, commitErr)
-			run.result.DurationMs = time.Since(run.start).Milliseconds()
-			p.log.Error("git commit failed",
-				"session_id", run.session.ID,
-				"skill_id", skillID,
-				"error", commitErr,
-				"commit_ms", commitMs,
-				"total_ms", run.result.DurationMs,
-			)
-			p.updateSessionStatus(run.ctx, &run.session, run.result)
-			p.maybeSample(run.ctx, run.session.ID, run.result)
-			p.writeTraceSummary(run.trace, run.result, nil, 0, run.s1Ms, run.s2Ms, run.s3Ms)
-			return run.result, nil
+		if p.dryRun {
+			p.log.Info("dry-run: skipping commit", "skill_name", skillName)
+		} else {
+			commitStart := time.Now()
+			commitHash, commitErr := p.committer.CommitSkill(run.ctx, run.session.LibraryID, skill, body)
+			commitMs := time.Since(commitStart).Milliseconds()
+			if commitErr != nil {
+				run.result.Status = model.StatusError
+				run.result.Error = fmt.Sprintf("git commit [session=%s]: %v", run.session.ID, commitErr)
+				run.result.DurationMs = time.Since(run.start).Milliseconds()
+				p.log.Error("git commit failed",
+					"session_id", run.session.ID,
+					"skill_id", skillID,
+					"error", commitErr,
+					"commit_ms", commitMs,
+					"total_ms", run.result.DurationMs,
+				)
+				p.updateSessionStatus(run.ctx, &run.session, run.result)
+				p.maybeSample(run.ctx, run.session.ID, run.result)
+				p.writeTraceSummary(run.trace, run.result, nil, 0, run.s1Ms, run.s2Ms, run.s3Ms)
+				return run.result, nil
+			}
+			run.result.CommitHash = commitHash
+			p.log.Info("skill committed to git", "session_id", run.session.ID, "skill_id", skillID, "hash", commitHash, "commit_ms", commitMs)
 		}
-		run.result.CommitHash = commitHash
-		p.log.Info("skill committed to git", "session_id", run.session.ID, "skill_id", skillID, "hash", commitHash, "commit_ms", commitMs)
 	}
 
 	run.result.Status = model.StatusExtracted

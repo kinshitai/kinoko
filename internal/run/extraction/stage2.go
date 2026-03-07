@@ -48,7 +48,7 @@ func init() {
 
 // Stage2Scorer runs structured rubric scoring.
 type Stage2Scorer interface {
-	Score(ctx context.Context, session model.SessionRecord, content []byte, sourceType string) (*model.Stage2Result, error)
+	Score(ctx context.Context, session model.SessionRecord, content []byte, sourceType SourceType, taxonomyHint string) (*model.Stage2Result, error)
 }
 
 type stage2Scorer struct {
@@ -68,11 +68,11 @@ func NewStage2Scorer(
 	}
 }
 
-func (s *stage2Scorer) Score(ctx context.Context, session model.SessionRecord, content []byte, sourceType string) (*model.Stage2Result, error) {
+func (s *stage2Scorer) Score(ctx context.Context, session model.SessionRecord, content []byte, sourceType SourceType, taxonomyHint string) (*model.Stage2Result, error) {
 	result := &model.Stage2Result{}
 
 	// Structured Rubric Scoring via LLM
-	prompt := buildRubricPrompt(content, sourceType)
+	prompt := buildRubricPrompt(content, sourceType, taxonomyHint)
 	resp, err := s.llm.Complete(ctx, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("stage2: llm rubric call: %w", err)
@@ -198,16 +198,21 @@ func validatePatterns(patterns []string) []string {
 	return valid
 }
 
-func buildRubricPrompt(content []byte, sourceType string) string {
+func buildRubricPrompt(content []byte, sourceType SourceType, taxonomyHint string) string {
 	var preamble string
 	contentLabel := "agent session"
 	contentDelimLabel := "Session content"
-	if sourceType == "convert" {
+	if sourceType == SourceTypeConvert {
 		preamble = `NOTE: This content was converted from existing documentation, not extracted from an agent session log. There are no tool calls, error traces, or command outputs. Evaluate the knowledge quality based on the prose content itself. Score "verification_evidence" based on whether the document describes tested/proven approaches, not on presence of execution logs.
 
 `
 		contentLabel = "document"
 		contentDelimLabel = "Document content"
+	}
+
+	var taxonomySuffix string
+	if taxonomyHint != "" {
+		taxonomySuffix = fmt.Sprintf("\n\nSuggested taxonomy pattern: %s. Use this as a hint but override if content clearly fits elsewhere.", taxonomyHint)
 	}
 
 	return fmt.Sprintf(`%sAnalyze this %s and respond with ONLY a JSON object (no markdown, no explanation).
@@ -242,5 +247,5 @@ JSON format:
 }
 
 %s:
-%s`, preamble, contentLabel, contentDelimLabel, string(content))
+%s%s`, preamble, contentLabel, contentDelimLabel, string(content), taxonomySuffix)
 }
