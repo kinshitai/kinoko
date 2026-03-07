@@ -17,6 +17,7 @@ AVAILABLE COMMANDS:
   serve     Start the Kinoko infrastructure server
   run       Start the local agent daemon
   extract   Run extraction pipeline on a session log file
+  convert   Convert a document into SKILL.md format
   import    Import session logs into the extraction queue
   ingest    Import a markdown file as a skill through the quality critic
   match     Find skills matching a query
@@ -262,6 +263,76 @@ kinoko extract ./session.log --api-url http://kinoko.internal:23233
 | 0 | Skill extracted successfully |
 | 2 | Extraction rejected (session didn't pass quality gates) |
 | 3 | Extraction error |
+
+---
+
+## `kinoko convert`
+
+Convert an existing document into SKILL.md format. Unlike `extract`, this command is genre-aware — it uses prompts that don't penalize the absence of tool calls or execution traces, making it suitable for notes, guides, runbooks, and other prose documents.
+
+The document is evaluated for reusable knowledge through the same quality pipeline as extraction (Stage 2 scoring → Stage 3 critic → novelty check), but Stage 1 metadata filtering is skipped entirely.
+
+```bash
+kinoko convert <file> [flags]
+```
+
+**Arguments:**
+
+| Argument | Description |
+|---|---|
+| `<file>` | Path to the document file (markdown, text, or session log) |
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--config` | string | `""` | Config file path |
+| `--library` | string | first configured | Library ID to use |
+| `--api-url` | string | from config | Kinoko API URL override |
+| `--dry-run` | bool | `false` | Run the pipeline but skip git commit |
+| `--taxonomy` | string | `""` | Suggested taxonomy pattern hint (e.g. `BUILD/Backend/APIDesign`) |
+| `--timeout` | duration | `5m` | Command timeout |
+
+**Pipeline flow:**
+
+1. **Read** — loads the document (max 10 MB)
+2. **Parse (best-effort)** — if the file happens to be a session log, extracts metadata; otherwise proceeds with minimal metadata
+3. **Stage 2 (Scorer)** — LLM rubric scoring with genre-aware prompts
+4. **Stage 3 (Critic)** — LLM evaluates quality, generates SKILL.md (substitution test, hard reject triggers)
+5. **Novelty check** — queries the server to ensure the skill isn't a duplicate
+6. **Git push** — commits the skill to the library (skipped with `--dry-run`)
+
+**Environment variables:**
+
+| Variable | Purpose |
+|---|---|
+| `OPENAI_API_KEY` | Fallback API key for embeddings and LLM |
+| `KINOKO_EMBEDDING_API_KEY` | API key for embeddings (overrides `OPENAI_API_KEY`) |
+| `KINOKO_LLM_API_KEY` | API key for LLM calls (overrides `OPENAI_API_KEY`) |
+
+**Examples:**
+```bash
+kinoko convert my-notes.md
+kinoko convert CLAUDE.md --dry-run
+kinoko convert guide.md --taxonomy "BUILD/Backend/APIDesign"
+kinoko convert runbook.md --timeout 10m --library my-team
+```
+
+**Output:** Prints a human-readable summary followed by JSON `ExtractionResult` including stage results, skill record (if converted), commit hash, timing, and status.
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | Skill converted successfully |
+| 2 | Conversion rejected (document didn't pass quality gates) |
+| 3 | Conversion error |
+
+**When to use `convert` vs `extract` vs `ingest`:**
+
+- **`extract`** — for session logs from agent runs (applies full pipeline including Stage 1 metadata filter)
+- **`convert`** — for existing documents like notes, guides, or runbooks (skips Stage 1, uses genre-aware prompts)
+- **`ingest`** — for importing an already-structured SKILL.md (uses only Stage 3 critic, or `--force` to skip it entirely)
 
 ---
 

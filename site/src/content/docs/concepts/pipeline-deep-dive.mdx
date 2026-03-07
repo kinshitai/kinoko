@@ -8,6 +8,21 @@ import { Aside } from '@astrojs/starlight/components';
 
 The [extraction overview](/concepts/extraction) covers the gold-panning metaphor. This page gets into the machinery — what each stage actually checks, how the combined prompt works, and what the substitution test is.
 
+## Session Parsing
+
+Before any stage runs, the session log is parsed via the `SessionParser` interface (`internal/run/extraction/parser.go`). The dispatcher peeks at the first 4KB, tries each registered parser in order, and returns a `SessionRecord` with structured metadata.
+
+| Parser | Format | What it extracts |
+|--------|--------|-----------------|
+| `ClaudeCodeParser` | Claude Code JSONL | Timestamps, message counts, tool calls (`tool_use` blocks), error counts (`tool_result` with `is_error`), model name, token usage |
+| `FallbackParser` | Generic text | Basic metadata from unrecognized formats |
+
+The parser list is explicit — no `init()` registration magic. Most-specific parsers come first. If no parser matches, `ParseSession` returns `ErrUnrecognizedFormat`.
+
+<Aside type="tip">
+To add support for a new agent format, implement the `SessionParser` interface (two methods: `CanParse` and `Parse`) and add it to the `parsers` slice. The pipeline, CLI commands, and worker pool need no changes.
+</Aside>
+
 ## Stage 1: Metadata Filter
 
 **Cost:** Zero. No LLM calls, no embeddings. Pure arithmetic.

@@ -107,6 +107,7 @@ Category-specific half-lives (foundational: 365d, tactical: 90d, contextual: 180
 | `kinoko run` | Start local daemon (workers, scheduler, injection) |
 | `kinoko run --server host:port` | Connect daemon to a specific server |
 | `kinoko extract <file>` | Run extraction pipeline on a session log |
+| `kinoko convert <file>` | Convert a document into SKILL.md format (genre-aware, skips session filtering) |
 | `kinoko import <files>` | Import session logs into the extraction queue |
 | `kinoko ingest <file>` | Import a markdown file as a skill through the quality critic |
 | `kinoko match <query>` | Find skills matching a query |

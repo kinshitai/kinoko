@@ -42,6 +42,15 @@ Most agent sessions don't produce reusable knowledge. Running an expensive LLM c
     git push
 ```
 
+## Session Parsing
+
+Before the pipeline runs, session logs are parsed into structured metadata via the `SessionParser` interface. Kinoko detects the format from the first 4KB of the file and dispatches to the appropriate parser:
+
+- **Claude Code JSONL** — native Claude Code session logs. Each line is a JSON object with a `type` field (`assistant`, `user`, `system`, etc.). The parser extracts timestamps, message counts, tool calls, error rates, and token usage.
+- **Fallback** — generic text logs for other agent formats.
+
+Format support is extensible — new parsers implement the `SessionParser` interface without changing the pipeline.
+
 ## Stage 1 — Metadata Pre-filter
 
 **Cost:** near-zero. **Purpose:** eliminate the obviously worthless.
@@ -127,3 +136,9 @@ When working on extraction, think about which stage a filter belongs in:
 - Does it require nuanced evaluation? → **Stage 3**
 
 Moving a filter to an earlier stage saves cost. Moving it later improves precision.
+
+## Converting Documents
+
+Not all knowledge comes from agent sessions. `kinoko convert` runs the same pipeline on existing documents — notes, guides, runbooks — but skips Stage 1 metadata filtering and uses genre-aware prompts that don't penalize the absence of tool calls or execution traces.
+
+See [`kinoko convert`](/reference/cli/#kinoko-convert) in the CLI reference.
