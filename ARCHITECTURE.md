@@ -94,6 +94,23 @@ Packages imported by both run and serve:
 - **circuitbreaker** — Protects external calls (LLM, embedding APIs) with failure counting and automatic recovery.
 - **decay** — Half-life decay logic. Skills degrade over time by category; recent usage rescues them.
 
+## Session Parsing
+
+Before extraction begins, session logs must be parsed into structured metadata. The `SessionParser` interface (`internal/run/extraction/parser.go`) handles format detection and dispatch:
+
+1. **Format detection** — the first 4KB of input is peeked to identify the log format.
+2. **Parser dispatch** — an ordered list of parsers is tried; the first match wins.
+3. **Metadata extraction** — the matched parser reads timestamps, tool calls, error counts, and other metadata into a `SessionRecord`.
+
+Built-in parsers:
+
+| Parser | Format | Detection |
+|--------|--------|-----------|
+| `ClaudeCodeParser` | Claude Code native JSONL | First line is JSON with a known `type` field (`assistant`, `user`, `system`, etc.) |
+| `FallbackParser` | Generic text logs | Catch-all for unrecognized formats |
+
+New agent formats are supported by implementing the `SessionParser` interface — no changes to the pipeline or CLI commands required.
+
 ## Extraction Pipeline
 
 The extraction pipeline (`internal/run/extraction/`) processes session logs through three stages:
@@ -125,6 +142,7 @@ The HTTP API listens on port `server.port + 2` (default 23233).
 | `kinoko run` | Start the local agent daemon (workers + scheduler + injection) |
 | `kinoko init` | Initialize workspace; `--connect <url>` links to a server |
 | `kinoko extract <file>` | Run the extraction pipeline on a single session log |
+| `kinoko convert <file>` | Convert a document into SKILL.md format (genre-aware, skips session filtering) |
 | `kinoko ingest <file.md>` | Import a markdown file through the quality critic |
 | `kinoko index` | Index a skill repo into SQLite (used by post-receive hooks) |
 | `kinoko pull [repo]` | Clone or update skill repos; `--all` syncs everything |

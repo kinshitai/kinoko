@@ -185,6 +185,7 @@ func runExtract(cmd *cobra.Command, args []string) error {
 		Log:        logger,
 		SampleRate: 0.01,
 		Extractor:  "cli-extract-v1",
+		DryRun:     extractDryRun,
 	})
 	if err != nil {
 		return fmt.Errorf("create pipeline: %w", err)
@@ -195,8 +196,8 @@ func runExtract(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("extraction failed: %w", err)
 	}
 
-	// Print human-readable summary.
-	printExtractSummary(result, extractDryRun)
+	// Print human-readable summary to stderr.
+	printExtractionSummary(result, "", extractDryRun)
 
 	// Also print JSON for programmatic consumption.
 	out, err := json.MarshalIndent(result, "", "  ")
@@ -213,42 +214,6 @@ func runExtract(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
-}
-
-// printExtractSummary prints a human-readable extraction summary.
-func printExtractSummary(result *model.ExtractionResult, dryRun bool) {
-	fmt.Println("─── Extraction Summary ───")
-	fmt.Printf("  Status:  %s\n", result.Status)
-
-	switch result.Status {
-	case model.StatusExtracted:
-		if result.Skill != nil {
-			fmt.Printf("  Skill:   %s\n", result.Skill.Name)
-			fmt.Printf("  Version: %d\n", result.Skill.Version)
-			fmt.Printf("  Quality: %.2f\n", result.Skill.Quality.CompositeScore)
-		}
-		switch {
-		case dryRun:
-			fmt.Println("  Pushed:  no (dry-run)")
-		case result.CommitHash != "":
-			fmt.Printf("  Pushed:  yes (%s)\n", result.CommitHash)
-		default:
-			fmt.Println("  Pushed:  no")
-		}
-	case model.StatusRejected:
-		switch {
-		case result.Stage1 != nil && !result.Stage1.Passed:
-			fmt.Printf("  Rejected at: Stage 1 — %s\n", result.Stage1.Reason)
-		case result.Stage2 != nil && !result.Stage2.Passed:
-			fmt.Printf("  Rejected at: Stage 2 — %s\n", result.Stage2.Reason)
-		case result.Stage3 != nil && !result.Stage3.Passed:
-			fmt.Printf("  Rejected at: Stage 3 — %s\n", result.Stage3.CriticReasoning)
-		}
-	case model.StatusError:
-		fmt.Printf("  Error:   %s\n", result.Error)
-	}
-	fmt.Printf("  Duration: %dms\n", result.DurationMs)
-	fmt.Println("──────────────────────────")
 }
 
 // exitError signals a non-zero exit code without calling os.Exit directly.

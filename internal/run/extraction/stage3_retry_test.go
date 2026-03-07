@@ -39,7 +39,7 @@ func TestStage3Critic_Retry(t *testing.T) {
 				return extractVerdictJSON(), nil
 			}}
 			critic := newTestCritic(l)
-			result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2())
+			result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2(), SourceTypeSession, "")
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error")
@@ -66,7 +66,7 @@ func TestNonRetryableErrorSkipsRetry(t *testing.T) {
 		return "", &llm.LLMError{StatusCode: 401, Message: "unauthorized"}
 	}}
 	critic := newTestCritic(l)
-	_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2())
+	_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2(), SourceTypeSession, "")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -80,12 +80,12 @@ func TestStage3Critic_CircuitBreaker(t *testing.T) {
 		l := s3errLLM(&llm.LLMError{StatusCode: 503, Message: "unavailable"})
 		critic := newTestCritic(l)
 		for i := 0; i < 5; i++ {
-			_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2())
+			_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2(), SourceTypeSession, "")
 			if err == nil {
 				t.Fatal("expected error")
 			}
 		}
-		_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2())
+		_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2(), SourceTypeSession, "")
 		if !errors.Is(err, circuitbreaker.ErrOpen) {
 			t.Errorf("expected circuitbreaker.ErrOpen, got %v", err)
 		}
@@ -102,18 +102,18 @@ func TestStage3Critic_CircuitBreaker(t *testing.T) {
 		}}
 		critic := newTestCriticWithClock(l, func() time.Time { return now })
 		for i := 0; i < 5; i++ {
-			critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+			critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 		}
 		now = now.Add(6 * time.Minute)
 		shouldFail = false
-		result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+		result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 		if err != nil {
 			t.Fatalf("half-open should succeed: %v", err)
 		}
 		if !result.Passed {
 			t.Error("expected pass")
 		}
-		result2, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+		result2, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 		if err != nil {
 			t.Fatalf("closed circuit should work: %v", err)
 		}
@@ -132,16 +132,16 @@ func TestStage3Critic_CircuitBreaker(t *testing.T) {
 		}}
 		critic := newTestCritic(l)
 		for i := 0; i < 4; i++ {
-			critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+			critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 		}
 		succeedNext = true
-		_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+		_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 		if err != nil {
 			t.Fatalf("expected success: %v", err)
 		}
 		succeedNext = false
 		for i := 0; i < 4; i++ {
-			_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+			_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 			if errors.Is(err, circuitbreaker.ErrOpen) {
 				t.Fatalf("circuit should not be open after reset, failed on call %d", i+1)
 			}
@@ -160,21 +160,21 @@ func TestStage3Critic_HalfOpenFailureDoublesDuration(t *testing.T) {
 	}}
 	critic := newTestCriticWithClock(l, func() time.Time { return now })
 	for i := 0; i < 5; i++ {
-		critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+		critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 	}
 	now = now.Add(6 * time.Minute)
-	_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+	_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 	if err == nil {
 		t.Fatal("expected error from half-open probe failure")
 	}
 	now = now.Add(5 * time.Minute)
-	_, err = critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+	_, err = critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 	if !errors.Is(err, circuitbreaker.ErrOpen) {
 		t.Errorf("circuit should still be open after 5 min, got %v", err)
 	}
 	now = now.Add(6 * time.Minute)
 	shouldFail = false
-	result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+	result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 	if err != nil {
 		t.Fatalf("should succeed after doubled duration: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestStage3Critic_ConcurrentHalfOpen(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		go func() {
 			defer wg.Done()
-			critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+			critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 		}()
 	}
 	wg.Wait()
@@ -227,7 +227,7 @@ func TestStage3Critic_TimeoutEscalation(t *testing.T) {
 	}
 	c := NewStage3Critic(l, s3testConfig(), s3testLogger()).(*stage3Critic)
 	c.sleep = func(d time.Duration) {}
-	_, err := c.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2())
+	_, err := c.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2(), SourceTypeSession, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

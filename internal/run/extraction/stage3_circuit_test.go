@@ -28,14 +28,14 @@ func TestStage3CB_ClosedToOpenToHalfOpenToClosed(t *testing.T) {
 
 	// Closed → Open: 5 consecutive failures
 	for i := 0; i < 5; i++ {
-		_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+		_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 		if err == nil {
 			t.Fatalf("call %d: expected error", i)
 		}
 	}
 
 	// Verify open
-	_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+	_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 	if !errors.Is(err, circuitbreaker.ErrOpen) {
 		t.Fatalf("expected circuitbreaker.ErrOpen, got %v", err)
 	}
@@ -45,7 +45,7 @@ func TestStage3CB_ClosedToOpenToHalfOpenToClosed(t *testing.T) {
 	shouldFail = false
 
 	// Half-open → Closed: probe succeeds
-	result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+	result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 	if err != nil {
 		t.Fatalf("half-open probe should succeed: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestStage3CB_ClosedToOpenToHalfOpenToClosed(t *testing.T) {
 	}
 
 	// Verify closed: subsequent calls work
-	result2, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+	result2, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 	if err != nil {
 		t.Fatalf("closed circuit should work: %v", err)
 	}
@@ -74,27 +74,27 @@ func TestStage3CB_HalfOpenFailEscalates(t *testing.T) {
 
 	// Open circuit
 	for i := 0; i < 5; i++ {
-		_, _ = critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+		_, _ = critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 	}
 
 	// Half-open probe fails → re-open with 10min
 	now = now.Add(6 * time.Minute)
-	_, _ = critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+	_, _ = critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 
 	// Still open at 5min after re-open
 	now = now.Add(5 * time.Minute)
-	_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+	_, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 	if !errors.Is(err, circuitbreaker.ErrOpen) {
 		t.Fatalf("expected still open (doubled to 10min), got %v", err)
 	}
 
 	// Open at ~10min → half-open, fail again → re-open with 20min
 	now = now.Add(6 * time.Minute)
-	_, _ = critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+	_, _ = critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 
 	// Verify doubled again: still open after 10min
 	now = now.Add(10 * time.Minute)
-	_, err = critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+	_, err = critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 	if !errors.Is(err, circuitbreaker.ErrOpen) {
 		t.Fatalf("expected still open (doubled to 20min), got %v", err)
 	}

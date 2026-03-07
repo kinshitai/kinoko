@@ -163,7 +163,7 @@ func TestStage3Critic(t *testing.T) {
 				l = s3okLLM(tt.llmResponse)
 			}
 			critic := newTestCritic(l)
-			result, err := critic.Evaluate(context.Background(), s3testSession(), tt.content, tt.stage2)
+			result, err := critic.Evaluate(context.Background(), s3testSession(), tt.content, tt.stage2, SourceTypeSession, "")
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
@@ -191,7 +191,7 @@ func TestStage3Critic(t *testing.T) {
 
 func TestStage3Critic_SkillMDParsed(t *testing.T) {
 	critic := newTestCritic(s3okLLM(extractVerdictJSON()))
-	result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2())
+	result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2(), SourceTypeSession, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +205,7 @@ func TestStage3Critic_SkillMDParsed(t *testing.T) {
 
 func TestStage3Critic_SkillMDEmptyOnReject(t *testing.T) {
 	critic := newTestCritic(s3okLLM(rejectVerdictJSON()))
-	result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2())
+	result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2(), SourceTypeSession, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestStage3Critic_SkillMDEmptyOnReject(t *testing.T) {
 
 func TestStage3Critic_SkillMDEmptyWhenNotProvided(t *testing.T) {
 	critic := newTestCritic(s3okLLM(extractVerdictJSONNoSkillMD()))
-	result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2())
+	result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2(), SourceTypeSession, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +236,7 @@ func TestStage3Critic_PassedVerdictConsistency(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			critic := newTestCritic(s3okLLM(tt.response))
-			result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2())
+			result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("c"), passingStage2(), SourceTypeSession, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -249,7 +249,7 @@ func TestStage3Critic_PassedVerdictConsistency(t *testing.T) {
 
 func TestStage3Critic_CompositeScoreRecomputed(t *testing.T) {
 	critic := newTestCritic(s3okLLM(extractVerdictJSON()))
-	result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2())
+	result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2(), SourceTypeSession, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func TestStage3Critic_Consistency(t *testing.T) {
 	critic := newTestCritic(s3okLLM(extractVerdictJSON()))
 	var verdicts []string
 	for i := 0; i < 10; i++ {
-		result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("consistent"), passingStage2())
+		result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("consistent"), passingStage2(), SourceTypeSession, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -292,7 +292,7 @@ func TestStage3Critic_ContradictionEdgeCases(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			critic := newTestCritic(s3okLLM(tt.response))
-			result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2())
+			result, err := critic.Evaluate(context.Background(), s3testSession(), []byte("content"), passingStage2(), SourceTypeSession, "")
 			if err != nil {
 				t.Fatal(err)
 			}

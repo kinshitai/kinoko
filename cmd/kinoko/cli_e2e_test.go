@@ -439,9 +439,9 @@ func TestHTTPEmbedder_Dimensions(t *testing.T) {
 	}
 }
 
-// ── printExtractSummary tests ──
+// ── printExtractionSummary tests ──
 
-func TestPrintExtractSummary_Extracted(t *testing.T) {
+func TestPrintExtractionSummary_Extracted(t *testing.T) {
 	result := &model.ExtractionResult{
 		Status: model.StatusExtracted,
 		Skill: &model.SkillRecord{
@@ -453,8 +453,8 @@ func TestPrintExtractSummary_Extracted(t *testing.T) {
 		CommitHash: "abc123",
 	}
 
-	out := captureStdout(func() {
-		printExtractSummary(result, false)
+	out := captureStderr(func() {
+		printExtractionSummary(result, "", false)
 	})
 
 	mustContain(t, out, "extracted")
@@ -463,7 +463,7 @@ func TestPrintExtractSummary_Extracted(t *testing.T) {
 	mustContain(t, out, "123ms")
 }
 
-func TestPrintExtractSummary_ExtractedDryRun(t *testing.T) {
+func TestPrintExtractionSummary_ExtractedDryRun(t *testing.T) {
 	result := &model.ExtractionResult{
 		Status: model.StatusExtracted,
 		Skill: &model.SkillRecord{
@@ -474,29 +474,29 @@ func TestPrintExtractSummary_ExtractedDryRun(t *testing.T) {
 		DurationMs: 50,
 	}
 
-	out := captureStdout(func() {
-		printExtractSummary(result, true)
+	out := captureStderr(func() {
+		printExtractionSummary(result, "", true)
 	})
 
 	mustContain(t, out, "dry-run")
 }
 
-func TestPrintExtractSummary_RejectedStage1(t *testing.T) {
+func TestPrintExtractionSummary_RejectedStage1(t *testing.T) {
 	result := &model.ExtractionResult{
 		Status:     model.StatusRejected,
 		Stage1:     &model.Stage1Result{Passed: false, Reason: "too short"},
 		DurationMs: 10,
 	}
 
-	out := captureStdout(func() {
-		printExtractSummary(result, false)
+	out := captureStderr(func() {
+		printExtractionSummary(result, "", false)
 	})
 
 	mustContain(t, out, "Stage 1")
 	mustContain(t, out, "too short")
 }
 
-func TestPrintExtractSummary_RejectedStage2(t *testing.T) {
+func TestPrintExtractionSummary_RejectedStage2(t *testing.T) {
 	result := &model.ExtractionResult{
 		Status:     model.StatusRejected,
 		Stage1:     &model.Stage1Result{Passed: true},
@@ -504,15 +504,15 @@ func TestPrintExtractSummary_RejectedStage2(t *testing.T) {
 		DurationMs: 20,
 	}
 
-	out := captureStdout(func() {
-		printExtractSummary(result, false)
+	out := captureStderr(func() {
+		printExtractionSummary(result, "", false)
 	})
 
 	mustContain(t, out, "Stage 2")
 	mustContain(t, out, "low novelty")
 }
 
-func TestPrintExtractSummary_RejectedStage3(t *testing.T) {
+func TestPrintExtractionSummary_RejectedStage3(t *testing.T) {
 	result := &model.ExtractionResult{
 		Status:     model.StatusRejected,
 		Stage1:     &model.Stage1Result{Passed: true},
@@ -521,23 +521,23 @@ func TestPrintExtractSummary_RejectedStage3(t *testing.T) {
 		DurationMs: 30,
 	}
 
-	out := captureStdout(func() {
-		printExtractSummary(result, false)
+	out := captureStderr(func() {
+		printExtractionSummary(result, "", false)
 	})
 
 	mustContain(t, out, "Stage 3")
 	mustContain(t, out, "not reusable")
 }
 
-func TestPrintExtractSummary_Error(t *testing.T) {
+func TestPrintExtractionSummary_Error(t *testing.T) {
 	result := &model.ExtractionResult{
 		Status:     model.StatusError,
 		Error:      "something broke",
 		DurationMs: 5,
 	}
 
-	out := captureStdout(func() {
-		printExtractSummary(result, false)
+	out := captureStderr(func() {
+		printExtractionSummary(result, "", false)
 	})
 
 	mustContain(t, out, "error")
@@ -582,6 +582,18 @@ func captureStdout(fn func()) string {
 	fn()
 	w.Close()
 	os.Stdout = old
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	return buf.String()
+}
+
+func captureStderr(fn func()) string {
+	old := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	fn()
+	w.Close()
+	os.Stderr = old
 	var buf bytes.Buffer
 	buf.ReadFrom(r)
 	return buf.String()

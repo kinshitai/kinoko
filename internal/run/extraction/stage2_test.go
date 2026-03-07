@@ -293,7 +293,7 @@ func TestStage2Scorer(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			scorer := NewStage2Scorer(tt.llm, testConfig(), testLogger())
-			result, err := scorer.Score(context.Background(), testSession(), []byte("session content"))
+			result, err := scorer.Score(context.Background(), testSession(), []byte("session content"), SourceTypeSession, "")
 
 			if tt.wantErr {
 				if err == nil {

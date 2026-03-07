@@ -13,10 +13,14 @@ import (
 
 // buildCombinedPrompt builds the Phase B combined critic + extraction prompt.
 // It evaluates the session AND generates SKILL.md in one LLM call.
-func buildCombinedPrompt(content []byte, stage2 *model.Stage2Result) string {
+func buildCombinedPrompt(content []byte, stage2 *model.Stage2Result, sourceType SourceType) string {
 	nonce := generateNonce()
-	beginDelim := fmt.Sprintf("---BEGIN SESSION %s---", nonce)
-	endDelim := fmt.Sprintf("---END SESSION %s---", nonce)
+	delimLabel := "SESSION"
+	if sourceType == SourceTypeConvert {
+		delimLabel = "DOCUMENT"
+	}
+	beginDelim := fmt.Sprintf("---BEGIN %s %s---", delimLabel, nonce)
+	endDelim := fmt.Sprintf("---END %s %s---", delimLabel, nonce)
 
 	stage2JSON, err := json.Marshal(stage2)
 	if err != nil {
@@ -25,11 +29,24 @@ func buildCombinedPrompt(content []byte, stage2 *model.Stage2Result) string {
 
 	sanitized := sanitizeDelimiters(content, beginDelim, endDelim)
 
+	convertPreamble := ""
+	contentTypeLabel := "session"
+	if sourceType == SourceTypeConvert {
+		convertPreamble = `
+NOTE: This content is converted from existing documentation, not from an agent session.
+There are no tool calls, command outputs, or execution traces. The content is prose/notes
+that may contain reusable knowledge. Evaluate based on the written content quality.
+The "verification_evidence" dimension should assess whether the document describes
+tested and proven approaches, not whether execution evidence is present.
+
+`
+		contentTypeLabel = "document"
+	}
+
 	return fmt.Sprintf(`IMPORTANT: You are extracting skills for a DIFFERENT agent working on a DIFFERENT project. That agent has never heard of this project, its codebase, its architecture decisions, or its team.
 
 Before marking something as a skill, ask: "Would this help someone who has never seen this project and never will?" If the answer requires knowing this project's architecture, it's documentation, not a skill.
-
-You are evaluating a session for reusable knowledge extraction.
+%sYou are evaluating a %s for reusable knowledge extraction.
 
 STEP 1: EVALUATE
 Score these dimensions (1-5):
@@ -107,7 +124,7 @@ Stage 2 results:
 
 %s
 %s
-%s`, string(stage2JSON), beginDelim, string(sanitized), endDelim)
+%s`, convertPreamble, contentTypeLabel, string(stage2JSON), beginDelim, string(sanitized), endDelim)
 }
 
 func truncateContent(content []byte, maxBytes int) []byte {

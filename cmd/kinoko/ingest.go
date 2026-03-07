@@ -169,7 +169,7 @@ func runIngest(cmd *cobra.Command, args []string) error {
 		sourceSessionID = session.ID
 
 		// Run critic with nil Stage2 result (we're skipping Stage 1+2).
-		result, err := stage3.Evaluate(ctx, session, body, nil)
+		result, err := stage3.Evaluate(ctx, session, body, nil, extraction.SourceTypeSession, "")
 		if err != nil {
 			return fmt.Errorf("critic evaluation failed: %w", err)
 		}

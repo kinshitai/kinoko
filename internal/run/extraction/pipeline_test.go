@@ -34,7 +34,7 @@ type mockStage2 struct {
 	err    error
 }
 
-func (m *mockStage2) Score(_ context.Context, _ model.SessionRecord, _ []byte) (*model.Stage2Result, error) {
+func (m *mockStage2) Score(_ context.Context, _ model.SessionRecord, _ []byte, _ SourceType, _ string) (*model.Stage2Result, error) {
 	return m.result, m.err
 }
 
@@ -43,7 +43,7 @@ type mockStage3 struct {
 	err    error
 }
 
-func (m *mockStage3) Evaluate(_ context.Context, _ model.SessionRecord, _ []byte, _ *model.Stage2Result) (*model.Stage3Result, error) {
+func (m *mockStage3) Evaluate(_ context.Context, _ model.SessionRecord, _ []byte, _ *model.Stage2Result, _ SourceType, _ string) (*model.Stage3Result, error) {
 	return m.result, m.err
 }
 
